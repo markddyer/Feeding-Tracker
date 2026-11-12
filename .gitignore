@@ -1,0 +1,27 @@
+# Personal context: never commit (the repository is public)
+CLAUDE.local.md
+*.local.md
+
+# macOS
+.DS_Store
+
+# Xcode (the project is generated from project.yml by XcodeGen)
+*.xcodeproj
+xcuserdata/
+DerivedData/
+build/
+*.xcresult
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Secrets
+*.p8
+*.p12
+*.mobileprovision
+.env

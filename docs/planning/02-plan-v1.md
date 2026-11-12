@@ -1,27 +1,27 @@
-# Feeding Tracker: plan v1
+# Feeding Tracker: plan v1 (revision 2)
 
-*Revised 12 November 2026 after the review gauntlet ([01-review-gauntlet.md](01-review-gauntlet.md)) and the user's answers.*
+*Revision 1 was written on 12 November 2026, after the review gauntlet ([01-review-gauntlet.md](01-review-gauntlet.md)) and the user's answers. Revision 2, also 12 November, adds the second review round ([03-review-round-2.md](03-review-round-2.md)): a red team on the alerts across both phones, and a check of the Apple setup. The step-by-step Apple setup is in [04-apple-setup-checklist.md](04-apple-setup-checklist.md).*
 
 > **This repository is public.** No personal data goes in it: no names, no feed logs, no photos.
-> The baby's and parents' names are typed into the app and stored only in the household's iCloud.
+> The baby's and the parents' names are typed into the app and stored only in the household's iCloud.
 > This document says "Parent A" for the parent who creates the household and "Parent B" for the other.
 
 ## Context
 
-- **Baby:** newborn, already born. The midwives advise feeding every 2–4 hours, alongside following hunger cues.
-- **Feeding:** mixed. Breastfeeding is being established, but sore nipples are making it hard, so Parent B is expressing milk. Expressed milk goes in a bottle and formula makes up the shortfall. **Breast-side tracking is needed.**
-- **People and devices:** two parents, each with their own iPhone and Apple ID. The devices are an iPhone 18 Pro, an iPhone Duo (foldable: 5.4" outer and 7.6" inner screens) and Parent B's iPhone. Apple Watch integration is wanted.
-- **Nights:** the parents take turns, flexibly, so the parent who is off gets unbroken sleep.
-- **Alerts:** each parent chooses a **loud alarm** or a **gentle nudge** in Settings.
+- **Baby:** a newborn, already born. The midwives advise feeding every 2–4 hours, while also following hunger cues.
+- **Feeding:** mixed. Breastfeeding is being established but sore nipples are making it hard, so Parent B is expressing milk. The baby gets expressed milk by bottle, with formula making up the shortfall. **The app must track which breast was used.**
+- **People and devices:** two parents, each with their own iPhone and Apple ID. The phones are an iPhone 18 Pro, an iPhone Duo (folding, with a 5.4" outer screen and a 7.6" inner screen) and Parent B's iPhone. Apple Watch integration is wanted.
+- **Nights:** the parents take turns, flexibly, so whoever is off gets unbroken sleep.
+- **Alerts:** each parent can choose a loud alarm or a gentle nudge in Settings. See the night rule below.
 - **Why build:** privacy, control, and adding features as the baby grows.
-- **Setup:** paid Apple Developer Program membership and a Mac. Both phones must be able to install the app while it's still in development.
+- **Setup:** paid Apple Developer Program membership and a Mac. Both phones must be able to install the app while it's still being developed.
 
 ## Product principles
 
 1. **The headline is time since the last feed started.** Alerts are a safety net, not a schedule.
 2. **Everything works one-handed in the dark, in one or two taps, and can be undone.**
-3. **Two phones, one record.** Whatever one parent logs appears on the other phone.
-4. **Failures go the safe way.** A sync delay may cause an unnecessary alert, but should never cause a missing one. See "Why stale data fails safe".
+3. **Two phones, one record.** Whatever one parent logs appears on the other's phone.
+4. **When something fails, alert too much rather than too little.** If the phones disagree or have lost contact, both may ring, but neither should go quiet. Every rule below is designed against this, and the known exceptions are listed.
 5. **Nothing leaves the household's iCloud.** No analytics, adverts, third-party SDKs or servers.
 
 ## The feed window
@@ -32,47 +32,50 @@ The midwives' "every 2–4 hours" becomes a window, measured from the **start** 
 |---|---|---|
 | 0 – 2h | Recently fed | Nothing. |
 | 2h | Window opens | Optional gentle nudge: "may be ready to feed; watch for cues". |
-| 4h | Window closes | The safety-net alert, in each parent's chosen style. |
+| 4h | Window closes | The safety-net alert (see "Alerts"). |
 
-- Both times are shared settings, defaulting to the midwives' 2h and 4h. They can be edited when the advice changes.
-- The alert can be switched off entirely once the baby is fed fully on demand.
-- The wording never says "due", "missed" or "overdue".
+- Both times are shared settings, defaulting to the midwives' 2h and 4h, and can be changed if the advice changes.
+- The alert can be turned off once the baby is fed fully on demand.
+- The app never uses the words "due", "missed" or "overdue".
 
 ## What gets recorded
 
-Events, all with a required start time and an optional end time:
+Every event has a required start time and an optional end time.
 
-- **Feed.** Any combination of:
-  - **Breast:** one or more segments, each Left or Right with an optional duration. Switching sides adds a segment.
-  - **Bottle:** one or more, each *expressed milk* or *formula*, with a volume in ml.
+- **Feed:** any combination of the following.
+  - **Breast:** one or more segments, each Left or Right, with an optional duration. Switching sides adds a segment.
+  - **Bottle:** one or more bottles, each *expressed milk* or *formula*, with the amount in ml.
   - **Note:** optional.
-- **Pump (expressing session):** proposed for phase 1, to be confirmed. Records the time, the side (left, right or both), and ml per side.
-- **Later kinds** (phase 3): nappy, sleep, growth, medicine, solids. The data model already allows for them.
+- **Pump (expressing session):** the time, the side (left, right or both) and the ml from each side. *Phase 1 if the user confirms they want it.*
+- **Later kinds (phase 3):** nappy, sleep, growth, medicine and solids. The data model already allows for them.
 
 ## Screens
 
-**Home screen** on a standard phone or the folded Duo, from top to bottom:
-1. "Last feed started **1h 40m ago**" with the start time, and a ring showing progress through the window.
+**Home screen** (standard phone, or the Duo folded), from top to bottom:
+1. "Last feed started **1h 40m ago**" with the clock time, and a ring showing progress through the window.
 2. "Window opens 03:50 · Alert at 05:50".
-3. **Suggested next side**: the side not used last. This is only a suggestion.
-4. The last feed in brief, for example "L 12m · R 8m · Formula 30 ml, logged by Parent A".
-5. The last 24 hours: number of feeds, breast sessions, ml of expressed milk and ml of formula. No targets and no red or green.
-6. Tonight's duty: "Parent B is on tonight", with an **"I'll take tonight"** button.
+3. **Suggested next side**: the side not used last. It's only a suggestion.
+4. A summary of the last feed, for example "L 12m · R 8m · Formula 30 ml, logged by Parent A".
+5. The last 24 hours: number of feeds, number of breast sessions, ml of expressed milk and ml of formula. No targets and no red or green colouring.
+6. Tonight's duty: "Parent B is on tonight", with an **"I'll take tonight"** button and a "seen by Parent B ✓" status.
 7. A full-width **Start feed** button at the bottom.
-   - During a feed, large **Left / Right / Bottle** buttons and **Finish** appear.
-   - After Finish come quick ml chips for any bottle, which can be skipped.
-   - An Undo banner shows for 10 seconds.
+   - During a feed it changes to large **Left / Right / Bottle** buttons and **Finish**.
+   - After Finish come quick ml buttons for any bottle, which can be skipped.
+   - An Undo banner stays up for 10 seconds.
+   - On the Duo's outer screen, toolbars move to the side, so this must be an ordinary button, not a toolbar.
 
 Also on the home screen:
 - **"Just finished, started about 10 / 20 / 30 / 45 min ago"**.
 - **"Log an earlier feed"**.
 
-**History:** a timeline grouped by day. Entries can be edited and deleted (deletes are soft), and every change goes through `reconcile()`.
+**Sync status** is shown wherever it matters: "Synced 1 min ago", or a red banner for problems such as the S8 and S9 cases in round 2.
 
-**Unfolded iPhone Duo:** two columns, with the home screen on the left and the day's timeline and history on the right. Folding or unfolding must not lose a feed in progress.
+**History:** a timeline grouped by day. Entries can be edited, and deleting one hides it rather than removing it. Every change goes through `reconcile()`.
+
+**The Duo unfolded:** two columns, with the home screen on the left and the day's timeline on the right. Use size classes and `NavigationSplitView`, which work on any screen size; there is no separate API for folded versus unfolded. A feed in progress is kept in the data store, not only on screen, so folding or unfolding can't lose it. Build with the iOS 27.1 SDK or later.
 
 **Night UI:**
-- Always dark, on true black, with a dim warm accent.
+- Always dark, on true black, with dim warm accents.
 - No white flashes from the launch screen, sheets or keyboard.
 - Large tap targets, haptic feedback, and no typing.
 
@@ -80,133 +83,165 @@ Also on the home screen:
 
 ## Alerts on two phones
 
+### Alert styles
+- **Loud alarm:** an AlarmKit alarm scheduled for an exact date and time. It sounds even when the phone is on silent or in a Focus mode, rings until dismissed, and is mirrored to a paired Apple Watch.
+- **Gentle nudge:** a Time Sensitive notification. It vibrates, shows on the Watch and respects silent mode.
+
 ### Each parent's settings (stored on their own phone)
-- **When the window closes**, one of:
-  - **Loud alarm**, using AlarmKit. It sounds even with the phone on silent or in a Focus, and also on a paired Apple Watch.
-  - **Gentle nudge**, a Time Sensitive notification. It vibrates, appears on the Watch, and respects silent mode.
-- **When the window opens:** a gentle nudge, or nothing.
+- **Daytime alert when the window closes:** loud alarm or gentle nudge.
+- **Nudge when the window opens:** gentle nudge or off.
+- **Night alert when the window closes, while on duty:** **always the loud alarm** (recommended; awaiting the user's confirmation). A gentle nudge can be silenced by Sleep Focus or go only to the Watch, and at night only one phone alerts, so nothing else would catch it.
+
+### Belt and braces for the main alert
+AlarmKit has open reports of alarms going off late or not at all on phones left locked overnight. These cover iOS 26 to 27 and reproduce with Apple's own sample. So the alert at the close of the window is scheduled three ways:
+1. An AlarmKit alarm at the exact time.
+2. A Time Sensitive notification at the same moment.
+3. A follow-up AlarmKit alarm 10 minutes later. Its time is chosen so it never lands in the same minute as another alarm. It is cancelled once a feed is logged.
+
+The app reschedules everything when it launches and whenever the iOS version has changed. Parents are told during setup never to hide or Face ID–lock the app, because Apple says alarms from such apps silently fail.
 
 ### Who gets alerted
-- **Daytime** is a shared setting, defaulting to 07:00–21:00. Both phones alert, each in its owner's chosen style.
-- **At night, only the on-duty parent's phone alerts.** The other phone stays silent.
-- **The rota alternates nightly from a shared start date.** Each phone calculates the default rota itself, so the two agree even when they can't sync.
-- **Changes to the rota can only be claimed, never handed off.**
+- **Daytime is a shared setting**, defaulting to 07:00–21:00. During the day both phones alert, each in its owner's style.
+- **At night only the on-duty phone alerts.** The off-duty phone stays silent.
+- **Defining "a night":** a night is named by the local calendar date it **starts** on, in a stored **household time zone**. It runs from the night-start time that day to the day-start time the next morning. Whether an alert is a day or night alert depends on **when it fires**, not on what time it is when it's scheduled. Tests cover 21:00, midnight, the clocks changing, and a phone in another time zone.
+- **The rota alternates nightly from a shared start date**, stored as a plain date. Each phone works the rota out for itself, so both agree even when sync is down.
+- **Changes are claims, not hand-offs.**
   - You can take a night ("I'll take tonight").
   - You can ask the other parent to take one, which shows a prompt on their phone.
-  - You can't give a night away. Your own alerts carry on until the other parent's claim reaches your phone.
-  - *Why:* if a hand-off failed to sync, *nobody* would be woken. With claims only, a sync failure means *both* phones ring, which is annoying but safe.
-- **Optional backup, later, off by default:** if no feed has been logged N minutes after the on-duty alert, the off-duty phone alerts too.
+  - You can't give a night away.
+  - A claim can be undone only until it has uploaded.
+- **The acknowledgement rule:** some changes could make a phone alert later or not at all, or could make the other phone alert earlier than it knows to. Examples are undoing a claim, changing the rota start date, shortening the window, or turning alerts back on.
+  - Such a change is **pending** until the other phone confirms it has seen it ("seen by Parent B ✓").
+  - Until then, the phone that made the change alerts **as if it were on duty**, using the **stricter** of the old and new settings.
+  - This stops a delayed sync from leaving nobody on duty.
+- **Morning:** the off-duty parent's phone keeps last night's rules until that parent opens the app or their own "lie in until" time passes. A phone that hasn't caught up can't ring someone who is still asleep.
+- **Optional backup (later, off by default):** if no feed has been logged N minutes after the on-duty alert, the off-duty phone alerts as well.
 
-### Why stale data fails safe
-Each phone schedules its own alerts from the newest feed it knows about, through a single pure function:
+### How each phone decides its alerts
+Each phone schedules its own alerts from the newest data it holds, using one pure function:
 
-`reconcile(events, settings, rota, me, now, calendar) -> [DesiredAlert]`
+`reconcile(events, settings, rota, pendingChanges, me, now, calendar) -> [DesiredAlert]`
 
-**The usual case is safe.** If a feed logged on one phone hasn't reached the other yet, the other phone works from an older feed. Its alert therefore fires **early, never late**. Opening the app from that alert triggers a sync and shows "Fed at 01:50 by Parent A; alert moved to 05:50".
+- It reads **only the unencrypted top-level fields** (`startedAt`, `kind`, `deletedAt`, `babyID`), never the encrypted payload. A feed therefore still counts if the payload can't be read or comes from a newer app version.
+- To guard against a phone clock running fast, a feed's start time is capped at the server's creation time for its record, plus one minute.
+- **When it runs:** at launch, on return to the foreground, after any local change, after an explicit fetch triggered by a push, during background refresh, when the clock or time zone changes, and when the rota, settings or iOS version change.
+- **When it doesn't run:** an alarm going off doesn't trigger it. On iOS 27 the app may only hear about a fired alarm the next time it runs.
+- **Applying the output:** notifications use fixed identifiers, so applying the output is repeatable. AlarmKit has no update call, so the new alarm is scheduled before the old one is cancelled, using different IDs. Only one reconcile runs at a time. If alarm permission is denied or the alarm limit is reached, notifications are used instead.
 
-**The exception** is deleting the latest feed or moving its start time earlier. Both move the correct alert time earlier, so a phone that hasn't heard about the change alerts late. Mitigations:
-1. New feeds are only uploaded once the 10-second undo window has passed, so an undone mistaken tap never leaves the phone.
-2. Edits and deletes are rare, and they're usually made by someone who is awake.
-3. Sync status is shown on screen.
-
-**When reconcile runs:** on launch, on returning to the foreground, after any local change, when a remote change arrives, during background refresh, when the time or time zone changes, when the duty rota or settings change, and when an alert fires.
-
-**During setup**, the app explains that force-quitting it delays sync, because Apple doesn't deliver silent pushes to an app the user has force-quit.
-
-**Measuring it:** the app keeps local counts of "stale alerts", meaning an alert fired although a newer feed had already been logged elsewhere, and of how long remote changes took to arrive. If these turn out to be a problem, a small push server is the fallback in a later phase.
+### Known limits (accepted and documented)
+- A phone that hasn't received a newer feed will alert **early**. Opening the app syncs it and shows "Fed at 01:50 by Parent A; alert moved".
+- A claim made after the other parent has fallen asleep may arrive late. In that case both phones ring.
+- AlarmKit sometimes fires a stray alarm at midnight. The app can't prevent this.
+- Whether the iPhone still rings when the Watch is being worn needs testing. In iOS 26.4 the Clock app gained an "Always Play on iPhone" option for this case.
 
 ## Architecture
 
 | Part | Builds on | Contents |
 |---|---|---|
-| `FeedingCore` (Swift package) | Linux + Apple | Uses only Foundation. Contains: domain types, `reconcile`, feed-window maths, next-side suggestion, 24h summaries, duplicate detection, merge rules, rota calculation, and versioned payload encoding. Tested with Swift Testing, including time-zone and daylight-saving cases. |
-| iOS app (iOS 27+) | Xcode | SwiftUI views. SwiftData local store behind a `Store` protocol. `SyncEngine` (CKSyncEngine). `AlertScheduler` adapters for AlarmKit and UNUserNotificationCenter. App Intents. |
-| Widget extension | Xcode | AlarmKit countdown presentation. Later: Lock Screen and Home Screen widgets and a Control Center control. |
-| watchOS app (phase 2) | Xcode | Start or finish a feed and choose a side from the wrist. A complication showing time since the last feed. |
+| `FeedingCore` Swift package | Linux and Apple | Foundation only. Domain types, `reconcile`, feed-window maths, next-side suggestion, 24-hour summaries, duplicate detection, field-level merge, the rota and night calculation, the pending-change and acknowledgement rule, and versioned payload encoding. Tested with Swift Testing. |
+| iOS app (iOS 27.1 SDK+, iOS 27 minimum) | Xcode 27.2 | SwiftUI views. SwiftData as the local store, behind a `Store` protocol. `SyncEngine` built on CKSyncEngine. `AlertScheduler` adapters for AlarmKit and UNUserNotificationCenter. App Intents. A scene delegate that accepts shares. |
+| Widget extension (phase 2) | Xcode | Lock Screen and Home Screen widgets and a Control Center control, plus AlarmKit countdown screens if they're wanted. Fixed-time alarms that only alert don't need it. |
+| watchOS app (phase 2) | Xcode | Start and finish feeds and choose a side from the wrist, plus a complication. Data comes from the phone over **WatchConnectivity**; the watch doesn't run its own CloudKit sync. Needs watchOS 27, which supports Series 9–12, SE 3 and Ultra 2–4. |
 
-- **Project generation:** the Xcode project is generated from `project.yml` with XcodeGen, so the agent never edits the `.pbxproj` file by hand.
-- **Two app variants, installable side by side:**
-  - **Feeding**, from TestFlight, uses CloudKit **Production** and holds the real data.
-  - **Feeding Dev** has a different bundle ID and icon and uses CloudKit **Development**, so testing never touches the real data.
+- **Project file:** the Xcode project is generated from `project.yml` with XcodeGen 2.46 or later. Xcode 27.2's new text-based `.xcproj` format is an option to look at later.
+- **Two variants, installable side by side:**
+  - **Feeding** is installed via TestFlight, uses CloudKit **Production**, the `iCloud.<id>` container and the `group.<id>` App Group, and holds the real data.
+  - **Feeding Dev** has its own bundle ID, icon, **CloudKit container and App Group**, and uses CloudKit Development. Separate containers stop share links opening the wrong app. Separate App Groups stop Dev from touching the real local data.
 
 ## Data and sync
 
-- **Sharing model:**
+- **Sharing:**
   - Parent A creates a **Household** zone in their private iCloud database.
-  - Parent A shares the **whole zone** with one zone-wide CKShare, sending the invitation through Messages.
-  - Parent B accepts it, and their phone syncs from its shared database.
-  - CKSyncEngine runs on the private database for Parent A and on the shared database for Parent B.
-- **Record types.** Once deployed to production they are permanent, so there are only a few of them, and fields that may change live inside an encrypted, versioned JSON payload.
+  - Parent A shares the **whole zone** with a single CKShare (needs iOS 15 or later) and sends the invite through Messages.
+  - Parent B accepts the invite. Their phone syncs from its shared database and writes using the **shared-database zone ID, which includes the owner's name**.
+  - Each phone runs a CKSyncEngine: Parent A's on the private database, Parent B's on the shared database.
+  - Accepting needs `CKSharingSupported = YES` and a scene delegate that handles both `windowScene(_:userDidAcceptCloudKitShareWith:)` and a cold launch (`connectionOptions.cloudKitShareMetadata`).
+  - There's also an in-app "paste invite link" fallback.
+- **Schema:**
+  - It is kept as a text file, `schema.ckdb`, committed to the repo and loaded into Development with `xcrun cktool import-schema`.
+  - Deploying it to Production is done by hand in the CloudKit Console, **only when it's final** (see Phase 0).
+  - Once in Production, record types and fields can never be deleted or renamed, and encryption can't be added to an existing field. So `payload` is declared `ENCRYPTED BYTES` from the very first import.
+  - After each deploy, export both environments and compare them.
+- **Record types:**
   - `Baby`: payload (name and birth date), archivedAt.
   - `Member`: payload (display name and colour).
   - `Event`: babyID, kind, startedAt, endedAt, timeZoneID, loggedBy, createdAt, modifiedAt, deletedAt, schemaVersion, and payload (details and note).
-  - `Setting`: key, modifiedAt, payload. Record names are fixed (`feedWindow`, `rota`, `duty-2026-11-13`, …) so that changes to different settings never clash.
+  - `Setting`: key, modifiedAt, payload. Record names are fixed (`feedWindow`, `rota`, `night-2026-11-13`, `ack-<memberID>`, …) so that different keys can't clash.
 - **Conflicts:**
-  - The most recent change wins, field by field, using `modifiedAt`.
-  - Deletes are soft.
+  - Each phone records **which fields it changed locally**. When the server reports `serverRecordChanged`, only those fields are applied on top of the server's copy, with a version for each field inside the payload. The rest of the server's copy is kept, so a correction made on the other phone isn't overwritten.
+  - Deletes are soft: the record is hidden, not removed.
   - Duplicate feeds are those for the same baby, starting within 5 minutes of each other, logged by different parents. They're shown merged, with an undo.
-- **Compatibility:** older app versions skip any event kind or payload version they don't recognise.
+- **Upload timing:**
+  - A feed is saved locally at once and uploaded once its 10-second undo window ends.
+  - If the app goes into the background, the undo window ends immediately and the upload is sent straight away inside a background task.
+  - When a push arrives, the app fetches the changes explicitly and runs `reconcile` within the roughly 30 seconds it's allowed.
+- **Failure guards:**
+  - **Parent A's iCloud is full.** Every upload fails. Both phones show a specific red warning, and storage is checked during setup.
+  - **Data suddenly empty or unknown.** For example, after signing out of iCloud or the share being revoked. The app keeps the last scheduled alerts and shows "sync broken".
+  - **Zones are never deleted automatically.**
+- **Compatibility:** older app versions skip event kinds and payload versions they don't recognise. `reconcile` still works because it uses only top-level fields.
 - **Privacy:**
-  - Every payload is stored in `encryptedValues`.
+  - Payloads go in `encryptedValues`. Top-level timestamps and kinds aren't encrypted, so that `reconcile` works. This is a deliberate trade-off: CloudKit still encrypts them at rest.
   - File protection is `completeUntilFirstUserAuthentication`.
   - No third-party SDKs.
   - "Delete all data" removes the zone and the share.
   - A setting keeps the baby's name off Lock Screen notifications.
 
-## Getting it onto both phones during development
+## Getting it onto both phones
 
-- Create the App Store Connect app record and use **TestFlight internal testing**.
-- Add Parent B as an App Store Connect user with a limited role, and as an internal tester. Internal builds don't need Apple's beta review. Each build expires after 90 days.
-- TestFlight builds always use **CloudKit Production**, so the schema must be deployed to Production before the first build that syncs. After that, changes can only add to it.
-- Upload builds from the Mac (Xcode → Archive → Distribute → TestFlight). CI can automate this later if it gets tedious.
+- **Spikes and development:** use **Feeding Dev**, installed straight from Xcode. Parent B's iPhone is registered as a development device.
+- **Real use:** **Feeding**, through **TestFlight internal testing**.
+  - Parent B is an App Store Connect user with the **Marketing** role, limited to this app, and is in the "Household" internal group.
+  - Builds expire after 90 days.
+  - TestFlight always uses CloudKit Production, so the schema must be deployed before the first TestFlight build.
+- Upload from the Mac with Archive → Distribute → TestFlight Internal Only. This can be automated later.
+- The full setup steps are in [04-apple-setup-checklist.md](04-apple-setup-checklist.md).
 
 ## Workflow
 
 | Who | Does |
 |---|---|
-| Agent (cloud container) | Writes the code. Runs `swift test` for `FeedingCore` on Linux. Keeps `project.yml` up to date. Pushes to the development branch. |
-| GitHub Actions (free for a public repo) | Runs the Linux core tests and a macOS build of every target. |
-| You, on the Mac | `git pull`, `xcodegen generate`, run on your devices, archive and upload to TestFlight, and go through the device checklist. |
+| Claude Code on the Mac (from now on) | Writes the code, runs `swift test`, builds with `xcodebuild` (simulators, including the Duo), keeps `project.yml` and `schema.ckdb` up to date. |
+| GitHub Actions (free for a public repo) | Runs the core tests on Linux, and builds every target on the `xcode-27` macOS runner. |
+| You | Install on the physical devices and archive and upload to TestFlight. Work through the device checklist. App extensions can't run in the Duo simulator, so widgets and AlarmKit must be tested on the real Duo. |
 
 **Device checklist:**
 - Silent switch on.
 - Sleep Focus on.
-- Phone locked for over an hour.
-- Watch on the wrist.
+- Locked overnight.
+- Watch on the wrist, with the phone left across the room.
 - App force-quit.
 - Low Power Mode on.
-- Airplane mode, then reconnect.
+- Airplane mode on, then reconnect.
 - Both phones, in both directions.
-- Duo folded and unfolded mid-feed.
-- Changing the time zone.
+- Fold and unfold the Duo during a feed.
+- Change the time zone.
+- iCloud nearly full.
+- Update iOS with alarms already scheduled.
 
 ## Phases
 
 ### Phase 0: foundations and spikes
-- **You:** set up the Apple side (the exact checklist will follow).
-- **Agent:**
-  - The repo skeleton.
-  - `FeedingCore` with its tests.
-  - `project.yml`.
-  - CI.
-  - A small spike app.
-- **Spikes on the real phones:**
-  1. **AlarmKit:** an alarm 2 minutes ahead. Does it sound with the silent switch on, in Sleep Focus, on a locked phone, and on the Watch?
-  2. **CloudKit share:** Parent A creates the zone and invites Parent B. Does a test record appear on Parent B's phone within seconds? What happens when the app has been force-quit?
-- **Done when:** a TestFlight build on both phones passes both spikes.
+- **You:** do the Apple setup in [04-apple-setup-checklist.md](04-apple-setup-checklist.md).
+- **Claude Code:** creates the repo skeleton, `FeedingCore` with tests, `project.yml`, `schema.ckdb` and CI.
+- **Spikes,** all on **Feeding Dev**:
+  1. **AlarmKit overnight test:** at least 7 nights on a locked phone. Log when each alarm and backup notification was due and when it actually went off. Check whether the phone rings when the Watch is being worn. This can run while Phase 1 is being built.
+  2. **CloudKit sharing:** create the zone and send the invite. Check that a record reaches Parent B's phone within seconds, including when the app has been force-quit. **Also check whether a background push lets the app schedule or cancel AlarmKit alarms.**
+  3. **Duo:** fold and unfold during a fake feed.
+- **Done when:** all the spikes have passed, the schema is final, and it has been deployed to Production.
 
 ### Phase 1: two-phone MVP
-Everything in the sections above: the feed window, recording, screens, two-phone alerts, data and sync. **Done when:** a week of real use with no missed alerts.
+Everything above. **Done when:** a week of real use on TestFlight with no missed alerts, and the stale-alert counter is acceptable.
 
 ### Phase 2: glanceable and wrist
 - A "Log feed" App Intent, used by a Control Center control, the Action Button and Siri.
-- A Lock Screen widget showing time since the last feed and the next side.
+- A Lock Screen widget.
 - The watch app.
-- Polishing the unfolded Duo layout.
+- A polished Duo unfolded layout.
 - CSV and JSON export.
 
 ### Phase 3: growing with her
-- Pumping statistics and a stock of expressed milk.
+- Pumping statistics and a record of the expressed-milk stash.
 - Nappies, sleep, weight, and medicine or vitamin reminders.
 - Solids from about 6 months.
 - Summaries for the health visitor.
