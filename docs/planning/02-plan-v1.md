@@ -62,7 +62,7 @@ Every event has a required start time and an optional end time.
    - During a feed it changes to large **Left / Right / Bottle** buttons and **Finish**.
    - After Finish come quick ml buttons for any bottle, which can be skipped.
    - An Undo banner stays up for 10 seconds.
-   - On the Duo's outer screen, toolbars move to the side, so this must be an ordinary button, not a toolbar.
+   - It is an ordinary button in the screen's content, not a toolbar item, and it is pinned to the bottom so it stays visible without scrolling. On the Duo folded, the system puts a side bar about 84 pt wide down the right edge, which leaves 382 pt for content. Held sideways, the outer screen is short, so the rest of the home screen scrolls behind the pinned button.
 
 Also on the home screen:
 - **"Just finished, started about 10 / 20 / 30 / 45 min ago"**.
@@ -72,11 +72,22 @@ Also on the home screen:
 
 **History:** a timeline grouped by day. Entries can be edited, and deleting one hides it rather than removing it. Every change goes through `reconcile()`.
 
-**The Duo unfolded:** two columns, with the home screen on the left and the day's timeline on the right. Use size classes and `NavigationSplitView`, which work on any screen size; there is no separate API for folded versus unfolded. A feed in progress is kept in the data store, not only on screen, so folding or unfolding can't lose it. Build with the iOS 27.1 SDK or later.
+**Toolbar buttons** (Settings, History and the like) use the system toolbar, `.toolbar` inside a `NavigationStack`. Each has a title and a symbol. The system then moves them into the Duo's side bar by itself. No hand-built bars: the system doesn't move those.
+
+**The Duo unfolded:** two columns, with the home screen on the left and the day's timeline on the right.
+- Use `ArrangementView` with `.split.axes(.horizontal)`, inside the `NavigationStack` (iOS 27.1). This is Apple's container for two views where neither may be hidden. It shows both side by side on the inner screen, and only the home screen on the outer screen. When the phone is partly folded like a book, each column gets its own half.
+- Not `NavigationSplitView`. It is built for a list and its detail, and on a tall, wide screen it can hide the first column behind a button. Apple also says not to put an `ArrangementView` inside one.
+- Lay out from size classes, not from the hinge. iOS 27.1 does report the hinge (`onHingeChange`) and the fold (`reservedRegions(kind: .division)`), but Apple says to use those for effects only.
+- When the phone stands partly folded like a laptop, the fold runs across the middle of the screen. Keep the big buttons (Start feed, Left, Right, Bottle, Finish) at the bottom, away from the fold. Scrolling lists don't need to avoid it.
+- Split View can make the app phone-narrow (about 385 pt) on the inner screen, with the side bar on either edge. The layout must still work there.
+- A feed in progress is kept in the data store, not only on screen, so folding or unfolding can't lose it.
+- Build with the iOS 27.1 SDK or later, with iOS 27.1 as the minimum, because `ArrangementView` and the side-bar controls need 27.1.
+- The full Duo notes (Apple's facts, our advice and simulator measurements) are in the shared file `~/.claude/reference/iphone-duo.md` on the Mac.
 
 **Night UI:**
 - Always dark, on true black, with dim warm accents.
 - No white flashes from the launch screen, sheets or keyboard.
+- The black background runs edge to edge (`ignoresSafeArea`), under the Duo's side bar too, so no lighter strip shows. Buttons stay inside the safe area.
 - Large tap targets, haptic feedback, and no typing.
 
 **Disclaimer** on first launch and in Settings: "Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP. In an emergency, call your local emergency number."
@@ -139,7 +150,7 @@ Each phone schedules its own alerts from the newest data it holds, using one pur
 | Part | Builds on | Contents |
 |---|---|---|
 | `FeedingCore` Swift package | Linux and Apple | Foundation only. Domain types, `reconcile`, feed-window maths, next-side suggestion, 24-hour summaries, duplicate detection, field-level merge, the rota and night calculation, the pending-change and acknowledgement rule, and versioned payload encoding. Tested with Swift Testing. |
-| iOS app (iOS 27.1 SDK+, iOS 27 minimum) | Xcode 27.2 | SwiftUI views. SwiftData as the local store, behind a `Store` protocol. `SyncEngine` built on CKSyncEngine. `AlertScheduler` adapters for AlarmKit and UNUserNotificationCenter. App Intents. A scene delegate that accepts shares. |
+| iOS app (iOS 27.1 SDK+, iOS 27.1 minimum) | Xcode 27.2 | SwiftUI views. SwiftData as the local store, behind a `Store` protocol. `SyncEngine` built on CKSyncEngine. `AlertScheduler` adapters for AlarmKit and UNUserNotificationCenter. App Intents. A scene delegate that accepts shares. |
 | Widget extension (phase 2) | Xcode | Lock Screen and Home Screen widgets and a Control Center control, plus AlarmKit countdown screens if they're wanted. Fixed-time alarms that only alert don't need it. |
 | watchOS app (phase 2) | Xcode | Start and finish feeds and choose a side from the wrist, plus a complication. Data comes from the phone over **WatchConnectivity**; the watch doesn't run its own CloudKit sync. Needs watchOS 27, which supports Series 9–12, SE 3 and Ultra 2–4. |
 
@@ -201,9 +212,9 @@ Each phone schedules its own alerts from the newest data it holds, using one pur
 
 | Who | Does |
 |---|---|
-| Claude Code on the Mac (from now on) | Writes the code, runs `swift test`, builds with `xcodebuild` (simulators, including the Duo), keeps `project.yml` and `schema.ckdb` up to date. |
+| Claude Code on the Mac (from now on) | Writes the code, runs `swift test`, builds with `xcodebuild` (simulators, including the Duo), keeps `project.yml` and `schema.ckdb` up to date. The Duo simulator needs its own runtime (see the checklist). Command-line tools can't fold it: that needs the pose buttons in Xcode's Device Hub. |
 | GitHub Actions (free for a public repo) | Runs the core tests on Linux, and builds every target on the `xcode-27` macOS runner. |
-| You | Install on the physical devices and archive and upload to TestFlight. Work through the device checklist. App extensions can't run in the Duo simulator, so widgets and AlarmKit must be tested on the real Duo. |
+| You | Install on the physical devices and archive and upload to TestFlight. Work through the device checklist. Most app extensions can't run in the Duo simulator, so widgets are tested in an ordinary iPhone simulator or on a phone, and their Duo look on the real Duo. AlarmKit is tested on the real phones (spike 1). |
 
 **Device checklist:**
 - Silent switch on.
@@ -214,7 +225,7 @@ Each phone schedules its own alerts from the newest data it holds, using one pur
 - Low Power Mode on.
 - Airplane mode on, then reconnect.
 - Both phones, in both directions.
-- Fold and unfold the Duo during a feed.
+- Fold and unfold the Duo during a feed. Also partly fold it, like a book and like a laptop, and use the app in Split View.
 - Change the time zone.
 - iCloud nearly full.
 - Update iOS with alarms already scheduled.
@@ -227,7 +238,7 @@ Each phone schedules its own alerts from the newest data it holds, using one pur
 - **Spikes,** all on **Feeding Dev**:
   1. **AlarmKit overnight test:** at least 7 nights on a locked phone. Log when each alarm and backup notification was due and when it actually went off. Check whether the phone rings when the Watch is being worn. This can run while Phase 1 is being built.
   2. **CloudKit sharing:** create the zone and send the invite. Check that a record reaches Parent B's phone within seconds, including when the app has been force-quit. **Also check whether a background push lets the app schedule or cancel AlarmKit alarms.**
-  3. **Duo:** fold and unfold during a fake feed.
+  3. **Duo:** fold and unfold during a fake feed, first in the Duo simulator (the Closed, Partially Open and Open buttons in Device Hub), then on the real Duo. In each pose, log the window size, the safe-area insets and the fold region, and add them to the shared Duo notes marked MEASURED. Only the folded pose has been measured so far.
 - **Done when:** all the spikes have passed, the schema is final, and it has been deployed to Production.
 
 ### Phase 1: two-phone MVP

@@ -7,6 +7,7 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 2. `docs/planning/04-apple-setup-checklist.md`: Apple portal, App Store Connect and CloudKit setup.
 3. `docs/planning/03-review-round-2.md` and `01-review-gauntlet.md` explain *why* the plan looks the way it does. Read them before changing anything in the alert or sync design.
 4. `CLAUDE.local.md` (gitignored, if present): personal context for this household.
+5. `~/.claude/reference/iphone-duo.md` (on the Mac, shared by every project): Apple's iPhone Duo facts, our advice, and simulator measurements. Read it before any layout work, and add new Duo measurements to it.
 
 ## Hard rules
 - **The repo is public. Never commit personal data.** That means names, birth dates, feed logs, screenshots with real data, device UDIDs or Apple IDs. Personal context goes in `CLAUDE.local.md`, which is gitignored. Docs refer to "Parent A", "Parent B" and "the baby".
@@ -26,17 +27,17 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 
 ## Toolchain
 - Xcode 27.2 with Swift 6.4, on macOS Tahoe 26.6 or later.
-- Deployment target iOS 27, built with the iOS 27.1+ SDK so the iPhone Duo is fully supported.
+- Deployment target iOS 27.1, built with the iOS 27.1+ SDK so the iPhone Duo is fully supported (`ArrangementView` and the side-bar controls need 27.1).
 - CI runs on GitHub Actions: Linux `swift test` for `FeedingCore`, and the `xcode-27` macOS runner builds every target.
 - Git branch: `claude/focused-hamilton-47r7qx`.
 
 ## Testing
 - Unit tests use Swift Testing, in `FeedingCore`. They must cover these time edge cases: clock changes in both directions, 30-minute time zone offsets, travel, the clock being set back, midnight, and the 21:00 night boundary.
-- Simulators include the iPhone Duo. App extensions and AlarmKit can't be checked properly in the Duo simulator, so those need the user's real devices. The device checklist is in the plan.
+- Simulators include the iPhone Duo, which needs its own simulator runtime (`xcodebuild -downloadPlatform iOS -buildVersion 24B91016s`). `simctl` can't fold it; folding needs the pose buttons in Device Hub. Most app extensions can't run in the Duo simulator, so test widgets in an ordinary iPhone simulator. AlarmKit needs the user's real devices. The device checklist is in the plan.
 
 ## Open decisions (ask the user)
 - At night, should the on-duty alert always be the loud alarm? This is recommended, and the user's confirmation is pending.
 - Should pump (expressing) logging be in Phase 1?
 - The bundle ID prefix (the checklist uses `com.example.feeding` as a placeholder).
 - Which household time zone to use, and the country, which decides which "get help" links to show.
-- Which Apple Watch models the household has. watchOS 27 needs Series 9 or later, SE 3, or Ultra 2 or later.
+- ~~Which Apple Watch models the household has.~~ Answered 14 Nov 2026: both watches run watchOS 27. The models are in `CLAUDE.local.md`.

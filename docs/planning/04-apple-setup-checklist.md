@@ -6,7 +6,8 @@ Steps are in order. Steps marked **(Phase 2)** can wait.
 
 ## 1. Mac
 - [ ] An Apple silicon Mac running **macOS Tahoe 26.6 or later**.
-- [ ] **Xcode 27.2**, with the iOS 27.2 and watchOS 27.2 platforms and the **iPhone Duo** simulator.
+- [ ] **Xcode 27.2**, with the iOS 27.2 and watchOS 27.2 platforms.
+- [ ] The **iPhone Duo simulator**. It has its own runtime (7.8 GB), separate from the ordinary iOS 27.2 one, which refuses to create a Duo. Keep both. Install it with `xcodebuild -downloadPlatform iOS -buildVersion 24B91016s`, then add the device in Device Hub (+ → iPhone → iPhone Duo). This command installs the runtime even with `-exportPath`, so don't import an exported copy afterwards.
 - [ ] `brew install xcodegen` (version 2.46 or later).
 - [ ] Sign in to Xcode with your Apple Account (Settings → Accounts).
 - [ ] Turn on Developer Mode on your own iPhones: Settings → Privacy & Security → Developer Mode.
@@ -64,6 +65,7 @@ The project's `project.yml` will set these Info.plist keys and capabilities, so 
   3. Each build expires after 90 days.
 
 ## 5. Parent B's iPhone
+- [ ] Update to **iOS 27.1 or later**. That is the app's minimum.
 - [ ] Accept the App Store Connect invite email.
 - [ ] Install **TestFlight**, open the invite on the iPhone, and install the app.
 - [ ] Allow **Notifications**, **Time Sensitive** notifications (for the app, and for Sleep Focus) and **Alarms**.

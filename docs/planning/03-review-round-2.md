@@ -59,6 +59,7 @@ The corrections below are now in the plan. The exact steps are in [04-apple-setu
    - On the outer screen, toolbars move to the side.
    - Build with the iOS 27.1 SDK or later.
    - Most extensions can't run in the Duo simulator ([guide](https://developer.apple.com/documentation/technologyoverviews/preparing-your-app-for-iphone-duo), [Xcode 27.1 release notes](https://developer.apple.com/documentation/xcode-release-notes/xcode-27_1-release-notes)).
+   - *Corrected 14 November 2026, against the shared Duo notes on the Mac:* iOS 27.1 **does** report the hinge and the fold (`onHingeChange`, `reservedRegions`), but Apple says to lay out from size classes and use those only for effects. For two columns that must both stay visible, Apple's container is `ArrangementView`, not `NavigationSplitView`. The plan now says so.
 9. **Watch:**
    - watchOS 27 runs on Series 9–12, SE 3 and Ultra 2–4 ([9to5Mac](https://9to5mac.com/2026/06/19/watchos-27-drops-support-for-five-apple-watch-models-heres-why/)).
    - Use WatchConnectivity rather than CloudKit sync on the watch ([737126](https://developer.apple.com/forums/thread/737126)).
