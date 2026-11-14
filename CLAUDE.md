@@ -35,9 +35,12 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 - Unit tests use Swift Testing, in `FeedingCore`. They must cover these time edge cases: clock changes in both directions, 30-minute time zone offsets, travel, the clock being set back, midnight, and the 21:00 night boundary.
 - Simulators include the iPhone Duo, which needs its own simulator runtime (`xcodebuild -downloadPlatform iOS -buildVersion 24B91016s`). `simctl` can't fold it; folding needs the pose buttons in Device Hub. Most app extensions can't run in the Duo simulator, so test widgets in an ordinary iPhone simulator. AlarmKit needs the user's real devices. The device checklist is in the plan.
 
+## Decisions made (14 Nov 2026)
+- **Night alerts:** each parent chooses a loud alarm or a gentle nudge, by day and by night. If no feed is logged 30 minutes after the window closes, a **loud backup alarm rings on both phones**, day or night. It is on by default and in Phase 1. Details are in the plan, under "Belt and braces".
+- **Pump logging is in Phase 1.**
+- **Bundle ID:** `com.tracker.feeding`; the Dev variant is `com.tracker.feeding.dev`. It isn't registered with Apple yet, so it may still turn out to be taken.
+- **United Kingdom:** the household time zone defaults to Europe/London. "Get help" means the midwife, health visitor or GP, NHS 111, and 999 in an emergency.
+- **Watches:** both run watchOS 27. The models are in `CLAUDE.local.md`.
+
 ## Open decisions (ask the user)
-- At night, should the on-duty alert always be the loud alarm? This is recommended, and the user's confirmation is pending.
-- Should pump (expressing) logging be in Phase 1?
-- The bundle ID prefix (the checklist uses `com.example.feeding` as a placeholder).
-- Which household time zone to use, and the country, which decides which "get help" links to show.
-- ~~Which Apple Watch models the household has.~~ Answered 14 Nov 2026: both watches run watchOS 27. The models are in `CLAUDE.local.md`.
+- None right now.

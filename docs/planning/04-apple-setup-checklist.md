@@ -1,6 +1,8 @@
 # Apple setup checklist
 
-Every identifier below uses the placeholder `com.example.feeding`. Before you start, choose your own reverse-DNS prefix, for example one based on a domain you own, and use it everywhere `com.example` appears. Keep the real IDs in `project.yml`. Bundle IDs aren't secret, so that's fine.
+Every identifier below uses the app's ID, `com.tracker.feeding` (the user's choice, 14 November 2026). The same IDs are in `project.yml`. Bundle IDs aren't secret, so that's fine.
+
+⚠️ Bundle IDs and iCloud container IDs must be unique across all of Apple, and an iCloud container can never be deleted. So register the App ID `com.tracker.feeding` **first**. If Apple says it's already taken, stop and choose another prefix before creating anything else.
 
 Steps are in order. Steps marked **(Phase 2)** can wait.
 
@@ -15,19 +17,19 @@ Steps are in order. Steps marked **(Phase 2)** can wait.
 ## 2. developer.apple.com: Certificates, Identifiers & Profiles
 - [ ] Accept any outstanding agreements.
 - [ ] **iCloud Containers:**
-  - `iCloud.com.example.feeding`
-  - `iCloud.com.example.feeding.dev`
+  - `iCloud.com.tracker.feeding`
+  - `iCloud.com.tracker.feeding.dev`
 - [ ] **App Groups:**
-  - `group.com.example.feeding`
-  - `group.com.example.feeding.dev`
+  - `group.com.tracker.feeding`
+  - `group.com.tracker.feeding.dev`
 - [ ] **App IDs:**
 
 | App ID | Capabilities |
 |---|---|
-| `com.example.feeding` | iCloud (CloudKit → `iCloud.com.example.feeding`), Push Notifications, App Groups (`group.com.example.feeding`), Time Sensitive Notifications |
-| `com.example.feeding.dev` | The same, but with `iCloud.com.example.feeding.dev` and `group.com.example.feeding.dev` |
-| `com.example.feeding.widgets` and `com.example.feeding.dev.widgets` **(Phase 2)** | App Groups (the matching group) |
-| `com.example.feeding.watchkitapp` and `com.example.feeding.dev.watchkitapp` **(Phase 2)** | App Groups. The watch app's ID must start with the iPhone app's ID. |
+| `com.tracker.feeding` | iCloud (CloudKit → `iCloud.com.tracker.feeding`), Push Notifications, App Groups (`group.com.tracker.feeding`), Time Sensitive Notifications |
+| `com.tracker.feeding.dev` | The same, but with `iCloud.com.tracker.feeding.dev` and `group.com.tracker.feeding.dev` |
+| `com.tracker.feeding.widgets` and `com.tracker.feeding.dev.widgets` **(Phase 2)** | App Groups (the matching group) |
+| `com.tracker.feeding.watchkitapp` and `com.tracker.feeding.dev.watchkitapp` **(Phase 2)** | App Groups. The watch app's ID must start with the iPhone app's ID. |
 
 - [ ] **Devices:** Xcode registers your own iPhones and Watch automatically. Register Parent B's iPhone too, so it can run **Feeding Dev** during the spikes. You'll need its UDID, which shows when the phone is connected to the Mac (Finder or Xcode → Devices).
 - [ ] **Not** an AlarmKit entitlement. There isn't one. AlarmKit needs only an Info.plist usage string, and adding a made-up entitlement breaks signing.
@@ -40,7 +42,7 @@ The project's `project.yml` will set these Info.plist keys and capabilities, so 
 
 ## 3. CloudKit Console (icloud.developer.apple.com)
 - [ ] `xcrun cktool save-token --type management`, run once on the Mac.
-- [ ] **Dev container:** `xcrun cktool import-schema --container-id iCloud.com.example.feeding.dev --environment development --file schema.ckdb`.
+- [ ] **Dev container:** `xcrun cktool import-schema --container-id iCloud.com.tracker.feeding.dev --environment development --file schema.ckdb`.
 - [ ] **Production container, only when the schema is final** (after the Phase 0 spikes):
   1. Import the same file into the production container's **Development** environment.
   2. In the CloudKit Console, open the container and choose **Deploy Schema Changes…**. Check the changes, then deploy.
@@ -52,7 +54,7 @@ The project's `project.yml` will set these Info.plist keys and capabilities, so 
 - [ ] **Apps → + → New App:**
   - Platform: iOS.
   - Name: something unique on the store. The name on the Home Screen can be different.
-  - Bundle ID: `com.example.feeding`.
+  - Bundle ID: `com.tracker.feeding`.
   - SKU: any value.
   - User Access: **Limited Access**.
   - Don't create a record for the Dev variant.

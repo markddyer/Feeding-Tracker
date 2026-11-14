@@ -12,7 +12,8 @@
 - **Feeding:** mixed. Breastfeeding is being established but sore nipples are making it hard, so Parent B is expressing milk. The baby gets expressed milk by bottle, with formula making up the shortfall. **The app must track which breast was used.**
 - **People and devices:** two parents, each with their own iPhone and Apple ID. The phones are an iPhone 18 Pro, an iPhone Duo (folding, with a 5.4" outer screen and a 7.6" inner screen) and Parent B's iPhone. Apple Watch integration is wanted.
 - **Nights:** the parents take turns, flexibly, so whoever is off gets unbroken sleep.
-- **Alerts:** each parent can choose a loud alarm or a gentle nudge in Settings. See the night rule below.
+- **Alerts:** each parent can choose a loud alarm or a gentle nudge in Settings, by day and by night. If no feed is logged 30 minutes after the alert, both phones ring with a loud alarm. See "Alerts on two phones" below.
+- **Where:** the United Kingdom. The household time zone defaults to Europe/London, and the "get help" links are the UK ones.
 - **Why build:** privacy, control, and adding features as the baby grows.
 - **Setup:** paid Apple Developer Program membership and a Mac. Both phones must be able to install the app while it's still being developed.
 
@@ -46,7 +47,7 @@ Every event has a required start time and an optional end time.
   - **Breast:** one or more segments, each Left or Right, with an optional duration. Switching sides adds a segment.
   - **Bottle:** one or more bottles, each *expressed milk* or *formula*, with the amount in ml.
   - **Note:** optional.
-- **Pump (expressing session):** the time, the side (left, right or both) and the ml from each side. *Phase 1 if the user confirms they want it.*
+- **Pump (expressing session):** the time, the side (left, right or both) and the ml from each side. *In Phase 1 (the user confirmed this on 14 November 2026).*
 - **Later kinds (phase 3):** nappy, sleep, growth, medicine and solids. The data model already allows for them.
 
 ## Screens
@@ -90,7 +91,7 @@ Also on the home screen:
 - The black background runs edge to edge (`ignoresSafeArea`), under the Duo's side bar too, so no lighter strip shows. Buttons stay inside the safe area.
 - Large tap targets, haptic feedback, and no typing.
 
-**Disclaimer** on first launch and in Settings: "Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP. In an emergency, call your local emergency number."
+**Disclaimer** on first launch and in Settings: "Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999."
 
 ## Alerts on two phones
 
@@ -101,19 +102,21 @@ Also on the home screen:
 ### Each parent's settings (stored on their own phone)
 - **Daytime alert when the window closes:** loud alarm or gentle nudge.
 - **Nudge when the window opens:** gentle nudge or off.
-- **Night alert when the window closes, while on duty:** **always the loud alarm** (recommended; awaiting the user's confirmation). A gentle nudge can be silenced by Sleep Focus or go only to the Watch, and at night only one phone alerts, so nothing else would catch it.
+- **Night alert when the window closes, while on duty:** loud alarm or gentle nudge. The user chose on 14 November 2026 to let each parent choose this, as long as the backup alarm below rings on both phones. A gentle nudge can be silenced by Sleep Focus or go only to the Watch, and the backup alarm is what catches that.
 
 ### Belt and braces for the main alert
-AlarmKit has open reports of alarms going off late or not at all on phones left locked overnight. These cover iOS 26 to 27 and reproduce with Apple's own sample. So the alert at the close of the window is scheduled three ways:
-1. An AlarmKit alarm at the exact time.
-2. A Time Sensitive notification at the same moment.
-3. A follow-up AlarmKit alarm 10 minutes later. Its time is chosen so it never lands in the same minute as another alarm. It is cancelled once a feed is logged.
+AlarmKit has open reports of alarms going off late or not at all on phones left locked overnight. These cover iOS 26 to 27 and reproduce with Apple's own sample. So the alert at the close of the window is scheduled in layers:
+1. **When the window closes:** the parent's chosen style. A loud alarm is an AlarmKit alarm plus a Time Sensitive notification at the same moment. A gentle nudge is the notification only.
+2. **10 minutes later:** a follow-up in the same style.
+3. **30 minutes after the window closes: the backup alarm.** A loud AlarmKit alarm on **both** phones, by day and by night, whatever each parent chose. The 30 minutes is a shared setting. Each phone schedules it from its own data, so it still rings when the phones have lost contact.
+
+No two alarms on one phone land in the same minute. Every layer is cancelled once a feed is logged, because a new feed restarts the window.
 
 The app reschedules everything when it launches and whenever the iOS version has changed. Parents are told during setup never to hide or Face ID–lock the app, because Apple says alarms from such apps silently fail.
 
 ### Who gets alerted
 - **Daytime is a shared setting**, defaulting to 07:00–21:00. During the day both phones alert, each in its owner's style.
-- **At night only the on-duty phone alerts.** The off-duty phone stays silent.
+- **At night only the on-duty phone alerts at first.** The off-duty phone stays silent until the backup alarm, 30 minutes after the window closes.
 - **Defining "a night":** a night is named by the local calendar date it **starts** on, in a stored **household time zone**. It runs from the night-start time that day to the day-start time the next morning. Whether an alert is a day or night alert depends on **when it fires**, not on what time it is when it's scheduled. Tests cover 21:00, midnight, the clocks changing, and a phone in another time zone.
 - **The rota alternates nightly from a shared start date**, stored as a plain date. Each phone works the rota out for itself, so both agree even when sync is down.
 - **Changes are claims, not hand-offs.**
@@ -126,7 +129,7 @@ The app reschedules everything when it launches and whenever the iOS version has
   - Until then, the phone that made the change alerts **as if it were on duty**, using the **stricter** of the old and new settings.
   - This stops a delayed sync from leaving nobody on duty.
 - **Morning:** the off-duty parent's phone keeps last night's rules until that parent opens the app or their own "lie in until" time passes. A phone that hasn't caught up can't ring someone who is still asleep.
-- **Optional backup (later, off by default):** if no feed has been logged N minutes after the on-duty alert, the off-duty phone alerts as well.
+- **The backup alarm is on by default and in Phase 1** (the user's choice, 14 November 2026). It replaces the earlier idea of an optional backup that was off by default. It follows the main alert: turning alerts off turns it off too.
 
 ### How each phone decides its alerts
 Each phone schedules its own alerts from the newest data it holds, using one pure function:
@@ -142,6 +145,7 @@ Each phone schedules its own alerts from the newest data it holds, using one pur
 ### Known limits (accepted and documented)
 - A phone that hasn't received a newer feed will alert **early**. Opening the app syncs it and shows "Fed at 01:50 by Parent A; alert moved".
 - A claim made after the other parent has fallen asleep may arrive late. In that case both phones ring.
+- The backup alarm can wake the off-duty parent when a feed was logged on the other phone but hasn't reached this phone within 30 minutes of the window closing. This is accepted, because it errs towards alerting. Uploading a feed as soon as the app goes to the background keeps it rare.
 - AlarmKit sometimes fires a stray alarm at midnight. The app can't prevent this.
 - Whether the iPhone still rings when the Watch is being worn needs testing. In iOS 26.4 the Clock app gained an "Always Play on iPhone" option for this case.
 
