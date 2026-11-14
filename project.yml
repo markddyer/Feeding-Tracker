@@ -94,3 +94,7 @@ targets:
     templateAttributes:
       bundleSuffix: .dev
       displayName: Feeding Dev
+    settings:
+      base:
+        # Turns on the Phase 0 test screens (App/Spikes), which never ship in Feeding.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FEEDING_DEV

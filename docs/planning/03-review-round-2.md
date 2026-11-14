@@ -26,7 +26,7 @@ Each scenario leads to one or more of these outcomes:
 Claims in revision 1 that were wrong or unverified:
 - **"Fails early, never late" was wrong.** S3, S5, a phone clock running fast, and S7 can all make an alert late or missing.
 - **"Reconcile runs when an alert fires" isn't reliable.** On iOS 27 the app may only learn about a fired alarm at the next unlock ([844479](https://developer.apple.com/forums/thread/844479)).
-- **It's unverified whether a background push can schedule AlarmKit alarms.** This is now part of spike 2.
+- **It's unverified whether a background push can schedule AlarmKit alarms.** This is now part of spike 2. *Answered 14 November 2026: yes. On a locked phone with the app in the background, a push and fetch set an alarm within 2 seconds and cancelled another (spike 2 notes in the plan).*
 - **It's unverified whether the iPhone still rings while the Watch is worn.** This is now part of spike 1.
 
 What held up:

@@ -28,6 +28,7 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 ## Commands
 - Core tests: `swift test --package-path FeedingCore`
 - App build: `xcodegen generate`, then `xcodebuild build -project Feeding.xcodeproj -scheme FeedingDev -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`
+- Real phone: build with `-destination 'id=<device id>' -allowProvisioningUpdates`, then `xcrun devicectl device install app` and `xcrun devicectl device process launch --terminate-existing com.tracker.feeding.dev`. The phone must be unlocked. A phone that is new to the developer account also needs `-allowProvisioningDeviceRegistration`, or the build fails with "isn't registered in your developer account".
 ## Toolchain
 - Xcode 27.2 with Swift 6.4, on macOS Tahoe 26.6 or later.
 - Deployment target iOS 27.1, built with the iOS 27.1+ SDK so the iPhone Duo is fully supported (`ArrangementView` and the side-bar controls need 27.1).
