@@ -28,8 +28,6 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 ## Commands
 - Core tests: `swift test --package-path FeedingCore`
 - App build: `xcodegen generate`, then `xcodebuild build -project Feeding.xcodeproj -scheme FeedingDev -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`
-- **On the MacBook Pro, Xcode's settings point its build folders at `/Volumes/Data`, which isn't attached** (as of 14 Nov 2026). Until that is fixed, add `-derivedDataPath "$PWD/DerivedData" -IDECustomDerivedDataLocation="$PWD/DerivedData" -IDECustomBuildIntermediatesPath="$PWD/DerivedData/Intermediates" -IDECustomBuildProductsPath="$PWD/DerivedData/Products"` to `xcodebuild`.
-
 ## Toolchain
 - Xcode 27.2 with Swift 6.4, on macOS Tahoe 26.6 or later.
 - Deployment target iOS 27.1, built with the iOS 27.1+ SDK so the iPhone Duo is fully supported (`ArrangementView` and the side-bar controls need 27.1).
