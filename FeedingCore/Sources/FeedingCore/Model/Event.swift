@@ -5,7 +5,7 @@ import Foundation
 /// The top-level fields are stored unencrypted so `reconcile` can read them. The details (sides,
 /// bottles, ml, the note) are in `payload`, which CloudKit encrypts. `reconcile` never decodes
 /// `payload`, so a feed still counts when its payload can't be read or comes from a newer app.
-public struct Event: Hashable, Sendable, Identifiable {
+public struct Event: Hashable, Sendable, Identifiable, Codable {
     public var id: String
     public var babyID: String
     public var kind: EventKind

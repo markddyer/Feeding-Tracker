@@ -154,7 +154,7 @@ Each phone schedules its own alerts from the newest data it holds, using one pur
 | Part | Builds on | Contents |
 |---|---|---|
 | `FeedingCore` Swift package | Linux and Apple | Foundation only. Domain types, `reconcile`, feed-window maths, next-side suggestion, 24-hour summaries, duplicate detection, field-level merge, the rota and night calculation, the pending-change and acknowledgement rule, and versioned payload encoding. Tested with Swift Testing. |
-| iOS app (iOS 27.1 SDK+, iOS 27.1 minimum) | Xcode 27.2 | SwiftUI views. SwiftData as the local store, behind a `Store` protocol. `SyncEngine` built on CKSyncEngine. `AlertScheduler` adapters for AlarmKit and UNUserNotificationCenter. App Intents. A scene delegate that accepts shares. |
+| iOS app (iOS 27.1 SDK+, iOS 27.1 minimum) | Xcode 27.2 | SwiftUI views. The local store is one JSON file in the App Group (`HouseholdData` in `FeedingCore`, so its rules are tested on Linux too); the user chose this over SwiftData on 14 November 2026, because a year of feeds is about 2 MB and a file is simpler to test and to share with widgets and the watch. `SyncEngine` built on CKSyncEngine. `AlertScheduler` adapters for AlarmKit and UNUserNotificationCenter. App Intents. A scene delegate that accepts shares. |
 | Widget extension (phase 2) | Xcode | Lock Screen and Home Screen widgets and a Control Center control, plus AlarmKit countdown screens if they're wanted. Fixed-time alarms that only alert don't need it. |
 | watchOS app (phase 2) | Xcode | Start and finish feeds and choose a side from the wrist, plus a complication. Data comes from the phone over **WatchConnectivity**; the watch doesn't run its own CloudKit sync. Needs watchOS 27, which supports Series 9–12, SE 3 and Ultra 2–4. |
 
