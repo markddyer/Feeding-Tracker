@@ -1,0 +1,93 @@
+# XcodeGen spec. Generate the project with `xcodegen generate`; never hand-edit Feeding.xcodeproj.
+#
+# Two variants, installable side by side:
+# - Feeding: TestFlight, CloudKit Production, the real data.
+# - FeedingDev: spikes and testing, with its own bundle ID, iCloud container and App Group.
+#
+# Your Apple team ID goes in Config/Local.xcconfig (not committed; copy Config/Local.xcconfig.example).
+
+name: Feeding
+
+options:
+  bundleIdPrefix: com.tracker
+  deploymentTarget:
+    iOS: "27.1"
+  developmentLanguage: en-GB
+  createIntermediateGroups: true
+
+configFiles:
+  Debug: Config/Base.xcconfig
+  Release: Config/Base.xcconfig
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+
+packages:
+  FeedingCore:
+    path: FeedingCore
+
+targetTemplates:
+  FeedingApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: App
+    dependencies:
+      - package: FeedingCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding${bundleSuffix}
+        PRODUCT_NAME: ${target_name}
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    info:
+      path: Generated/${target_name}/Info.plist
+      properties:
+        CFBundleDisplayName: ${displayName}
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIUserInterfaceStyle: Dark
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIBackgroundModes:
+          - remote-notification
+        CKSharingSupported: true
+        NSAlarmKitUsageDescription: Feeding rings an alarm when the feed window you set closes, even when the phone is on silent.
+        FeedingCloudKitContainer: iCloud.com.tracker.feeding${bundleSuffix}
+        FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}
+    # AlarmKit needs no entitlement. Never add one: a made-up entitlement breaks signing.
+    entitlements:
+      path: Generated/${target_name}/${target_name}.entitlements
+      properties:
+        aps-environment: development
+        com.apple.developer.icloud-container-identifiers:
+          - iCloud.com.tracker.feeding${bundleSuffix}
+        com.apple.developer.icloud-services:
+          - CloudKit
+        com.apple.security.application-groups:
+          - group.com.tracker.feeding${bundleSuffix}
+        com.apple.developer.usernotifications.time-sensitive: true
+    scheme: {}
+
+targets:
+  Feeding:
+    templates: [FeedingApp]
+    templateAttributes:
+      bundleSuffix: ""
+      displayName: Feeding
+  FeedingDev:
+    templates: [FeedingApp]
+    templateAttributes:
+      bundleSuffix: .dev
+      displayName: Feeding Dev

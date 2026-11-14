@@ -1,0 +1,4 @@
+// Build settings shared by every target and configuration.
+// Your Apple team ID goes in Local.xcconfig, which is not committed. It is optional, so CI and
+// simulator builds work without it.
+#include? "Local.xcconfig"

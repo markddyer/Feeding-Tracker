@@ -42,6 +42,7 @@ The project's `project.yml` will set these Info.plist keys and capabilities, so 
 
 ## 3. CloudKit Console (icloud.developer.apple.com)
 - [ ] `xcrun cktool save-token --type management`, run once on the Mac.
+- [ ] Check the draft schema first: `xcrun cktool validate-schema --team-id <your team ID> --container-id iCloud.com.tracker.feeding.dev --environment development --file schema.ckdb`.
 - [ ] **Dev container:** `xcrun cktool import-schema --container-id iCloud.com.tracker.feeding.dev --environment development --file schema.ckdb`.
 - [ ] **Production container, only when the schema is final** (after the Phase 0 spikes):
   1. Import the same file into the production container's **Development** environment.

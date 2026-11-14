@@ -1,6 +1,6 @@
 # Feeding Tracker
 
-A personal iOS app (plus a watchOS app later) for two parents to log their newborn's feeds, kept in sync between their two iPhones, with safety-net alerts. The project is still in planning: no app code exists yet. The next step is Phase 0.
+A personal iOS app (plus a watchOS app later) for two parents to log their newborn's feeds, kept in sync between their two iPhones, with safety-net alerts. The project is in Phase 0: the skeleton, `FeedingCore` (feed window, night rota and `reconcile`, with tests), `project.yml`, a draft `schema.ckdb` and CI exist. The spikes come next; they need the Apple setup done first.
 
 ## Read first
 1. `docs/planning/02-plan-v1.md`: **the current plan.** It is the source of truth for design decisions.
@@ -19,11 +19,16 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 - **No user-facing wording that sounds like medical advice.** Avoid "due", "missed", "overdue", "should", targets, and red or green verdicts. Keep the disclaimer.
 - Spikes and testing use the **Feeding Dev** variant, which has its own bundle ID, container and App Group. Never point development builds at the production container.
 
-## Layout (planned)
-- `FeedingCore/`: a Swift package that depends only on Foundation. It holds the domain model, `reconcile`, the rota and night logic, merging and summaries. It must build and pass `swift test` on Linux as well as macOS.
-- `project.yml`: the XcodeGen spec. Generate the project with `xcodegen generate` and never hand-edit the generated `.xcodeproj`.
-- `schema.ckdb`: the CloudKit schema as text, loaded with `xcrun cktool import-schema`.
+## Layout
+- `FeedingCore/`: a Swift package that depends only on Foundation. It holds the domain model, `reconcile`, the rota and night logic, and later merging and summaries. It must build and pass `swift test` on Linux as well as macOS. Still to come: payload encoding, next-side suggestion, summaries, duplicate detection and the field-level merge.
+- `project.yml`: the XcodeGen spec for the two variants, `Feeding` and `FeedingDev`. Generate the project with `xcodegen generate` and never hand-edit the generated `Feeding.xcodeproj`. Info.plists and entitlements are generated into `Generated/` (gitignored). The Apple team ID goes in `Config/Local.xcconfig` (gitignored; see the `.example`).
+- `schema.ckdb`: the CloudKit schema as text, loaded with `xcrun cktool import-schema`. **Draft: not yet validated by `cktool`.**
 - `App/`, `Widgets/` (Phase 2), `Watch/` (Phase 2).
+
+## Commands
+- Core tests: `swift test --package-path FeedingCore`
+- App build: `xcodegen generate`, then `xcodebuild build -project Feeding.xcodeproj -scheme FeedingDev -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`
+- **On the MacBook Pro, Xcode's settings point its build folders at `/Volumes/Data`, which isn't attached** (as of 14 Nov 2026). Until that is fixed, add `-derivedDataPath "$PWD/DerivedData" -IDECustomDerivedDataLocation="$PWD/DerivedData" -IDECustomBuildIntermediatesPath="$PWD/DerivedData/Intermediates" -IDECustomBuildProductsPath="$PWD/DerivedData/Products"` to `xcodebuild`.
 
 ## Toolchain
 - Xcode 27.2 with Swift 6.4, on macOS Tahoe 26.6 or later.
