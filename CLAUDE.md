@@ -1,6 +1,6 @@
 # Feeding Tracker
 
-A personal iOS app (plus a watchOS app later) for two parents to log their newborn's feeds, kept in sync between their two iPhones, with safety-net alerts. The project is in Phase 0: the skeleton, `FeedingCore` (feed window, night rota and `reconcile`, with tests), `project.yml`, a draft `schema.ckdb` and CI exist. The spikes come next; they need the Apple setup done first.
+A personal iOS app (plus a watchOS app later) for two parents to log their newborn's feeds, kept in sync between their two iPhones, with safety-net alerts. The project is in Phase 0: the skeleton, `FeedingCore` (feed window, night rota and `reconcile`, with tests), `project.yml`, `schema.ckdb` and CI exist. The Apple portal setup is done (both App IDs, containers and App Groups, 14 Nov 2026), the Dev schema is loaded, and Feeding Dev installs on a real device. The spikes come next.
 
 ## Read first
 1. `docs/planning/02-plan-v1.md`: **the current plan.** It is the source of truth for design decisions.
@@ -22,7 +22,7 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 ## Layout
 - `FeedingCore/`: a Swift package that depends only on Foundation. It holds the domain model, `reconcile`, the rota and night logic, and later merging and summaries. It must build and pass `swift test` on Linux as well as macOS. Still to come: payload encoding, next-side suggestion, summaries, duplicate detection and the field-level merge.
 - `project.yml`: the XcodeGen spec for the two variants, `Feeding` and `FeedingDev`. Generate the project with `xcodegen generate` and never hand-edit the generated `Feeding.xcodeproj`. Info.plists and entitlements are generated into `Generated/` (gitignored). The Apple team ID goes in `Config/Local.xcconfig` (gitignored; see the `.example`).
-- `schema.ckdb`: the CloudKit schema as text, loaded with `xcrun cktool import-schema`. **Draft: not yet validated by `cktool`.**
+- `schema.ckdb`: the CloudKit schema as text, loaded with `xcrun cktool import-schema`. Validated by `cktool` and imported into the **Dev** container's Development environment on 14 Nov 2026 (the export matched the file). Not in Production: that waits for the spikes and the user's go-ahead.
 - `App/`, `Widgets/` (Phase 2), `Watch/` (Phase 2).
 
 ## Commands
