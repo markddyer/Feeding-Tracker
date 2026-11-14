@@ -64,3 +64,22 @@ func summary(_ alerts: [DesiredAlert], in timeZone: TimeZone = london) -> [Strin
         return "\(alert.purpose.rawValue).\(alert.mechanism.rawValue)@\(reading.time)\(suffix)"
     }
 }
+
+/// An event with decoded details, for the details, merge and insight tests.
+func snapshot(_ start: Date, id: String = UUID().uuidString, babyID: String = baby, kind: EventKind = .feed,
+              by: MemberID = parentA, createdAt: Date? = nil, deletedAt: Date? = nil,
+              payload: EventPayload? = EventPayload()) -> EventSnapshot {
+    EventSnapshot(
+        event: Event(id: id, babyID: babyID, kind: kind, startedAt: start, timeZoneID: "Europe/London", loggedBy: by,
+                     createdAt: createdAt ?? start, modifiedAt: createdAt ?? start, deletedAt: deletedAt),
+        payload: payload)
+}
+
+/// A feed payload with one breast segment per side given, in order.
+func breast(_ sides: BreastSide...) -> EventPayload {
+    EventPayload(feed: FeedDetails(breast: sides.map { BreastSegment(side: $0) }))
+}
+
+func bottles(_ items: (MilkKind, Int?)...) -> EventPayload {
+    EventPayload(feed: FeedDetails(bottles: items.map { Bottle(milk: $0.0, ml: $0.1) }))
+}
