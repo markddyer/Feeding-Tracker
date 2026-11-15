@@ -13,20 +13,15 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if SetupView.isComplete(disclaimerSeen: disclaimerSeen, inviteOffered: inviteOffered,
-                                        permissionsAsked: permissionsAsked, feedingStyle: feedingStyle),
-                   let me = model.me, let baby = model.baby {
-                    // The unfolded iPhone Duo shows the timeline beside the home screen; anywhere
-                    // narrower shows the home screen alone (plan v1, "The Duo unfolded").
-                    ArrangementView {
-                        HomeView(me: me, babyID: baby.name)
-                    } secondary: {
-                        DayTimelineView(me: me, babyID: baby.name)
-                    }
-                    .arrangementViewStyle(.split.axes(.horizontal))
+                #if FEEDING_DEV
+                if UserDefaults.standard.bool(forKey: "designGallery") {
+                    DesignGalleryView()
                 } else {
-                    SetupView()
+                    screens
                 }
+                #else
+                screens
+                #endif
             }
             .toolbar {
                 if model.baby != nil {
@@ -63,6 +58,24 @@ struct ContentView: View {
         .modifier(AlarmSpikeHooks())
         #endif
     }
+
+    @ViewBuilder
+    private var screens: some View {
+        if SetupView.isComplete(disclaimerSeen: disclaimerSeen, inviteOffered: inviteOffered,
+                                permissionsAsked: permissionsAsked, feedingStyle: feedingStyle),
+           let me = model.me, let baby = model.baby {
+            // The unfolded iPhone Duo shows the timeline beside the home screen; anywhere
+            // narrower shows the home screen alone (plan v1, "The Duo unfolded").
+            ArrangementView {
+                HomeView(me: me, babyID: baby.name)
+            } secondary: {
+                DayTimelineView(me: me, babyID: baby.name)
+            }
+            .arrangementViewStyle(.split.axes(.horizontal))
+        } else {
+            SetupView()
+        }
+    }
 }
 
 #if FEEDING_DEV
@@ -89,6 +102,7 @@ struct SpikeMenu: View {
                 NavigationLink("Household sync test (two phones)") { HouseholdDebugView() }
                 NavigationLink("Alarm test (overnight)") { AlarmSpikeView() }
                 NavigationLink("Duo fold test") { FoldSpikeView() }
+                NavigationLink("Design pieces (both looks)") { DesignGalleryView() }
             } header: {
                 Text("Tests")
             } footer: {

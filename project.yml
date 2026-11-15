@@ -51,11 +51,15 @@ targetTemplates:
         CFBundleDisplayName: ${displayName}
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # The launch screen stays dark in both looks: it can't know the time, and a light flash
+        # at night is worse than a dark one by day. The app picks its own look (LookModifier).
         UILaunchScreen:
           UIColorName: LaunchBackground
-        UIUserInterfaceStyle: Dark
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
+        # Fredoka, for headings and buttons (DESIGN.md). Its licence is App/Fonts/Fredoka-OFL.txt.
+        UIAppFonts:
+          - Fredoka.ttf
         # All four: the Duo's inner display and Split View resize the app whatever it lists, and
         # Xcode warns unless every orientation is supported.
         UISupportedInterfaceOrientations:

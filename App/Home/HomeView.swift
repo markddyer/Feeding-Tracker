@@ -67,7 +67,7 @@ struct HomeView: View {
                 if let inProgress = facts.feedInProgress {
                     Text("Feed in progress").font(.subheadline).foregroundStyle(Theme.secondaryText)
                     Text(inProgress.event.startedAt, style: .timer)
-                        .font(.system(size: 40, weight: .semibold, design: .rounded).monospacedDigit())
+                        .feedText(.mainTime)
                     Text(inProgress.event.loggedBy == me
                          ? "Started \(facts.clock(inProgress.event.startedAt))"
                          : "Started \(facts.clock(inProgress.event.startedAt)) by \(facts.name(inProgress.event.loggedBy))")
@@ -75,12 +75,12 @@ struct HomeView: View {
                 } else if let start = facts.lastFeedStart {
                     Text("Last feed started").font(.subheadline).foregroundStyle(Theme.secondaryText)
                     Text("\(AlertText.duration(facts.now.timeIntervalSince(start))) ago")
-                        .font(.system(size: 36, weight: .semibold, design: .rounded))
+                        .feedText(.mainTime)
                         .minimumScaleFactor(0.6)
                         .lineLimit(1)
                     Text("at \(facts.clock(start))").font(.subheadline).foregroundStyle(Theme.secondaryText)
                 } else {
-                    Text("No feeds logged yet").font(.title2.weight(.semibold))
+                    Text("No feeds logged yet").feedText(.title)
                     Text("Tap Start feed when one begins.").font(.subheadline).foregroundStyle(Theme.secondaryText)
                 }
             }
@@ -92,7 +92,7 @@ struct HomeView: View {
 
     private func line(_ title: String, _ value: String, note: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption).foregroundStyle(Theme.secondaryText).textCase(.uppercase)
+            Text(title).feedText(.label).foregroundStyle(Theme.secondaryText)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(value).font(.body)
                 if let note {
@@ -238,7 +238,7 @@ struct DutyRow: View {
         let onDuty = state.roster(for: me).onDuty(night: facts.tonight)
         let waiting = !facts.data.unacknowledgedChanges(by: me).isEmpty
         VStack(alignment: .leading, spacing: 8) {
-            Text("Tonight").font(.caption).foregroundStyle(Theme.secondaryText).textCase(.uppercase)
+            Text("Tonight").feedText(.label).foregroundStyle(Theme.secondaryText)
             if state.rota == nil && state.claims.isEmpty {
                 Text("No night rota yet: both phones alert at night.")
             } else {

@@ -384,13 +384,13 @@ struct BigButton: View {
             action()
         } label: {
             VStack(spacing: 2) {
-                Text(title).font(.title3.weight(.semibold))
+                Text(title).feedText(.button)
                 if let hint {
                     Text(hint).font(.caption2)
                 }
             }
             .frame(maxWidth: .infinity, minHeight: 64)
-            .foregroundStyle(prominent ? Color.black : Theme.text)
+            .foregroundStyle(prominent ? Theme.onPrimary : Theme.text)
             .background(prominent ? Theme.accent : Theme.raisedSurface, in: RoundedRectangle(cornerRadius: 16))
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)

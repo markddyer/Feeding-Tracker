@@ -109,6 +109,8 @@ Each step ends with the app building, its tests passing, and a simulator screens
 8. The Duo's second column.
 9. A full pass of checks (below), then the two phones.
 
+**Progress (15 Nov 2026):** steps 1 to 3 are built. The colours are in `App/Design/Theme.swift`, the Look resolver in `FeedingCore/Sources/FeedingCore/Time/Look.swift` (with `LookTests`), the text styles in `App/Design/Typography.swift`, the shapes in `App/Design/Shapes.swift`, and Tile, Chip and Avatar in `App/Design/Components.swift`. Feeding Dev's Tests menu has "Design pieces" to see them in both looks. Next is step 4, Home. Two things learned: the app-wide `.fontDesign(.rounded)` swaps a custom font for SF Pro Rounded, so Fredoka text turns it off; and the first builds saved the default parent colour as "amber", which now reads as sunflower.
+
 ## Checks
 
 - **Tests (FeedingCore):** the Look resolver at 20:59 and 21:00, across midnight, at 06:59 and 07:00, with a changed rota, after a clock change in both directions, in another time zone, and with each setting. The chart and nights facts at the edges (no feeds, feeds just over 24 hours old, a deleted feed, a night with no rota).
