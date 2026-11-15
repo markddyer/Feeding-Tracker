@@ -580,34 +580,34 @@ struct DayTile: View {
     }
 }
 
-/// One 8 point bar per feed across the last 24 hours, coloured and placed by its start. A longer
-/// feed stands a little taller, up to 45 minutes. A feed with breast and bottle shows both.
+/// The last 24 hours as one strip: each feed is a block from when it started to when it ended
+/// (to now while it runs), so feeds close together sit side by side and touch only if they really
+/// overlapped. Coloured by kind; a feed with breast and bottle shows both (the user's choice, 15 Nov
+/// 2026, option C on `chart-overlap-20261115`).
 struct DayChart: View {
     let feeds: [DayChartFeed]
     let now: Date
     let clock: (Date) -> String
     var hours: Double = 24
 
-    private let barWidth: CGFloat = 8
-    private let baseline: CGFloat = 6
+    private let stripHeight: CGFloat = 22
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 6) {
             GeometryReader { proxy in
                 let width = proxy.size.width
-                ZStack(alignment: .bottomLeading) {
-                    Capsule()
-                        .fill(Theme.track)
-                        .frame(height: 2)
-                        .offset(y: -baseline)
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 7).fill(Theme.track)
                     ForEach(feeds) { feed in
-                        bar(feed)
-                            .offset(x: x(feed, width), y: -baseline)
+                        let place = Self.place(start: feed.startedAt, duration: feed.duration, now: now, hours: hours, width: width)
+                        block(feed)
+                            .frame(width: place.width)
+                            .offset(x: place.x)
                     }
                 }
-                .frame(width: width, height: proxy.size.height, alignment: .bottomLeading)
+                .clipShape(RoundedRectangle(cornerRadius: 7))
             }
-            .frame(height: 56)
+            .frame(height: stripHeight)
             HStack {
                 Text("24h ago")
                 Spacer()
@@ -618,38 +618,36 @@ struct DayChart: View {
             .feedText(.small)
             .foregroundStyle(Theme.textMuted)
         }
+        .padding(.top, 4)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Chart of feeds in the last 24 hours")
-        .accessibilityValue(feeds.isEmpty ? "No feeds"
-            : feeds.map { "\(clock($0.startedAt)), \(HomeText.kinds($0))" }.joined(separator: "; "))
+        .accessibilityValue(feeds.isEmpty ? "No feeds" : feeds.map { feed in
+            "\(clock(feed.startedAt)), \(HomeText.kinds(feed)), \(feed.running ? "running, " : "")\(HomeText.spokenElapsed(feed.duration))"
+        }.joined(separator: "; "))
     }
 
-    private func x(_ feed: DayChartFeed, _ width: CGFloat) -> CGFloat {
+    /// Where a feed's block sits on a strip `width` wide covering the `hours` up to `now`: from its
+    /// start, as wide as it lasted, at least `minWidth` so a short feed still shows, and kept
+    /// inside the strip.
+    static func place(start: Date, duration: TimeInterval, now: Date, hours: Double, width: CGFloat,
+                      minWidth: CGFloat = 3) -> (x: CGFloat, width: CGFloat) {
         let span = hours * 3600
-        let share = (feed.startedAt.timeIntervalSince(now) + span) / span
-        return CGFloat(min(1, max(0, share))) * (width - barWidth)
+        let from = now.addingTimeInterval(-span)
+        let startShare = min(1, max(0, start.timeIntervalSince(from) / span))
+        let endShare = min(1, max(startShare, start.addingTimeInterval(max(0, duration)).timeIntervalSince(from) / span))
+        let blockWidth = min(width, max(minWidth, CGFloat(endShare - startShare) * width))
+        let x = min(CGFloat(startShare) * width, width - blockWidth)
+        return (max(0, x), blockWidth)
     }
 
-    private func height(_ feed: DayChartFeed) -> CGFloat {
-        let longest: TimeInterval = 45 * 60
-        return 16 + 24 * CGFloat(min(feed.duration, longest) / longest)
-    }
-
-    private func bar(_ feed: DayChartFeed) -> some View {
-        let total = height(feed)
-        return VStack(spacing: 0) {
-            if feed.bottle {
-                Rectangle().fill(Theme.bottleMark).frame(height: feed.breast ? total / 2 : total)
-            }
-            if feed.breast {
-                Rectangle().fill(Theme.breastMark).frame(height: feed.bottle ? total / 2 : total)
-            }
-            if !feed.breast && !feed.bottle {
-                Rectangle().fill(Theme.textMuted).frame(height: total)
-            }
+    /// Bottle above breast when a feed had both; a feed this version can't read is muted.
+    private func block(_ feed: DayChartFeed) -> some View {
+        VStack(spacing: 0) {
+            if feed.bottle { Rectangle().fill(Theme.bottleMark) }
+            if feed.breast { Rectangle().fill(Theme.breastMark) }
+            if !feed.breast && !feed.bottle { Rectangle().fill(Theme.textMuted) }
         }
-        .frame(width: barWidth)
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 4, bottomLeadingRadius: 2, bottomTrailingRadius: 2, topTrailingRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: 3))
     }
 }
 

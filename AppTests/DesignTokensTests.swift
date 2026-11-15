@@ -111,6 +111,14 @@ struct DesignTokensTests {
         }
     }
 
+    /// The 24-hour chart's blocks on their strip (`DayChart`).
+    @Test(arguments: [Look.day, .night])
+    func chartBlocksStandOutOnTheStrip(_ look: Look) {
+        for (mark, kind) in [(Theme.breastMark, "breast"), (Theme.bottleMark, "bottle"), (Theme.textMuted, "unreadable feed")] {
+            #expect(Self.ratio(mark, Theme.track, look) >= 3, "\(kind) block on the strip")
+        }
+    }
+
     @Test(arguments: [Look.day, .night])
     func theInitialReadsOnEveryParentColour(_ look: Look) {
         for colour in ParentColour.allCases {

@@ -41,6 +41,9 @@ enum SampleData {
             feed(hoursAgo: 7, by: me, FeedDetails(breast: [BreastSegment(side: .right, durationSeconds: 600)],
                                                  bottles: [Bottle(milk: .formula, ml: 30)]))
             feed(hoursAgo: 4.5, by: other, FeedDetails(bottles: [Bottle(milk: .formula, ml: 60)]))
+            // Two feeds close together before the last one, as in a busy evening.
+            feed(hoursAgo: 2 + 45.0 / 60, by: me, FeedDetails(breast: [BreastSegment(side: .left, durationSeconds: 720)]), minutes: 12)
+            feed(hoursAgo: 2 + 15.0 / 60, by: me, FeedDetails(breast: [BreastSegment(side: .right, durationSeconds: 600)]), minutes: 10)
             feed(hoursAgo: 1 + 40.0 / 60, by: other,
                  FeedDetails(breast: [BreastSegment(side: .left, durationSeconds: 720), BreastSegment(side: .right, durationSeconds: 480)],
                              bottles: [Bottle(milk: .formula, ml: 30)]))

@@ -31,7 +31,7 @@ Top to bottom (see the mockup's "1. Home"):
 2. **Hero tile:** the ring (time so far through the window) beside "Last feed / **2h 05m** / ago, at 8:25". The main time is the biggest thing on screen.
 3. **Window bar:** time so far, the shaded window, a mark for now. "Feeding window 10:25" on the left; a bell and "12:25" on the right. This replaces "Window opens 10:25 · Alert at 12:25". If alerts are off, the bar shows no bell and the label says "Alerts off".
 4. **Two tiles side by side:** Next side (the half-moon and "Left") and Last feed (chips: "◐ 12m", "◑ 8m", bottle "30 ml"). A bottle-only phone still shows Next side, so that parent can say which side is next.
-5. **Last 24 hours tile:** the chart (one bar per feed, coloured and keyed by shape), then three totals: feeds, at the breast, ml from bottles. Pumping shows as a fourth total only if there was any.
+5. **Last 24 hours tile:** the chart (one block per feed on a strip, from its start to its end, coloured and keyed by shape), then three totals: feeds, at the breast, ml from bottles. Pumping shows as a fourth total only if there was any.
 6. **Nights tile:** seven days (five nights back, tonight, and tomorrow night, as in the approved mockup) with the on-duty parent's initial in their colour, tonight ringed; "Sam's on tonight" and an "I'll take it" pill; the "waiting for Sam's phone to see your change" line stays, as a small note under it.
 7. **Pinned at the bottom:** Start feed (with the bottle icon) and three small buttons: Just finished, Earlier, Pumping.
 
@@ -126,6 +126,7 @@ Each step ends with the app building, its tests passing, and a simulator screens
 - **Apple's accessibility audit:** `UITests/AccessibilityAuditTests.swift`, in its own scheme (`FeedingDevAudit`), on every screen in both looks and at a large text size. It is a report, not a gate: most of its 296 notes were noise (text scrolled under the pinned buttons or the top bar, switched-off controls, feed shapes judged as text). "Dynamic Type partly supported" on the small labels and initials remains open; the large-text screenshots show they grow, and the nights row and colour row stop growing on purpose.
 - **Night:** the Settings menu, the "Remove this feed?" question and the keyboard are dark (screenshots from the audit's `testNightPopUps`). "Remove feed" keeps Apple's red for a destructive action; it is not a verdict.
 - **Reduce Motion:** fades only. The ring and the press effect are still at night and with Reduce Motion; the day/night change is a fade.
+- **The chart, after the phones' first look (15 Nov 2026):** bars ran into each other when feeds came close together. From four options the user chose C: each feed is a block from its start to its end on one strip (`DayChart.place`, tested), replacing step 4's bars that grew with the feed's length.
 - **Duo:** closed (382 pt) checked in the Duo simulator: everything fits, and the top-bar buttons move into the side bar by themselves. Open (two columns) checked with `-openScreen duo` at the measured size; the real unfold, book, laptop, tent and Split View need the real phone.
 
 ## Checks

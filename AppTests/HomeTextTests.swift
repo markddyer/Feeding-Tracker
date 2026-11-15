@@ -199,3 +199,40 @@ struct SecondColumnTests {
         #expect(DayColumn.isShowing(homeWidth: home, arrangementWidth: whole) == showing)
     }
 }
+
+/// Where each feed's block sits on the 24-hour strip (option C, chosen 15 Nov 2026).
+@Suite("The 24-hour strip")
+struct DayChartPlaceTests {
+    let now = Date(timeIntervalSince1970: 1_794_700_000)
+
+    func place(minutesAgo: Double, lasting minutes: Double) -> (x: CGFloat, width: CGFloat) {
+        DayChart.place(start: now.addingTimeInterval(-minutesAgo * 60), duration: minutes * 60, now: now, hours: 24, width: 300)
+    }
+
+    @Test func aFeedStartsAtItsTimeAndIsAsWideAsItLasted() {
+        let block = place(minutesAgo: 720, lasting: 24)
+        #expect(abs(block.x - 150) < 0.001)
+        #expect(abs(block.width - 5) < 0.001)
+    }
+
+    @Test func aShortFeedIsStillThreePointsWide() {
+        #expect(place(minutesAgo: 600, lasting: 5).width == 3)
+        #expect(place(minutesAgo: 600, lasting: -5).width == 3)
+    }
+
+    @Test func feedsCloseTogetherSitSideBySide() {
+        // 17:40 for 15 minutes, then 18:20: a 25-minute gap shows as a gap.
+        let first = place(minutesAgo: 200, lasting: 15)
+        let second = place(minutesAgo: 160, lasting: 10)
+        #expect(first.x + first.width < second.x)
+    }
+
+    @Test func blocksStayInsideTheStrip() {
+        // A feed running now, and one whose end is after now (a phone clock set back).
+        let running = place(minutesAgo: 1, lasting: 1)
+        #expect(running.x + running.width <= 300.0001)
+        let pastNow = place(minutesAgo: 5, lasting: 30)
+        #expect(pastNow.x + pastNow.width <= 300.0001)
+        #expect(place(minutesAgo: 1440, lasting: 20).x == 0)
+    }
+}
