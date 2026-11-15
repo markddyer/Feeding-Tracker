@@ -182,3 +182,20 @@ struct ParentColourTests {
         #expect(ParentColour(named: "aubergine") == nil)
     }
 }
+
+/// When the home screen leaves out the tiles the Duo's second column shows. Widths are the ones
+/// measured on a real Duo (`~/.claude/reference/iphone-duo.md`).
+@Suite("The Duo's second column")
+struct SecondColumnTests {
+    @Test(arguments: [
+        (382.0, 382.0, false),  // closed
+        (385, 385, false),      // Split View, one of two
+        (669, 669, false),      // laptop pose
+        (433.5, 867, true),     // open flat or book pose: two columns
+        (0, 867, false),        // not measured yet
+        (433.5, 0, false),
+    ] as [(CGFloat, CGFloat, Bool)])
+    func itShowsOnlyWhenTheHomeColumnIsClearlyNarrower(_ home: CGFloat, _ whole: CGFloat, _ showing: Bool) {
+        #expect(DayColumn.isShowing(homeWidth: home, arrangementWidth: whole) == showing)
+    }
+}

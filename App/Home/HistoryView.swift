@@ -59,15 +59,11 @@ struct HistoryView: View {
     private func row(_ stored: StoredEvent, zone: TimeZone) -> some View {
         let snapshot = stored.snapshot
         let event = snapshot.event
-        let finisher = event.endedAt == nil ? nil : snapshot.payload?.stamp(.endedAt)?.by
         return Button {
             // Details from a newer app version can't be edited here.
             if snapshot.payload != nil { editing = .edit(id: event.id) }
         } label: {
-            HistoryRow(snapshot: snapshot,
-                       time: event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
-                       loggedBy: person(event.loggedBy),
-                       finishedBy: finisher.flatMap { $0 == event.loggedBy ? nil : person($0) })
+            HistoryRow(snapshot, zone: zone)
         }
         .buttonStyle(PressStyle())
         .accessibilityHint(snapshot.payload == nil ? "" : "Opens it to change. Swipe left to delete.")
@@ -77,14 +73,6 @@ struct HistoryView: View {
                 Button("Delete", role: .destructive) { model.store.change { $0.delete(event.id, by: me, now: Date()) } }
             }
         }
-    }
-
-    private func person(_ member: MemberID) -> RowPerson {
-        let names = model.memberNames
-        let isMe = member == model.me
-        let colour = model.memberColours[member] ?? (isMe ? .sunflower : .teal)
-        return RowPerson(name: names[member] ?? (isMe ? "You" : "Other parent"), colour: colour,
-                         spoken: isMe ? "you" : (names[member] ?? "the other parent"))
     }
 }
 

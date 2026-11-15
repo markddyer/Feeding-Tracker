@@ -64,7 +64,7 @@ Top to bottom (see the mockup's "1. Home"):
 
 ### The Duo unfolded
 - Left column: greeting, hero, window bar, Next side and Last feed tiles, and the pinned buttons.
-- Right column (replaces today's plain list in `DayTimelineView`): the Last 24 hours tile, the Nights tile, and the recent feeds as History rows.
+- Right column (`DayColumn`, which replaced the plain list in `DayTimelineView`): the Last 24 hours tile, the Nights tile, and the recent feeds as History rows. While it shows, the left column leaves those two tiles out.
 - The big buttons stay at the bottom of the left column, away from the fold.
 
 ### Banners and the launch screen
@@ -118,6 +118,8 @@ Each step ends with the app building, its tests passing, and a simulator screens
 **Progress (15 Nov 2026, step 6):** History and the form are built. History (`HistoryView.swift`) is a plain list: a Fredoka "History" title and day headings ("Today", "Yesterday", then "Thursday 12 November"), and one `HistoryRow` per feed or pumping session (in `App/Home/FeedRows.swift`, ready for the Duo's second column in step 8): the time, the chips with shapes (here naming the milk: "Formula 30 ml", "Pumped 90 ml"), and the avatar of who logged it, with a smaller second avatar for who finished it. Swipe then tap still deletes. `FeedChips` now draws every set of chips (Home, the panel, History), with the live clock on a running side. The form keeps its layout, with the new colours, small upper-case section labels, a shape on each side, bottle and pumping row, "Add left" style buttons with shapes, and its title in Fredoka. The top bar's buttons (History, Settings, Cancel, Save) now use the text colour, as in the mockup, because coral text on cream is hard to read; coral stays for switches and the main button. Next is step 7, Settings and Setup.
 
 **Progress (15 Nov 2026, step 7):** Settings and Setup are built. Settings has a Fredoka title, small upper-case section labels on `surface` rows, the Look picker (Automatic, Always night, Match iPhone) beside "How you feed", and "Your colour" with the six colours (in `DESIGN.md`, `Theme` and `ParentColour`), saved through `HouseholdData.setColour` (in `FeedingCore`, tested: it leaves a record from a newer app version alone). Picker values use the muted text colour, not coral. Setup uses Fredoka titles, tiles for its notes, `surface` text fields, and two big tinted choices with shapes for "How do you feed?"; new parents now save "sunflower" or "teal" by name. Feeding Dev: `-openScreen settings`, and `-setupStep` with a step's name. Next is step 8, the Duo's second column.
+
+**Progress (15 Nov 2026, step 8):** the Duo's second column is built: `DayColumn` (`App/Home/DayColumn.swift`) holds the Last 24 hours tile, the Nights tile and the last 24 hours as `HistoryRow`s (tap to edit), and its "I'll take it" Undo bar shows under the home column's buttons. `ArrangementView` gives no signal that the second column is showing, so `ContentView` compares the home column's width with the whole arrangement's (`DayColumn.isShowing`, tested) and tells `HomeView` through the `secondColumnShowing` environment value; when unsure it says "not showing", so at worst a tile shows twice. The simulator can't unfold a Duo by command, so Feeding Dev's `-openScreen duo` draws both columns at the size measured on the real Duo open flat, shrunk to fit; the real unfold is for step 9 on the phone. Next is step 9: the checks, then the two phones.
 
 ## Checks
 

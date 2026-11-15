@@ -89,3 +89,30 @@ struct HistoryRow: View {
         return "\(time): \(chips)\(running). Logged by \(loggedBy.spoken)\(finished)."
     }
 }
+
+extension HistoryRow {
+    /// A row for a feed or pumping session, with the household's clock and both phones' names
+    /// and colours. History and the Duo's second column both use it.
+    @MainActor
+    init(_ snapshot: EventSnapshot, zone: TimeZone) {
+        let event = snapshot.event
+        let finisher = event.endedAt == nil ? nil : snapshot.payload?.stamp(.endedAt)?.by
+        self.init(snapshot: snapshot,
+                  time: event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
+                  loggedBy: RowPerson(event.loggedBy),
+                  finishedBy: finisher.flatMap { $0 == event.loggedBy ? nil : RowPerson($0) })
+    }
+}
+
+extension RowPerson {
+    /// A parent as this phone knows them: their name, their colour, and "you" for this phone.
+    @MainActor
+    init(_ member: MemberID) {
+        let model = AppModel.shared
+        let names = model.memberNames
+        let isMe = member == model.me
+        self.init(name: names[member] ?? (isMe ? "You" : "Other parent"),
+                  colour: model.memberColours[member] ?? (isMe ? .sunflower : .teal),
+                  spoken: isMe ? "you" : (names[member] ?? "the other parent"))
+    }
+}

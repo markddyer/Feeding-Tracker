@@ -9,9 +9,12 @@ struct HomeView: View {
     let me: MemberID
     let babyID: String
 
+    /// Shared with the Duo's second column, whose "I'll take it" shows its Undo bar here.
+    @Binding var undo: UndoAction?
+
     private let model = AppModel.shared
-    @State private var undo: UndoAction?
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.secondColumnShowing) private var secondColumnShowing
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 20)) { context in
@@ -30,8 +33,11 @@ struct HomeView: View {
                             .padding(.vertical, 4)
                     }
                     sideAndLastFeed(facts)
-                    DayTile(facts: facts)
-                    NightsTile(facts: facts, me: me, onUndo: { undo = $0 })
+                    // On the unfolded Duo these two are in the second column instead.
+                    if !secondColumnShowing {
+                        DayTile(facts: facts)
+                        NightsTile(facts: facts, me: me, onUndo: { undo = $0 })
+                    }
                     SyncedNote()
                 }
                 .padding(.horizontal, 16)

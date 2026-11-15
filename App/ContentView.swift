@@ -9,6 +9,16 @@ struct ContentView: View {
     @AppStorage("setup.inviteOffered") private var inviteOffered = false
     @AppStorage("setup.permissionsAsked") private var permissionsAsked = false
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
+    /// The last tap's Undo, shown under the home screen's buttons, from either column.
+    @State private var undo: UndoAction?
+    /// The arrangement's width and the home column's width. The second column is showing when the
+    /// home column is clearly narrower than the whole (`ArrangementView` gives no direct signal).
+    @State private var arrangementWidth: CGFloat = 0
+    @State private var homeWidth: CGFloat = 0
+
+    private var secondColumnShowing: Bool {
+        DayColumn.isShowing(homeWidth: homeWidth, arrangementWidth: arrangementWidth)
+    }
 
     var body: some View {
         #if FEEDING_DEV
@@ -81,14 +91,19 @@ struct ContentView: View {
         if SetupView.isComplete(disclaimerSeen: disclaimerSeen, inviteOffered: inviteOffered,
                                 permissionsAsked: permissionsAsked, feedingStyle: feedingStyle),
            let me = model.me, let baby = model.baby {
-            // The unfolded iPhone Duo shows the timeline beside the home screen; anywhere
-            // narrower shows the home screen alone (plan v1, "The Duo unfolded").
+            // The unfolded iPhone Duo shows the day's tiles and feeds beside the home screen;
+            // anywhere narrower shows the home screen alone (`05-visual-redesign.md`, "The Duo
+            // unfolded"). On a real Duo the column shows open flat and in book pose, and hides
+            // closed, in tent, in laptop pose and in Split View, with no code of ours.
             ArrangementView {
-                HomeView(me: me, babyID: baby.name)
+                HomeView(me: me, babyID: baby.name, undo: $undo)
+                    .environment(\.secondColumnShowing, secondColumnShowing)
+                    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { homeWidth = $0 }
             } secondary: {
-                DayTimelineView(me: me, babyID: baby.name)
+                DayColumn(me: me, babyID: baby.name, onUndo: { undo = $0 })
             }
             .arrangementViewStyle(.split.axes(.horizontal))
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { arrangementWidth = $0 }
             // The page shows the greeting and the baby's name, so the bar shows only its
             // buttons. "Home" is still the back button's name on the next screen.
             .navigationTitle("Home")
@@ -118,7 +133,7 @@ struct AlarmSpikeHooks: ViewModifier {
 }
 
 /// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
-/// `-openScreen history`, `settings`, `earlierFeed`, `pumping` or `editLastFeed`.
+/// `-openScreen history`, `settings`, `duo`, `earlierFeed`, `pumping` or `editLastFeed`.
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -130,6 +145,8 @@ struct DevScreen: View {
             NavigationStack { HistoryView() }
         case "settings":
             NavigationStack { SettingsView() }
+        case "duo":
+            DuoPreview(me: me, babyID: babyID)
         case "pumping":
             EventEditor(mode: .newPump, me: me, babyID: babyID)
         case "editLastFeed":
@@ -140,6 +157,35 @@ struct DevScreen: View {
         default:
             EventEditor(mode: .newFeed, me: me, babyID: babyID)
         }
+    }
+}
+
+/// Feeding Dev only: the two columns as the unfolded Duo shows them, drawn at the size measured on
+/// a real Duo open flat (951 x 669 pt, less the 84 pt side bar and the 82 pt top inset), shrunk to
+/// fit this screen. The simulator can't unfold a Duo by command, so this is for screenshots; the
+/// real split comes from `ArrangementView`.
+struct DuoPreview: View {
+    let me: MemberID
+    let babyID: String
+    @State private var undo: UndoAction?
+
+    var body: some View {
+        let size = CGSize(width: 867, height: 587)
+        GeometryReader { proxy in
+            let scale = proxy.size.width / size.width
+            HStack(spacing: 0) {
+                HomeView(me: me, babyID: babyID, undo: $undo)
+                    .environment(\.secondColumnShowing, true)
+                    .frame(width: size.width / 2)
+                DayColumn(me: me, babyID: babyID, onUndo: { undo = $0 })
+                    .frame(width: size.width / 2)
+            }
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(scale, anchor: .topLeading)
+            // The shrunk picture's own footprint, from the top left.
+            .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
+        }
+        .background(Theme.surface.ignoresSafeArea())
     }
 }
 
