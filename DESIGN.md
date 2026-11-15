@@ -27,6 +27,19 @@ colors:
   parent-2: "#3FA796"
   on-parent-2: "#3A1A0E"
   parent-2-tint: "#D3EFEA"
+  # The four other colours a parent can pick ("Your colour")
+  lavender: "#A78BDF"
+  on-lavender: "#3A1A0E"
+  lavender-tint: "#E9E2F7"
+  plum: "#9E4F88"
+  on-plum: "#FFF4E2"
+  plum-tint: "#E7D3E1"
+  caramel: "#C99260"
+  on-caramel: "#3A1A0E"
+  caramel-tint: "#F2E4D7"
+  stone: "#9A948C"
+  on-stone: "#3A1A0E"
+  stone-tint: "#E6E4E2"
   notice: "#E07A2F"
   # Night look
   background-night: "#0A0807"
@@ -49,6 +62,18 @@ colors:
   parent-2-night: "#2C6E63"
   on-parent-2-night: "#E8D6C2"
   parent-2-tint-night: "#0F1E1B"
+  lavender-night: "#68568A"
+  on-lavender-night: "#E8D6C2"
+  lavender-tint-night: "#17131E"
+  plum-night: "#6F375F"
+  on-plum-night: "#E8D6C2"
+  plum-tint-night: "#180C15"
+  caramel-night: "#79583A"
+  on-caramel-night: "#E8D6C2"
+  caramel-tint-night: "#1B130D"
+  stone-night: "#615D58"
+  on-stone-night: "#E8D6C2"
+  stone-tint-night: "#151513"
   notice-night: "#A0582A"
 typography:
   display:
@@ -142,12 +167,12 @@ The approved mockup (day and 3am) is `chosen-look.html`, kept outside the repo i
 
 **Rules:**
 - Kind colours: pink is breast, blue is bottle, green is pumping. Each has three tokens. `*-tint` fills a tile or row. The plain token (`breast`, `bottle`, `pump`) fills a big area such as the selected side button. `*-mark` draws small shapes, chart bars and lines, because it is deep enough to read on the light tiles (3:1 or better). At night the plain night token does both jobs.
-- Parent colours: each parent picks a colour in Settings; `parent-1` (sunflower) and `parent-2` (teal) are the defaults. They are stored as named colours in the Member record. They mark who logged a feed and who is on each night. Use `on-parent-*` for the initial on an avatar.
+- Parent colours: each parent picks a colour in Settings ("Your colour") from six: `parent-1` (sunflower) and `parent-2` (teal), the defaults, then `lavender`, `plum`, `caramel` and `stone`. They are stored by name in the Member record ("sunflower", "teal", "lavender", "plum", "caramel", "stone"). They mark who logged a feed and who is on each night. Use `on-*` for the initial on an avatar. None is red or green, a feed colour or the coral button.
 - The window: `track` is the empty bar and ring; `primary` fills the time so far; `window` shades the feeding window.
 - `notice` is only for problems with the app (sync failed). It is a muted orange, never red, and never says anything about the baby.
 - No red or green verdicts, ever. Green means pumping and nothing else.
 - Night colours are dimmed copies of the day colours, not new hues, so the screen feels the same.
-- Contrast, checked 15 Nov 2026: text on background 12.6:1 (day) and 14.1:1 (night); muted text 4.8:1 or better on every background and tile; coral button text 7.0:1 (day) and 5.2:1 (night); kind marks 3.5:1 or better against every tile. Check again after any colour change.
+- Contrast, checked 15 Nov 2026: text on background 12.6:1 (day) and 14.1:1 (night); muted text 4.8:1 or better on every background and tile; coral button text 7.0:1 (day) and 5.2:1 (night); kind marks 3.5:1 or better against every tile. The initial on every parent colour is 4.5:1 or better in both looks. Check again after any colour change.
 
 ## Typography
 
@@ -244,3 +269,5 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-15 | Keep both the ring and the window bar | The user's choice. Both outside designers suggested a single timeline instead, because a filling ring can feel like a countdown. Revisit if it reads as a deadline. |
 | 2026-11-15 | A shape for each kind of feed; thinner letters at night; "Stop · discard" | Ideas from the outside designers, chosen by the user. |
 | 2026-11-15 | Deeper "mark" shades for shapes and chart bars; darker muted text | Contrast fixes found while writing this file: the first pastel shades were under 3:1 for shapes and 4.5:1 for small text. |
+| 2026-11-15 | Four more parent colours: lavender, plum, caramel and stone | The user picked them from eight on a day/3am page (`parent-colours-20261115/colour-choices.html` in the gstack design folder). Purples, a brown and a grey, because every other hue is a feed colour, the coral button, or red or green. Night values are dimmed copies, tuned so the initial reads at 4.5:1. |
+| 2026-11-15 | The age chip uses `surface`; top-bar buttons use `text` | Found while building: the mockup's green age chip broke "green means pumping", and coral text on the cream background was hard to read. Coral stays for switches and the main button. |

@@ -96,6 +96,7 @@ struct ContentView: View {
         } else {
             SetupView()
                 .navigationTitle("Feeding")
+                .toolbar(removing: .title)
         }
     }
 }
@@ -117,7 +118,7 @@ struct AlarmSpikeHooks: ViewModifier {
 }
 
 /// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
-/// `-openScreen history`, `earlierFeed`, `pumping` or `editLastFeed`.
+/// `-openScreen history`, `settings`, `earlierFeed`, `pumping` or `editLastFeed`.
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -127,6 +128,8 @@ struct DevScreen: View {
         switch name {
         case "history":
             NavigationStack { HistoryView() }
+        case "settings":
+            NavigationStack { SettingsView() }
         case "pumping":
             EventEditor(mode: .newPump, me: me, babyID: babyID)
         case "editLastFeed":

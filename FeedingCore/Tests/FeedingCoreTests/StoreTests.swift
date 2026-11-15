@@ -255,3 +255,54 @@ struct HouseholdFileTests {
         #expect(throws: (any Error).self) { try HouseholdFile.load(from: url) }
     }
 }
+
+@Suite("A parent's colour")
+struct MemberColourTests {
+    let now = at(2026, 11, 15, 12, 0)
+
+    func household(colour: String = "sunflower") -> HouseholdData {
+        var data = HouseholdData()
+        data.put(PlainRecord(type: .member, name: parentA.rawValue, modifiedAt: now,
+                             payload: try? PayloadCoder.encode(MemberPayload(displayName: "Alex", colour: colour))))
+        return data
+    }
+
+    @Test func itChangesTheColourAndKeepsTheName() throws {
+        var data = household()
+        let before = try #require(data.plainRecords["\(PlainRecordType.member.rawValue)/\(parentA.rawValue)"]).localRevision
+        let changed = data.setColour("lavender", of: parentA, now: now.addingTimeInterval(60))
+        #expect(changed)
+        let record = try #require(data.plainRecord(.member, parentA.rawValue))
+        let payload = try #require(PayloadCoder.decode(MemberPayload.self, from: record.payload))
+        #expect(payload.colour == "lavender")
+        #expect(payload.displayName == "Alex")
+        #expect(record.modifiedAt == now.addingTimeInterval(60))
+        #expect(data.plainRecords["\(PlainRecordType.member.rawValue)/\(parentA.rawValue)"]?.needsUpload == true)
+        #expect(data.plainRecords["\(PlainRecordType.member.rawValue)/\(parentA.rawValue)"]?.localRevision == before + 1)
+    }
+
+    @Test func theSameColourChangesNothing() {
+        var data = household(colour: "teal")
+        let before = data
+        let changed = data.setColour("teal", of: parentA, now: now.addingTimeInterval(60))
+        #expect(changed)
+        #expect(data == before)
+    }
+
+    @Test func noRecordYetChangesNothing() {
+        var data = HouseholdData()
+        let changed = data.setColour("plum", of: parentA, now: now)
+        #expect(!changed)
+        #expect(data.plainRecords(of: .member).isEmpty)
+    }
+
+    @Test func aRecordFromANewerAppIsLeftAlone() {
+        var data = HouseholdData()
+        let newer = Data(#"{"v":99,"displayName":"Alex","colour":"teal","pronouns":"they"}"#.utf8)
+        data.put(PlainRecord(type: .member, name: parentA.rawValue, modifiedAt: now, payload: newer))
+        let before = data
+        let changed = data.setColour("plum", of: parentA, now: now.addingTimeInterval(60))
+        #expect(!changed)
+        #expect(data == before)
+    }
+}

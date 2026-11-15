@@ -86,7 +86,7 @@ public struct MemberPayload: VersionedPayload, Hashable {
 
     public var v: Int
     public var displayName: String
-    /// A named colour from the app's palette, such as "amber".
+    /// A named colour from the app's palette, such as "sunflower" (`ParentColour` in the app).
     public var colour: String
 
     public init(displayName: String, colour: String) {

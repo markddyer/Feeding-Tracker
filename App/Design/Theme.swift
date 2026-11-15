@@ -41,6 +41,20 @@ enum Theme {
     static let onParent2 = Color(day: 0x3A1A0E, night: 0xE8D6C2)
     static let parent2Tint = Color(day: 0xD3EFEA, night: 0x0F1E1B)
 
+    // The four other colours a parent can pick ("Your colour").
+    static let lavender = Color(day: 0xA78BDF, night: 0x68568A)
+    static let onLavender = Color(day: 0x3A1A0E, night: 0xE8D6C2)
+    static let lavenderTint = Color(day: 0xE9E2F7, night: 0x17131E)
+    static let plum = Color(day: 0x9E4F88, night: 0x6F375F)
+    static let onPlum = Color(day: 0xFFF4E2, night: 0xE8D6C2)
+    static let plumTint = Color(day: 0xE7D3E1, night: 0x180C15)
+    static let caramel = Color(day: 0xC99260, night: 0x79583A)
+    static let onCaramel = Color(day: 0x3A1A0E, night: 0xE8D6C2)
+    static let caramelTint = Color(day: 0xF2E4D7, night: 0x1B130D)
+    static let stone = Color(day: 0x9A948C, night: 0x615D58)
+    static let onStone = Color(day: 0x3A1A0E, night: 0xE8D6C2)
+    static let stoneTint = Color(day: 0xE6E4E2, night: 0x151513)
+
     /// Problems with the app only, such as sync failing. A muted orange, never red, and never
     /// about the baby.
     static let notice = Color(day: 0xE07A2F, night: 0xA0582A)

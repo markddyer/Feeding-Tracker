@@ -357,3 +357,22 @@ public enum HouseholdFile {
         try encoder.encode(household).write(to: url, options: options.union(.atomic))
     }
 }
+
+extension HouseholdData {
+    /// Changes a parent's colour ("Your colour" in Settings), keeping the rest of their Member
+    /// record. Returns false and changes nothing when there is no record yet, or when a newer app
+    /// version wrote it, so nothing that version saved is lost.
+    @discardableResult
+    public mutating func setColour(_ colour: String, of member: MemberID, now: Date) -> Bool {
+        guard let record = plainRecord(.member, member.rawValue),
+              var payload = PayloadCoder.decode(MemberPayload.self, from: record.payload) else { return false }
+        guard payload.colour != colour else { return true }
+        payload.colour = colour
+        guard let data = try? PayloadCoder.encode(payload) else { return false }
+        var updated = record
+        updated.payload = data
+        updated.modifiedAt = now
+        put(updated)
+        return true
+    }
+}

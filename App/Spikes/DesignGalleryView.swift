@@ -39,12 +39,11 @@ struct DesignGalleryView: View {
                     Chip(.pump, "120 ml", spoken: "Pumped 120 ml")
                 }
 
-                Tile(label: "Avatars") {
-                    HStack(spacing: 10) {
-                        Avatar(name: "Alex", colour: .sunflower)
-                        Avatar(name: "Sam", colour: .teal)
-                        Avatar(name: "Alex", colour: .sunflower, size: 26)
-                        Avatar(name: "Sam", colour: .teal, size: 26)
+                Tile(label: "Parent colours") {
+                    HStack(spacing: 8) {
+                        ForEach(ParentColour.allCases, id: \.self) { colour in
+                            Avatar(name: colour.title, colour: colour)
+                        }
                     }
                 }
 

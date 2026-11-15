@@ -163,3 +163,22 @@ struct HistoryTextTests {
         #expect(row(.feed, nil) == Theme.surface)
     }
 }
+
+/// The six parent colours ("Your colour", DESIGN.md).
+@Suite("Parent colours")
+struct ParentColourTests {
+    @Test func sixColoursInTheOrderSettingsShows() {
+        #expect(ParentColour.allCases.map(\.rawValue) == ["sunflower", "teal", "lavender", "plum", "caramel", "stone"])
+        #expect(ParentColour.allCases.map(\.title) == ["Sunflower", "Teal", "Lavender", "Plum", "Caramel", "Stone"])
+    }
+
+    @Test func savedNamesReadBack() {
+        for colour in ParentColour.allCases {
+            #expect(ParentColour(named: colour.rawValue) == colour)
+        }
+        // What the first builds saved for sunflower.
+        #expect(ParentColour(named: "amber") == .sunflower)
+        // A colour from a newer version: the caller picks a default.
+        #expect(ParentColour(named: "aubergine") == nil)
+    }
+}

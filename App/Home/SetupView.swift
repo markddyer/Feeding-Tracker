@@ -38,22 +38,50 @@ struct SetupView: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
-        .textFieldStyle(.roundedBorder)
+        .textFieldStyle(.plain)
     }
 
     @ViewBuilder
     private var step: some View {
         let sync = model.sync
+        #if FEEDING_DEV
+        if let forced = UserDefaults.standard.string(forKey: "setupStep") {
+            forcedStep(forced)
+        } else {
+            realStep(sync)
+        }
+        #else
+        realStep(sync)
+        #endif
+    }
+
+    #if FEEDING_DEV
+    /// Feeding Dev only: launch with `-setupStep` and a step's name (`disclaimer`, `signIn`,
+    /// `household`, `about`, `invite`, `howYouFeed`, `permissions`) to see it, for screenshots.
+    @ViewBuilder
+    private func forcedStep(_ name: String) -> some View {
+        switch name {
+        case "signIn": signIn(model.sync)
+        case "household": chooseHousehold
+        case "about": aboutYou
+        case "invite": invite
+        case "howYouFeed": howYouFeed
+        case "permissions": permissions
+        default: disclaimer
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private func realStep(_ sync: HouseholdSync) -> some View {
         if !disclaimerSeen {
             disclaimer
         } else if !AppConfig.syncEnabled {
             title("Not ready yet")
             Text("This version of Feeding doesn't share feeds between phones yet. Use Feeding Dev for now.")
+                .feedText(.body)
         } else if sync.accountAvailable == false {
-            title("Sign in to iCloud")
-            Text("Feeding keeps everything in your own iCloud, and shares it only with the other parent. Open Settings, tap your name at the top, and sign in. Then come back here.")
-            Button("Check again") { Task { await sync.refreshAccount() } }
-                .buttonStyle(.bordered)
+            signIn(sync)
         } else if model.me == nil {
             ProgressView("Checking iCloud…")
         } else {
@@ -65,7 +93,11 @@ struct SetupView: View {
         }
         // The iCloud step already says what the not-signed-in message says.
         if disclaimerSeen, let problem = sync.problem, problem != HouseholdSync.notSignedIn {
-            Text(problem).font(.footnote).foregroundStyle(Theme.warning)
+            Text(problem)
+                .feedText(.subheadline)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Theme.notice.opacity(0.22), in: RoundedRectangle(cornerRadius: Radius.smallButton))
         }
     }
 
@@ -75,11 +107,18 @@ struct SetupView: View {
         Group {
             title("Feeding")
             Text("Logs your baby's feeds on both parents' phones, and alerts as a safety net when a long time has passed since the last feed started. The parents can take turns at night.")
-            Text("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
-                .font(.callout)
-                .padding(14)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .feedText(.body)
+            note("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
             BigButton(title: "Continue", prominent: true) { disclaimerSeen = true }
+        }
+    }
+
+    private func signIn(_ sync: HouseholdSync) -> some View {
+        Group {
+            title("Sign in to iCloud")
+            Text("Feeding keeps everything in your own iCloud, and shares it only with the other parent. Open Settings, tap your name at the top, and sign in. Then come back here.")
+                .feedText(.body)
+            BigButton(title: "Check again", prominent: false) { Task { await sync.refreshAccount() } }
         }
     }
 
@@ -87,17 +126,19 @@ struct SetupView: View {
         Group {
             title("Set up the household")
             Text("One parent starts the household and invites the other.")
+                .feedText(.body)
             BigButton(title: "Start a new household", prominent: true) {
                 Task { await model.sync.createHousehold() }
             }
             .disabled(model.sync.busy)
             Text("Joining instead? Ask the other parent to send the invite from their phone, then tap the link in Messages. If the link doesn't open Feeding, copy it and paste it here:")
-                .font(.callout)
-                .foregroundStyle(Theme.secondaryText)
+                .feedText(.subheadline)
+                .foregroundStyle(Theme.textMuted)
             TextField("Invite link", text: $pastedLink)
+                .feedField()
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Button("Join with this link") { Task { await model.sync.acceptPastedLink(pastedLink) } }
+            BigButton(title: "Join with this link", prominent: false) { Task { await model.sync.acceptPastedLink(pastedLink) } }
                 .disabled(pastedLink.isEmpty || model.sync.busy)
         }
     }
@@ -105,31 +146,55 @@ struct SetupView: View {
     @ViewBuilder
     private var ownerSteps: some View {
         if model.baby == nil || !hasMyMember {
+            aboutYou
+        } else if !inviteOffered {
+            invite
+        } else if FeedingStyle(rawValue: feedingStyle) == nil {
+            howYouFeed
+        } else {
+            permissions
+        }
+    }
+
+    private var aboutYou: some View {
+        Group {
             title("About you and the baby")
             TextField("Baby's name", text: $babyName)
+                .feedField()
             Toggle("Add the birth date", isOn: $addBirthDate)
+                .feedText(.body)
             if addBirthDate {
                 DatePicker("Born", selection: $birthDate, in: ...Date(), displayedComponents: .date)
+                    .feedText(.body)
             }
             TextField("Your name, as the other parent sees it", text: $myName)
+                .feedField()
             Text("Names stay in your iCloud and the other parent's. Alerts on the Lock Screen don't show the baby's name.")
-                .font(.footnote).foregroundStyle(Theme.secondaryText)
+                .feedText(.subheadline).foregroundStyle(Theme.textMuted)
             BigButton(title: "Save", prominent: true) { saveOwnerDetails() }
                 .disabled(babyName.trimmed.isEmpty || myName.trimmed.isEmpty)
-        } else if !inviteOffered {
+        }
+    }
+
+    private var invite: some View {
+        Group {
             title("Invite the other parent")
             Text("Send the invite in Messages. When they tap it on their phone, Feeding opens and joins this household.")
+                .feedText(.body)
             BigButton(title: "Send the invite", prominent: true) {
                 Task {
                     await model.sync.invite()
                     inviteOffered = true
                 }
             }
-            Button("Later, from Settings") { inviteOffered = true }
-        } else if FeedingStyle(rawValue: feedingStyle) == nil {
-            howYouFeed
-        } else {
-            permissions
+            Button { inviteOffered = true } label: {
+                Text("Later, from Settings")
+                    .feedText(.smallButton)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PressStyle())
+            .foregroundStyle(Theme.text)
         }
     }
 
@@ -138,11 +203,13 @@ struct SetupView: View {
         if !hasMyMember {
             title("Joined")
             TextField("Your name, as the other parent sees it", text: $myName)
-            BigButton(title: "Save", prominent: true) { saveMember(colour: "teal") }
+                .feedField()
+            BigButton(title: "Save", prominent: true) { saveMember(colour: ParentColour.teal.rawValue) }
                 .disabled(myName.trimmed.isEmpty)
         } else if model.baby == nil {
             title("Joined")
             ProgressView("Waiting for the household's details from the other phone…")
+                .feedText(.body)
         } else if FeedingStyle(rawValue: feedingStyle) == nil {
             howYouFeed
         } else {
@@ -154,25 +221,46 @@ struct SetupView: View {
         Group {
             title("How do you feed?")
             Text("This sets the buttons on this phone only. Each parent chooses on their own phone, and can change it in Settings.")
-            BigButton(title: FeedingStyle.breastAndBottle.title, prominent: true) {
-                feedingStyle = FeedingStyle.breastAndBottle.rawValue
-            }
-            BigButton(title: FeedingStyle.bottleOnly.title, prominent: true) {
-                feedingStyle = FeedingStyle.bottleOnly.rawValue
-            }
-            Text("Bottle only: Start feed asks expressed milk or formula, and there are no Left and Right buttons.")
-                .font(.footnote).foregroundStyle(Theme.secondaryText)
+                .feedText(.body)
+            choice(FeedingStyle.breastAndBottle, marks: [.side(.left), .bottle], tint: Theme.breastTint,
+                   detail: "Left, Right and Bottle buttons during a feed.")
+            choice(FeedingStyle.bottleOnly, marks: [.bottle], tint: Theme.bottleTint,
+                   detail: "Start feed asks expressed milk or formula. No Left and Right buttons.")
         }
+    }
+
+    /// A big tinted choice with its feed shapes: tap to choose.
+    private func choice(_ style: FeedingStyle, marks: [FeedMark], tint: Color, detail: String) -> some View {
+        Button {
+            feedingStyle = style.rawValue
+        } label: {
+            HStack(spacing: 14) {
+                HStack(spacing: 4) {
+                    ForEach(marks, id: \.self) { FeedMarkView($0, size: 28, relativeTo: .title3) }
+                }
+                .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(style.title).feedText(.tileValue)
+                    Text(detail).feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+            .background(tint, in: RoundedRectangle(cornerRadius: Radius.tile))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.tile))
+        }
+        .buttonStyle(PressStyle())
+        .foregroundStyle(Theme.text)
+        .sensoryFeedback(.selection, trigger: feedingStyle)
     }
 
     private var permissions: some View {
         Group {
             title("Alarms and alerts")
             Text("Feeding sets an alarm or a notification for when the time you choose has passed since the last feed started. Each parent picks loud or gentle in Settings. If nobody logs a feed, a loud backup alarm rings on both phones.")
-            Text("Never hide Feeding or lock it with Face ID. Apple says alarms from hidden or locked apps can fail without warning.")
-                .font(.callout)
-                .padding(14)
-                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12))
+                .feedText(.body)
+            note("Never hide Feeding or lock it with Face ID. Apple says alarms from hidden or locked apps can fail without warning.")
             BigButton(title: "Allow alarms and notifications", prominent: true) {
                 Task {
                     await model.reconciler.requestPermissions()
@@ -190,7 +278,18 @@ struct SetupView: View {
     }
 
     private func title(_ text: String) -> some View {
-        Text(text).font(.largeTitle.bold())
+        Text(text)
+            .feedText(.title)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// Something to keep in mind, on a tile.
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .feedText(.subheadline)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
     }
 
     private func saveOwnerDetails() {
@@ -203,7 +302,7 @@ struct SetupView: View {
                                    payload: try? PayloadCoder.encode(BabyPayload(name: name, birthDate: birth))))
             }
         }
-        saveMember(colour: "amber")
+        saveMember(colour: ParentColour.sunflower.rawValue)
     }
 
     private func saveMember(colour: String) {
@@ -218,4 +317,14 @@ struct SetupView: View {
 
 extension String {
     var trimmed: String { trimmingCharacters(in: .whitespacesAndNewlines) }
+}
+
+extension View {
+    /// A text field on a tile: the `surface` colour, round corners, SF Pro Rounded.
+    func feedField() -> some View {
+        feedText(.body)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.smallButton))
+    }
 }

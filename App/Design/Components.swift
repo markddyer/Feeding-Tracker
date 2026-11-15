@@ -199,12 +199,15 @@ struct Chip: View {
     }
 }
 
-/// A parent's colour, saved by name in their Member record so both phones show it.
-///
-/// `DESIGN.md` names the two defaults. The "Your colour" setting (build step 7) adds four more.
+/// A parent's colour, saved by name in their Member record so both phones show it. Sunflower and
+/// teal are the defaults; Settings offers all six ("Your colour", `DESIGN.md`).
 enum ParentColour: String, CaseIterable {
     case sunflower
     case teal
+    case lavender
+    case plum
+    case caramel
+    case stone
 
     /// Reads a saved name. "amber" is what the first builds saved for sunflower. A name from a
     /// newer app version gives nil, and the caller picks a default.
@@ -216,10 +219,17 @@ enum ParentColour: String, CaseIterable {
         }
     }
 
+    /// The name in Settings.
+    var title: String { rawValue.capitalized }
+
     var fill: Color {
         switch self {
         case .sunflower: Theme.parent1
         case .teal: Theme.parent2
+        case .lavender: Theme.lavender
+        case .plum: Theme.plum
+        case .caramel: Theme.caramel
+        case .stone: Theme.stone
         }
     }
 
@@ -228,6 +238,10 @@ enum ParentColour: String, CaseIterable {
         switch self {
         case .sunflower: Theme.onParent1
         case .teal: Theme.onParent2
+        case .lavender: Theme.onLavender
+        case .plum: Theme.onPlum
+        case .caramel: Theme.onCaramel
+        case .stone: Theme.onStone
         }
     }
 
@@ -235,6 +249,10 @@ enum ParentColour: String, CaseIterable {
         switch self {
         case .sunflower: Theme.parent1Tint
         case .teal: Theme.parent2Tint
+        case .lavender: Theme.lavenderTint
+        case .plum: Theme.plumTint
+        case .caramel: Theme.caramelTint
+        case .stone: Theme.stoneTint
         }
     }
 }
