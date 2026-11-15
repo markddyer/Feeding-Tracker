@@ -19,7 +19,7 @@ struct DesignGalleryView: View {
                     }
                 }
 
-                HStack(alignment: .top, spacing: 10) {
+                TileRow(shares: [1, 1.35]) {
                     Tile(label: "Next side", tint: Theme.breastTint) {
                         HStack(spacing: 8) {
                             FeedMarkView(.side(.left), size: 26, relativeTo: .title3)
@@ -27,11 +27,11 @@ struct DesignGalleryView: View {
                         }
                     }
                     Tile(label: "Last feed", tint: Theme.bottleTint) {
-                        FlowChips(chips: [
-                            Chip(.side(.left), "12m", spoken: "Left side, 12 minutes"),
-                            Chip(.side(.right), "8m", spoken: "Right side, 8 minutes"),
-                            Chip(.bottle, "30 ml"),
-                        ])
+                        FlowLayout(spacing: 6) {
+                            Chip(.side(.left), "12m", spoken: "Left side, 12 minutes")
+                            Chip(.side(.right), "8m", spoken: "Right side, 8 minutes")
+                            Chip(.bottle, "30 ml")
+                        }
                     }
                 }
 
@@ -85,18 +85,6 @@ struct DesignGalleryView: View {
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Design pieces")
-    }
-}
-
-/// Chips that wrap onto a second line when the tile is narrow.
-struct FlowChips: View {
-    let chips: [Chip]
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { ForEach(chips.indices, id: \.self) { chips[$0] } }
-            VStack(alignment: .leading, spacing: 6) { ForEach(chips.indices, id: \.self) { chips[$0] } }
-        }
     }
 }
 #endif

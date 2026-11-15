@@ -32,7 +32,7 @@ Top to bottom (see the mockup's "1. Home"):
 3. **Window bar:** time so far, the shaded window, a mark for now. "Feeding window 10:25" on the left; a bell and "12:25" on the right. This replaces "Window opens 10:25 · Alert at 12:25". If alerts are off, the bar shows no bell and the label says "Alerts off".
 4. **Two tiles side by side:** Next side (the half-moon and "Left") and Last feed (chips: "◐ 12m", "◑ 8m", bottle "30 ml"). A bottle-only phone still shows Next side, so that parent can say which side is next.
 5. **Last 24 hours tile:** the chart (one bar per feed, coloured and keyed by shape), then three totals: feeds, at the breast, ml from bottles. Pumping shows as a fourth total only if there was any.
-6. **Nights tile:** seven days with the on-duty parent's initial in their colour, tonight ringed; "Sam's on tonight" and an "I'll take it" pill; the "waiting for Sam's phone to see your change" line stays, as a small note under it.
+6. **Nights tile:** seven days (five nights back, tonight, and tomorrow night, as in the approved mockup) with the on-duty parent's initial in their colour, tonight ringed; "Sam's on tonight" and an "I'll take it" pill; the "waiting for Sam's phone to see your change" line stays, as a small note under it.
 7. **Pinned at the bottom:** Start feed (with the bottle icon) and three small buttons: Just finished, Earlier, Pumping.
 
 ### Home, a feed running
@@ -92,7 +92,7 @@ Top to bottom (see the mockup's "1. Home"):
 3. **Fonts:** bundle Fredoka (SIL Open Font License, from Google Fonts; keep its licence file beside it) and register it in `project.yml` (`UIAppFonts`). Text styles: `.feedTitle`, `.feedButton`, `.feedNumber` and so on, each using `relativeTo:` for Dynamic Type, and night weights.
 4. **Shapes:** `SideShape` (using `circle.lefthalf.filled` / `circle.righthalf.filled`), `BottleShape` and `DropsShape`, with VoiceOver labels.
 5. **Components:** `BigButton` (already exists; restyle), `Tile`, `Chip`, `WindowBar`, `WindowRing` (already exists; restyle), `DayChart` (Swift Charts or simple bars; Apple's, so no third-party code), `NightsRow`, `Avatar`, `HistoryRow`.
-6. **Facts for the new pictures:** add to `HomeFacts` the feeds of the last 24 hours with their kind and start time (for the chart), and who is on duty for each of the 7 nights from tonight back (for the nights row), plus the baby's age in days.
+6. **Facts for the new pictures:** add to `HomeFacts` the feeds of the last 24 hours with their kind and start time (for the chart), and who is on duty for each of the 7 nights (five back, tonight and tomorrow, for the nights row), plus the baby's age in days.
 7. **Settings:** the Look setting (per phone, in `@AppStorage`) and "Your colour" (in the Member record).
 
 ## Build order
@@ -109,7 +109,9 @@ Each step ends with the app building, its tests passing, and a simulator screens
 8. The Duo's second column.
 9. A full pass of checks (below), then the two phones.
 
-**Progress (15 Nov 2026):** steps 1 to 3 are built. The colours are in `App/Design/Theme.swift`, the Look resolver in `FeedingCore/Sources/FeedingCore/Time/Look.swift` (with `LookTests`), the text styles in `App/Design/Typography.swift`, the shapes in `App/Design/Shapes.swift`, and Tile, Chip and Avatar in `App/Design/Components.swift`. Feeding Dev's Tests menu has "Design pieces" to see them in both looks. Next is step 4, Home. Two things learned: the app-wide `.fontDesign(.rounded)` swaps a custom font for SF Pro Rounded, so Fredoka text turns it off; and the first builds saved the default parent colour as "amber", which now reads as sunflower.
+**Progress (15 Nov 2026):** steps 1 to 3 are built. The colours are in `App/Design/Theme.swift`, the Look resolver in `FeedingCore/Sources/FeedingCore/Time/Look.swift` (with `LookTests`), the text styles in `App/Design/Typography.swift`, the shapes in `App/Design/Shapes.swift`, and Tile, Chip and Avatar in `App/Design/Components.swift`. Feeding Dev's Tests menu has "Design pieces" to see them in both looks. Two things learned: the app-wide `.fontDesign(.rounded)` swaps a custom font for SF Pro Rounded, so Fredoka text turns it off; and the first builds saved the default parent colour as "amber", which now reads as sunflower.
+
+**Progress (15 Nov 2026, later):** step 4 is built: Home with no feed running, in `App/Home/HomeView.swift`, with its words in `App/Home/HomeText.swift` (tested in `AppTests/HomeTextTests.swift`). The facts behind the pictures are in `FeedingCore/Sources/FeedingCore/Insights/HomeInsights.swift` (tested in `HomeInsightsTests`): the greeting's part of the day (from the rota's hours, so it agrees with the night look), the baby's age in days, the chart's feeds (the same stretch as the totals), the nights row (with no rota, a night nobody took shows an empty dashed circle; the alerts still count this phone as on duty) and the day of the week. New shared parts: `TileRow`, `FlowLayout`, `PillButton`, `PressStyle` and `EmptyAvatar` in `Components.swift`. Choices made on the way: the age chip uses `surface`, not the mockup's pumping green, because green means pumping and nothing else; a chart bar is 16 to 40 points tall by the feed's length (up to 45 minutes), and a feed with breast and bottle shows both colours; the sample day's parents are "Alex" and "Sam", so the avatars differ. The hero still shows the old words while a feed runs. Next is step 5, Home with a feed running.
 
 ## Checks
 

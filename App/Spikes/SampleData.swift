@@ -2,7 +2,8 @@
 import FeedingCore
 import Foundation
 
-/// Simulator only: fills an empty store with a made-up day, to look at the screens.
+/// Simulator only: fills an empty store with a made-up day, to look at the screens. The names are
+/// made up (the mockup's), with different first letters so the avatars differ.
 /// Launch with `-sampleData YES`; add `-sampleFeedInProgress YES` for a feed running.
 enum SampleData {
     @MainActor
@@ -15,11 +16,12 @@ enum SampleData {
         let zone = TimeZone.current.identifier
         store.change { data in
             data.put(PlainRecord(type: .baby, name: "sample-baby", modifiedAt: now,
-                                 payload: try? PayloadCoder.encode(BabyPayload(name: "Baby"))))
+                                 payload: try? PayloadCoder.encode(BabyPayload(name: "Baby",
+                                                                               birthDate: PlainDate(now, in: .current).adding(days: -12)))))
             data.put(PlainRecord(type: .member, name: me.rawValue, modifiedAt: now,
-                                 payload: try? PayloadCoder.encode(MemberPayload(displayName: "Parent A", colour: "amber"))))
+                                 payload: try? PayloadCoder.encode(MemberPayload(displayName: "Alex", colour: "sunflower"))))
             data.put(PlainRecord(type: .member, name: other.rawValue, modifiedAt: now,
-                                 payload: try? PayloadCoder.encode(MemberPayload(displayName: "Parent B", colour: "teal"))))
+                                 payload: try? PayloadCoder.encode(MemberPayload(displayName: "Sam", colour: "teal"))))
             data.putSetting(Rota(startDate: PlainDate(now, in: .current), firstOnDuty: other, secondOnDuty: me),
                             key: SettingKey.rota, now: now)
 

@@ -62,4 +62,22 @@ final class AppModel {
         }
         return names
     }
+
+    /// Each parent's colour, from their Member record. A name this version can't read falls back
+    /// to the defaults: sunflower for the first parent and teal for the second, in record-name
+    /// order, so both phones agree.
+    var memberColours: [MemberID: ParentColour] {
+        var colours: [MemberID: ParentColour] = [:]
+        let records = store.data.plainRecords(of: .member).sorted { $0.name < $1.name }
+        for (index, record) in records.enumerated() {
+            let saved = PayloadCoder.decode(MemberPayload.self, from: record.payload).flatMap { ParentColour(named: $0.colour) }
+            colours[MemberID(rawValue: record.name)] = saved ?? (index == 0 ? .sunflower : .teal)
+        }
+        return colours
+    }
+
+    /// The baby's details (name, birth date), when this version can read them.
+    var babyDetails: BabyPayload? {
+        baby.flatMap { PayloadCoder.decode(BabyPayload.self, from: $0.payload) }
+    }
 }

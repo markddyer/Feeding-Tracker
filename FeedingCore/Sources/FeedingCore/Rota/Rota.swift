@@ -63,4 +63,9 @@ public struct DutyRoster: Hashable, Sendable {
     public func onDuty(night: PlainDate) -> MemberID {
         claimsByNight[night]?.member ?? rota.scheduledOnDuty(night: night)
     }
+
+    /// The claim that decides `night`, if any ("I'll take tonight").
+    public func claim(for night: PlainDate) -> NightClaim? {
+        claimsByNight[night]
+    }
 }

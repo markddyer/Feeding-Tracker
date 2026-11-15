@@ -31,14 +31,21 @@ enum FeedTextStyle: CaseIterable {
     case chip
     /// A tile's small upper-case label ("NEXT SIDE").
     case label
+    /// "Good morning" above the baby's name.
+    case greeting
+    /// Small words beside a picture: chart times and key, the units under totals, the days of
+    /// the week in the nights row.
+    case small
+    /// The three small buttons under Start feed, and a few strong short lines ("Sam's on tonight").
+    case smallButton
 
     /// The bundled font's family name.
     static let fredoka = "Fredoka"
 
     var usesFredoka: Bool {
         switch self {
-        case .title, .button, .tileValue, .dayHeading: true
-        case .mainTime, .total, .body, .subheadline, .chip, .label: false
+        case .title, .button, .tileValue, .dayHeading, .greeting: true
+        case .mainTime, .total, .body, .subheadline, .chip, .label, .small, .smallButton: false
         }
     }
 
@@ -55,6 +62,9 @@ enum FeedTextStyle: CaseIterable {
         case .subheadline: 15
         case .chip: 12.5
         case .label: 11
+        case .greeting: 15
+        case .small: 11.5
+        case .smallButton: 14
         }
     }
 
@@ -67,9 +77,9 @@ enum FeedTextStyle: CaseIterable {
         case .dayHeading: .headline
         case .total: .title2
         case .body: .body
-        case .subheadline: .subheadline
+        case .subheadline, .greeting, .smallButton: .subheadline
         case .chip: .caption
-        case .label: .caption2
+        case .label, .small: .caption2
         }
     }
 
@@ -80,6 +90,8 @@ enum FeedTextStyle: CaseIterable {
         case .title, .button, .tileValue, .dayHeading: return night ? .regular : .semibold
         case .body, .subheadline: return .regular
         case .chip, .label: return night ? .semibold : .heavy
+        case .greeting: return night ? .regular : .medium
+        case .small, .smallButton: return night ? .semibold : .bold
         }
     }
 

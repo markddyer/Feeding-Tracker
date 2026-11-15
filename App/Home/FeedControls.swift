@@ -20,18 +20,19 @@ struct UndoBanner: View {
 
     var body: some View {
         HStack {
-            Text(action.message).font(.subheadline)
+            Text(action.message).feedText(.subheadline)
             Spacer()
             Button("Undo") {
                 action.perform()
                 dismiss()
             }
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(Theme.accent)
+            .feedText(.smallButton)
+            .foregroundStyle(Theme.text)
+            .frame(minHeight: 44)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 18)
         .frame(minHeight: 48)
-        .background(Theme.raisedSurface, in: RoundedRectangle(cornerRadius: 14))
+        .background(Theme.surface, in: Capsule())
     }
 }
 
@@ -102,7 +103,7 @@ struct FeedControls: View {
 
     private var idle: some View {
         VStack(spacing: 10) {
-            BigButton(title: "Start feed", prominent: true) {
+            BigButton(title: "Start feed", prominent: true, mark: .bottle) {
                 if bottleOnly {
                     choosingStartBottle = true
                 } else {
@@ -117,8 +118,13 @@ struct FeedControls: View {
                 } label: {
                     smallLabel("Just finished")
                 }
-                Button { editor = .newFeed } label: { smallLabel("Earlier feed") }
+                .buttonStyle(PressStyle())
+                Button { editor = .newFeed } label: { smallLabel("Earlier") }
+                    .buttonStyle(PressStyle())
+                    .accessibilityLabel("Log an earlier feed")
                 Button { editor = .newPump } label: { smallLabel("Pumping") }
+                    .buttonStyle(PressStyle())
+                    .accessibilityLabel("Log pumping")
             }
             .foregroundStyle(Theme.text)
         }
@@ -126,11 +132,14 @@ struct FeedControls: View {
 
     private func smallLabel(_ title: String) -> some View {
         Text(title)
-            .font(.subheadline)
-            .lineLimit(1)
+            .feedText(.smallButton)
+            // Two lines at the biggest text sizes, rather than cutting a word off.
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
             .minimumScaleFactor(0.8)
+            .padding(.horizontal, 4)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14))
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.smallButton))
     }
 
     private func startFeed(bottle: MilkKind?) {
@@ -370,29 +379,40 @@ struct FeedDetailsPanel: View {
     }
 }
 
-/// A large, easy target for one hand in the dark.
+/// A large, easy target for one hand in the dark (DESIGN.md, "Big button"): `primary` for the
+/// main action, `surface` for the soft one, with a Fredoka label and an optional feed shape.
 struct BigButton: View {
     let title: String
     let prominent: Bool
     var hint: String?
+    var mark: FeedMark?
     let action: () -> Void
     @State private var taps = 0
 
     var body: some View {
+        let foreground = prominent ? Theme.onPrimary : Theme.text
         Button {
             taps += 1
             action()
         } label: {
             VStack(spacing: 2) {
-                Text(title).feedText(.button)
+                HStack(spacing: 10) {
+                    if let mark {
+                        FeedMarkView(mark, size: 24, relativeTo: .title3, colour: foreground)
+                            .accessibilityHidden(true)
+                    }
+                    Text(title).feedText(.button)
+                }
                 if let hint {
-                    Text(hint).font(.caption2)
+                    Text(hint).feedText(.small)
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 64)
-            .foregroundStyle(prominent ? Theme.onPrimary : Theme.text)
-            .background(prominent ? Theme.accent : Theme.raisedSurface, in: RoundedRectangle(cornerRadius: 16))
+            .frame(maxWidth: .infinity, minHeight: 60)
+            .foregroundStyle(foreground)
+            .background(prominent ? Theme.primary : Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.tile))
         }
+        .buttonStyle(PressStyle())
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
     }
 }

@@ -18,13 +18,15 @@ struct TypographyTests {
     }
 
     @Test func numbersAreNeverSetInFredoka() {
-        for style in [FeedTextStyle.mainTime, .total, .chip] {
+        // Every style that can hold a time, duration, amount or count: the main time, totals,
+        // chips, chart times ("24h ago"), the age chip, and bar labels ("Feeding window 10:25").
+        for style in [FeedTextStyle.mainTime, .total, .chip, .small, .smallButton, .subheadline, .body, .label] {
             #expect(!style.usesFredoka)
         }
     }
 
     @Test func headingsAndButtonsUseFredoka() {
-        for style in [FeedTextStyle.title, .button, .tileValue, .dayHeading] {
+        for style in [FeedTextStyle.title, .button, .tileValue, .dayHeading, .greeting] {
             #expect(style.usesFredoka)
         }
     }

@@ -50,7 +50,6 @@ struct ContentView: View {
                 }
                 #endif
             }
-            .navigationTitle(model.baby.flatMap { PayloadCoder.decode(BabyPayload.self, from: $0.payload)?.name } ?? "Feeding")
             .navigationBarTitleDisplayMode(.inline)
         }
         .tint(Theme.accent)
@@ -72,8 +71,13 @@ struct ContentView: View {
                 DayTimelineView(me: me, babyID: baby.name)
             }
             .arrangementViewStyle(.split.axes(.horizontal))
+            // The page shows the greeting and the baby's name, so the bar shows only its
+            // buttons. "Home" is still the back button's name on the next screen.
+            .navigationTitle("Home")
+            .toolbar(removing: .title)
         } else {
             SetupView()
+                .navigationTitle("Feeding")
         }
     }
 }

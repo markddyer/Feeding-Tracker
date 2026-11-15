@@ -15,22 +15,150 @@ struct Tile<Content: View>: View {
     var label: String?
     var tint: Color = Theme.surface
     var radius: CGFloat = Radius.tile
+    /// A small extra on the label's line, at the far end: a chart key, an avatar.
+    var accessory: AnyView?
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
-            if let label {
-                Text(label)
-                    .feedText(.label)
-                    .foregroundStyle(Theme.textMuted)
-                    .accessibilityAddTraits(.isHeader)
+            if label != nil || accessory != nil {
+                HStack(alignment: .center, spacing: 8) {
+                    if let label {
+                        Text(label)
+                            .feedText(.label)
+                            .foregroundStyle(Theme.textMuted)
+                            .accessibilityAddTraits(.isHeader)
+                    }
+                    Spacer(minLength: 0)
+                    accessory
+                }
             }
             content
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(tint, in: RoundedRectangle(cornerRadius: radius))
+    }
+}
+
+/// Tiles side by side, sharing the width by the given shares and all as tall as the tallest
+/// (Next side and Last feed: 1 to 1.35). At the accessibility text sizes they stack instead.
+struct TileRow: Layout {
+    var shares: [CGFloat]
+    var spacing: CGFloat = 10
+
+    private func widths(_ total: CGFloat, count: Int) -> [CGFloat] {
+        let used = Array(shares.prefix(count)) + Array(repeating: 1, count: max(0, count - shares.count))
+        let sum = used.reduce(0, +)
+        let room = max(0, total - spacing * CGFloat(count - 1))
+        return used.map { room * $0 / sum }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let total = proposal.width ?? 350
+        let height = zip(subviews, widths(total, count: subviews.count))
+            .map { $0.sizeThatFits(ProposedViewSize(width: $1, height: nil)).height }
+            .max() ?? 0
+        return CGSize(width: total, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var x = bounds.minX
+        for (subview, width) in zip(subviews, widths(bounds.width, count: subviews.count)) {
+            subview.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width + spacing
+        }
+    }
+}
+
+/// Chips (or any small pieces) in a line, wrapping onto the next line when the line is full.
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    private func rows(_ maxWidth: CGFloat, _ subviews: Subviews) -> [[(index: Int, size: CGSize)]] {
+        var rows: [[(index: Int, size: CGSize)]] = [[]]
+        var x: CGFloat = 0
+        for (index, subview) in subviews.enumerated() {
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            if x > 0, x + size.width > maxWidth {
+                rows.append([])
+                x = 0
+            }
+            rows[rows.count - 1].append((index, size))
+            x += size.width + spacing
+        }
+        return rows
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? .infinity
+        let rows = rows(maxWidth, subviews)
+        let width = rows.map { row in row.map(\.size.width).reduce(0, +) + spacing * CGFloat(max(0, row.count - 1)) }.max() ?? 0
+        let height = rows.map { $0.map(\.size.height).max() ?? 0 }.reduce(0, +) + spacing * CGFloat(max(0, rows.count - 1))
+        return CGSize(width: min(width, maxWidth), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var y = bounds.minY
+        for row in rows(bounds.width, subviews) {
+            let height = row.map(\.size.height).max() ?? 0
+            var x = bounds.minX
+            for item in row {
+                subviews[item.index].place(at: CGPoint(x: x, y: y + (height - item.size.height) / 2),
+                                           proposal: ProposedViewSize(item.size))
+                x += item.size.width + spacing
+            }
+            y += height + spacing
+        }
+    }
+}
+
+/// A small round-ended button on a tile ("I'll take it"): the background colour, so it reads as
+/// a hole in the tile, with a 44 point tap area.
+struct PillButton: View {
+    let title: String
+    let action: () -> Void
+    @State private var taps = 0
+
+    init(_ title: String, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+    }
+
+    var body: some View {
+        Button {
+            taps += 1
+            action()
+        } label: {
+            Text(title)
+                .feedText(.chip)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Theme.background, in: Capsule())
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressStyle())
+        .foregroundStyle(Theme.text)
+        .sensoryFeedback(.impact(weight: .light), trigger: taps)
+    }
+}
+
+/// The pressed feel from `DESIGN.md`: a quick shrink to 97% by day. At night, and with Reduce
+/// Motion, nothing moves (the button's haptic does the job); it dims a little instead.
+struct PressStyle: ButtonStyle {
+    @Environment(\.look) private var look
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        let still = look == .night || reduceMotion
+        configuration.label
+            .scaleEffect(configuration.isPressed && !still ? 0.97 : 1)
+            .opacity(isEnabled ? (configuration.isPressed && still ? 0.8 : 1) : 0.4)
+            .animation(.easeOut(duration: 0.08), value: configuration.isPressed)
     }
 }
 
@@ -55,9 +183,12 @@ struct Chip: View {
             if let mark {
                 FeedMarkView(mark)
             }
-            Text(text)
-                .feedText(.chip)
-                .lineLimit(1)
+            // A side with no time yet, or a bottle with no amount, shows its shape alone.
+            if !text.isEmpty {
+                Text(text)
+                    .feedText(.chip)
+                    .lineLimit(1)
+            }
         }
         .foregroundStyle(Theme.text)
         .padding(.horizontal, 8)
@@ -136,5 +267,20 @@ struct Avatar: View {
             .background(colour.fill, in: Circle())
             .accessibilityElement()
             .accessibilityLabel(name)
+    }
+}
+
+/// The same circle as `Avatar`, empty: a night nobody has taken yet, with no rota.
+struct EmptyAvatar: View {
+    @ScaledMetric private var size: CGFloat
+
+    init(size: CGFloat = 30) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: .body)
+    }
+
+    var body: some View {
+        Circle()
+            .strokeBorder(Theme.textMuted.opacity(0.5), style: StrokeStyle(lineWidth: 1.5, dash: [3, 3]))
+            .frame(width: size, height: size)
     }
 }
