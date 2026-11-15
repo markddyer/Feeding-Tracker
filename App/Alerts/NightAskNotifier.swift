@@ -45,7 +45,8 @@ final class NightAskNotifier {
             case .asked(let ask): ask.askedBy
             case .taken(_, let by), .declined(_, let by): by
             }
-            let text = HomeText.askNotification(item, name: names[other] ?? "The other parent")
+            let nobodyOn = data.householdState.onDuty(night: item.ask.night) == nil
+            let text = HomeText.askNotification(item, name: names[other] ?? "The other parent", nobodyOn: nobodyOn)
             let content = UNMutableNotificationContent()
             content.title = text.title
             content.body = text.body

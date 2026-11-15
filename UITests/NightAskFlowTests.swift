@@ -32,6 +32,20 @@ final class NightAskFlowTests: XCTestCase {
         XCTAssertFalse(waiting.exists)
     }
 
+    /// No rota yet: nobody is on and both phones alert, so the tile offers both buttons.
+    func testWithNoRotaYouCanAsk() {
+        let app = launch("noRota")
+        let ask = app.buttons["Ask Sam to take tonight"]
+        XCTAssertTrue(ask.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["I'll take tonight"].exists)
+        ask.tap()
+        let waiting = text(app, "You asked Sam to take tonight. Both phones alert until Sam says yes.")
+        XCTAssertTrue(waiting.waitForExistence(timeout: 3))
+        XCTAssertFalse(ask.exists)
+        app.buttons["Undo"].tap()
+        XCTAssertTrue(ask.waitForExistence(timeout: 3))
+    }
+
     func testNotTonightClosesTheCard() {
         let app = launch("fromOther")
         let card = text(app, "Sam asks you to take tonight")

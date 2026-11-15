@@ -685,17 +685,29 @@ struct NightsTile: View {
             } else {
                 NightsRow(nights: nights, tonight: facts.tonight, facts: facts)
             }
-            if onTonight != me {
-                lineAndButton(whoIsOn(onTonight, noRota: noRota), takeButton(noRota: noRota))
-            } else if facts.askStatus == nil, let other = facts.otherMember {
-                lineAndButton(whoIsOn(onTonight, noRota: noRota), askButton(other))
+            if onTonight == me {
+                if facts.askStatus == nil, let other = facts.otherMember {
+                    lineAndButton(whoIsOn(onTonight, noRota: noRota), askButton(other, nobodyOn: false))
+                } else {
+                    whoIsOn(onTonight, noRota: noRota)
+                        .frame(minHeight: 44, alignment: .leading)
+                }
+            } else if onTonight == nil, facts.askStatus == nil, let other = facts.otherMember {
+                // Nobody is on (both phones alert): take tonight, or ask the other parent to.
+                VStack(alignment: .leading, spacing: 4) {
+                    whoIsOn(onTonight, noRota: noRota)
+                    FlowLayout(spacing: 8) {
+                        takeButton(noRota: noRota)
+                        askButton(other, nobodyOn: true)
+                    }
+                }
             } else {
-                whoIsOn(onTonight, noRota: noRota)
-                    .frame(minHeight: 44, alignment: .leading)
+                lineAndButton(whoIsOn(onTonight, noRota: noRota), takeButton(noRota: noRota))
             }
             switch facts.askStatus {
             case .waiting:
-                askLine(HomeText.askWaiting(facts.otherMember.map { facts.name($0) } ?? "the other parent"))
+                askLine(HomeText.askWaiting(facts.otherMember.map { facts.name($0) } ?? "the other parent",
+                                            nobodyOn: onTonight == nil))
             case .declined(_, let by):
                 askLine(HomeText.askDeclined(facts.name(by).capitalizedFirst))
             default:
@@ -755,11 +767,11 @@ struct NightsTile: View {
         })
     }
 
-    /// "Ask Sam to take it". The asker stays on duty; Undo takes the ask back, even after it has
-    /// reached the other phone.
-    private func askButton(_ other: MemberID) -> some View {
+    /// "Ask Sam to take it". Nothing changes for alerts until the answer is yes; Undo takes the
+    /// ask back, even after it has reached the other phone.
+    private func askButton(_ other: MemberID, nobodyOn: Bool) -> some View {
         let name = facts.name(other)
-        return PillButton(HomeText.askButton(name)) {
+        return PillButton(HomeText.askButton(name, nobodyOn: nobodyOn)) {
             let night = facts.tonight
             guard AppModel.shared.store.change({ $0.askNight(night, by: me, now: Date()) }) else { return }
             onUndo(UndoAction(message: "You asked \(name)") {

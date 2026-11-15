@@ -137,7 +137,8 @@ extension HouseholdData {
             if let reply { return .declined(ask, by: reply.by) }
             return .waiting(ask)
         }
-        guard onDuty == ask.askedBy, !claimedSince, reply == nil else { return nil }
+        // With no rota and no claim, nobody is on (both phones alert), so the ask still stands.
+        guard onDuty == ask.askedBy || onDuty == nil, !claimedSince, reply == nil else { return nil }
         return .askedOfMe(ask)
     }
 
@@ -157,11 +158,14 @@ extension HouseholdData {
 
     // MARK: Changing
 
-    /// "Ask Sam to take it". Only the parent on duty that night can ask, and only once there is a
-    /// rota or a claim. Changes nothing about who alerts. Returns false when it can't ask.
+    /// "Ask Sam to take it". The parent on duty that night can ask. So can either parent when
+    /// nobody is on (no rota and no claim: both phones alert), which is when asking helps most
+    /// (the user's choice, 15 Nov 2026). Changes nothing about who alerts. Returns false when it
+    /// can't ask.
     @discardableResult
     public mutating func askNight(_ night: PlainDate, by member: MemberID, now: Date) -> Bool {
-        guard householdState.onDuty(night: night) == member, nightAskStatus(night: night, me: member) == nil
+        let onDuty = householdState.onDuty(night: night)
+        guard onDuty == member || onDuty == nil, nightAskStatus(night: night, me: member) == nil
         else { return false }
         putSetting(NightAsk(night: night, askedBy: member, askedAt: now), key: SettingKey.ask(night), now: now)
         return true

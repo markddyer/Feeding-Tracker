@@ -46,9 +46,45 @@ struct NightAskTests {
         #expect(data.nightAsk(for: night) == nil)
     }
 
-    @Test func noAskWithoutARota() {
+    // MARK: No rota yet: nobody is on and both phones alert (the user's choice, 15 Nov 2026:
+    // asking works then too).
+
+    @Test func withNoRotaEitherParentCanAsk() throws {
         var data = HouseholdData()
         let asked = data.askNight(night, by: parentA, now: evening)
+        #expect(asked)
+        let ask = try #require(data.nightAsk(for: night))
+        #expect(data.householdState.onDuty(night: night) == nil)
+        #expect(data.nightAskStatus(night: night, me: parentB) == .askedOfMe(ask))
+        #expect(data.nightAskStatus(night: night, me: parentA) == .waiting(ask))
+        #expect(data.nightAskNews(me: parentB, now: evening) == [.asked(ask)])
+    }
+
+    @Test func withNoRotaIllTakeItMakesTheOtherParentTheNightPhone() throws {
+        var data = HouseholdData()
+        data.askNight(night, by: parentA, now: evening)
+        let ask = try #require(data.nightAsk(for: night))
+        data.claimNight(night, by: parentB, now: evening.addingTimeInterval(60))
+        #expect(data.householdState.roster(for: parentA).onDuty(night: night) == parentB)
+        #expect(data.nightAskStatus(night: night, me: parentA) == .taken(ask, by: parentB))
+        #expect(data.nightAskStatus(night: night, me: parentB) == nil)
+    }
+
+    @Test func withNoRotaNotTonightChangesNothing() throws {
+        var data = HouseholdData()
+        data.askNight(night, by: parentA, now: evening)
+        let ask = try #require(data.nightAsk(for: night))
+        data.declineAsk(night, by: parentB, now: evening.addingTimeInterval(60))
+        // Both phones still alert: each counts itself on duty.
+        #expect(data.householdState.roster(for: parentA).onDuty(night: night) == parentA)
+        #expect(data.householdState.roster(for: parentB).onDuty(night: night) == parentB)
+        #expect(data.nightAskStatus(night: night, me: parentA) == .declined(ask, by: parentB))
+    }
+
+    @Test func withNoRotaNoAskOnceTheOtherParentTookTonight() {
+        var data = HouseholdData()
+        data.claimNight(night, by: parentB, now: evening)
+        let asked = data.askNight(night, by: parentA, now: evening.addingTimeInterval(60))
         #expect(!asked)
     }
 

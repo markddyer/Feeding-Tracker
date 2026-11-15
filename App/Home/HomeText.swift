@@ -69,14 +69,18 @@ enum HomeText {
         "\(name) asks you to take tonight"
     }
 
-    /// The button in the Nights tile, for the parent on duty: "Ask Sam to take it".
-    static func askButton(_ name: String) -> String {
-        "Ask \(name) to take it"
+    /// The button in the Nights tile: "Ask Sam to take it" after "You're on tonight". When nobody
+    /// is on (no rota yet: both phones alert) there is no line before it, so it says which night.
+    static func askButton(_ name: String, nobodyOn: Bool = false) -> String {
+        nobodyOn ? "Ask \(name) to take tonight" : "Ask \(name) to take it"
     }
 
-    /// The asker's line while there is no answer. A request, not a hand-off: they stay on.
-    static func askWaiting(_ name: String) -> String {
-        "You asked \(name) to take tonight. You stay on until \(name) says yes."
+    /// The asker's line while there is no answer. A request, not a hand-off: nothing changes
+    /// until the answer is yes.
+    static func askWaiting(_ name: String, nobodyOn: Bool = false) -> String {
+        nobodyOn
+            ? "You asked \(name) to take tonight. Both phones alert until \(name) says yes."
+            : "You asked \(name) to take tonight. You stay on until \(name) says yes."
     }
 
     static func askDeclined(_ name: String) -> String {
@@ -84,11 +88,11 @@ enum HomeText {
     }
 
     /// An ordinary notification about an ask: the title and the body.
-    static func askNotification(_ news: NightAskNews, name: String) -> (title: String, body: String) {
+    static func askNotification(_ news: NightAskNews, name: String, nobodyOn: Bool = false) -> (title: String, body: String) {
         switch news {
         case .asked: ("Nights", "\(name) asks you to take tonight.")
         case .taken: ("Nights", "\(name) is taking tonight.")
-        case .declined: ("Nights", "\(name) said not tonight. You're still on tonight.")
+        case .declined: ("Nights", "\(name) said not tonight. " + (nobodyOn ? "Both phones alert tonight." : "You're still on tonight."))
         }
     }
 

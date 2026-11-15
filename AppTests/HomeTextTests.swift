@@ -82,11 +82,14 @@ struct NightAskTextTests {
     @Test func theCardAndTheButton() {
         #expect(HomeText.askedOfMe(by: "Alex") == "Alex asks you to take tonight")
         #expect(HomeText.askButton("Sam") == "Ask Sam to take it")
+        // No rota yet: no "on tonight" line before the button, so it says which night.
+        #expect(HomeText.askButton("Sam", nobodyOn: true) == "Ask Sam to take tonight")
     }
 
-    /// A request, not a hand-off: the asker's line says they are still on.
-    @Test func theAskerKnowsTheyAreStillOn() {
+    /// A request, not a hand-off: the asker's line says nothing has changed yet.
+    @Test func theAskerKnowsNothingChangedYet() {
         #expect(HomeText.askWaiting("Sam") == "You asked Sam to take tonight. You stay on until Sam says yes.")
+        #expect(HomeText.askWaiting("Sam", nobodyOn: true) == "You asked Sam to take tonight. Both phones alert until Sam says yes.")
         #expect(HomeText.askDeclined("Sam") == "Sam said not tonight.")
     }
 
@@ -94,13 +97,21 @@ struct NightAskTextTests {
         #expect(HomeText.askNotification(.asked(ask), name: "Alex").body == "Alex asks you to take tonight.")
         #expect(HomeText.askNotification(.taken(ask, by: "b"), name: "Sam").body == "Sam is taking tonight.")
         #expect(HomeText.askNotification(.declined(ask, by: "b"), name: "Sam").body == "Sam said not tonight. You're still on tonight.")
+        #expect(HomeText.askNotification(.declined(ask, by: "b"), name: "Sam", nobodyOn: true).body
+                == "Sam said not tonight. Both phones alert tonight.")
     }
 
     @Test func noWordSoundsLikeAVerdict() {
         let news: [NightAskNews] = [.asked(ask), .taken(ask, by: "b"), .declined(ask, by: "b")]
-        let words = [HomeText.askedOfMe(by: "Alex"), HomeText.askButton("Sam"), HomeText.askWaiting("Sam"),
+        let words = [HomeText.askedOfMe(by: "Alex"), HomeText.askButton("Sam"), HomeText.askButton("Sam", nobodyOn: true),
+                     HomeText.askWaiting("Sam"), HomeText.askWaiting("Sam", nobodyOn: true),
                      HomeText.askDeclined("Sam"), "I'll take it", "Not tonight"]
-            + news.flatMap { [HomeText.askNotification($0, name: "Sam").title, HomeText.askNotification($0, name: "Sam").body] }
+            + news.flatMap { item in
+                [false, true].flatMap { nobodyOn in
+                    let text = HomeText.askNotification(item, name: "Sam", nobodyOn: nobodyOn)
+                    return [text.title, text.body]
+                }
+            }
         for word in words {
             let plain = word.lowercased().filter { $0.isLetter || $0 == " " || $0 == "'" }
             for forbidden in AlertText.forbiddenWords {
