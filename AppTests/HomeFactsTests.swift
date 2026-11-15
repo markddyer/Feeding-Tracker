@@ -67,4 +67,18 @@ struct HomeFactsTests {
         #expect(home.name(parentA) == "you")
         #expect(home.otherName == "B")
     }
+
+    /// Both parents tap Start feed 2 seconds apart, before the phones sync: Home shows the first
+    /// feed as the running one and counts one feed (the user's choice, 15 Nov 2026).
+    @Test func aFeedLoggedOnBothPhonesShowsOnce() {
+        var data = HouseholdData()
+        let first = data.startFeed(babyID: "baby-1", side: .left, by: parentA, timeZoneID: "Europe/London", now: start)
+        data.startFeed(babyID: "baby-1", side: .right, by: parentB, timeZoneID: "Europe/London", now: start.addingTimeInterval(2))
+        for me in [parentA, parentB] {
+            let home = facts(data, me: me, minutesAfterStart: 5)
+            #expect(home.feedInProgress?.id == first)
+            #expect(home.totals.feeds == 1)
+            #expect(home.chart.count == 1)
+        }
+    }
 }

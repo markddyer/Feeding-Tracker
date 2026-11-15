@@ -7,6 +7,7 @@ import Foundation
 /// Launch with `-sampleData YES`. Add `-sampleFeedInProgress` for a feed: `YES` (breast, running),
 /// `bottle` (a formula bottle running), `other` (the other parent's feed running) or
 /// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
+/// Add `-sampleDuplicate YES` for the last feed logged on both phones.
 enum SampleData {
     @MainActor
     static func loadIfAsked(into store: HouseholdStore) {
@@ -47,6 +48,10 @@ enum SampleData {
             feed(hoursAgo: 1 + 40.0 / 60, by: other,
                  FeedDetails(breast: [BreastSegment(side: .left, durationSeconds: 720), BreastSegment(side: .right, durationSeconds: 480)],
                              bottles: [Bottle(milk: .formula, ml: 30)]))
+            if defaults.bool(forKey: "sampleDuplicate") {
+                // This phone logged the last feed too, 2 minutes after the other phone did.
+                feed(hoursAgo: 1 + 38.0 / 60, by: me, FeedDetails(breast: [BreastSegment(side: .left, durationSeconds: 660)]), minutes: 20)
+            }
             let pumpStart = now.addingTimeInterval(-3 * 3600)
             data.add(kind: .pump, babyID: "sample-baby", startedAt: pumpStart, endedAt: pumpStart.addingTimeInterval(20 * 60),
                      payload: EventPayload(pump: PumpDetails(side: .both, leftML: 50, rightML: 40)), by: other, timeZoneID: zone, now: pumpStart)

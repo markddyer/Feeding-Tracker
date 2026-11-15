@@ -150,7 +150,7 @@ struct DevScreen: View {
         case "pumping":
             EventEditor(mode: .newPump, me: me, babyID: babyID)
         case "editLastFeed":
-            let last = AppModel.shared.store.data.snapshots
+            let last = AppModel.shared.store.data.visibleSnapshots(babyID: babyID)
                 .filter { $0.event.isLiveFeed && $0.event.babyID == babyID }
                 .max { $0.event.startedAt < $1.event.startedAt }
             EventEditor(mode: last.map { .edit(id: $0.id) } ?? .newFeed, me: me, babyID: babyID)

@@ -68,6 +68,9 @@ struct EventEditor: View {
                     }
                     bottlesSection
                 }
+                if case .edit(let id) = mode, let copy = copy(of: id) {
+                    loggedTwiceSection(id: id, copy: copy)
+                }
                 Section {
                     TextField("Optional", text: Binding {
                         draft.payload?.note ?? ""
@@ -140,6 +143,36 @@ struct EventEditor: View {
             header("Time")
         } footer: {
             if let problem { Text(problem).feedText(.subheadline).foregroundStyle(Theme.notice) }
+        }
+        .listRowBackground(Theme.surface)
+    }
+
+    /// The other phone's copy of this feed, when both phones logged it and the screens show it
+    /// once (the user's choice, 15 Nov 2026).
+    private func copy(of id: String) -> EventSnapshot? {
+        let data = AppModel.shared.store.data
+        return data.duplicatePairs(babyID: babyID).first { $0.kept == id }.flatMap { data.events[$0.duplicate]?.snapshot }
+    }
+
+    /// "Logged on both phones": the copy's details, and "They were two feeds" to show both again.
+    private func loggedTwiceSection(id: String, copy: EventSnapshot) -> some View {
+        let zone = AppModel.shared.store.data.householdSettings.timeZone
+        let who = RowPerson(copy.event.loggedBy).spoken
+        let time = copy.event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone))
+        return Section {
+            Text("\(who.capitalizedFirst) also logged it, at \(time).")
+                .feedText(.subheadline)
+            FeedChips(snapshot: copy, detailed: true)
+            Button("They were two feeds") {
+                AppModel.shared.store.change { $0.markDistinct(id, copy.id, by: me, now: Date()) }
+            }
+            .feedText(.smallButton)
+            .tint(Theme.text)
+        } header: {
+            header("Logged on both phones")
+        } footer: {
+            Text("It shows once in History and the totals. Alerts are not affected.")
+                .foregroundStyle(Theme.textMuted)
         }
         .listRowBackground(Theme.surface)
     }

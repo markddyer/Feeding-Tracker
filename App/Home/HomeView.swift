@@ -106,6 +106,9 @@ struct HomeFacts {
     let lastFeedStart: Date?
     let feedInProgress: EventSnapshot?
     let nextSide: BreastSide?
+    /// Every event the screens show: a feed logged on both phones shows once (the first one
+    /// logged). Alerts read every event instead (`reconcile`), so a merge never moves an alert.
+    let visible: [EventSnapshot]
 
     init(data: HouseholdData, babyID: String, baby: BabyPayload? = nil, me: MemberID, names: [MemberID: String],
          colours: [MemberID: ParentColour] = [:], now: Date) {
@@ -119,7 +122,8 @@ struct HomeFacts {
         settings = data.householdSettings
         lastFeedStart = data.allEvents.latestFeedStart(babyID: babyID, now: now)
         feedInProgress = data.feedInProgress(babyID: babyID)
-        nextSide = suggestedNextSide(data.snapshots, babyID: babyID, now: now)
+        visible = data.visibleSnapshots(babyID: babyID)
+        nextSide = suggestedNextSide(visible, babyID: babyID, now: now)
     }
 
     func clock(_ date: Date) -> String {
@@ -150,7 +154,7 @@ struct HomeFacts {
     /// hours and it has no sides or bottle amounts yet, so this phone can offer to add them. (A
     /// bottle-only parent's feed already has its bottle from the start, without the amount.)
     var feedFinishedForMe: (feed: EventSnapshot, by: MemberID)? {
-        let feeds = data.snapshots.filter { $0.event.isLiveFeed && $0.event.babyID == babyID }
+        let feeds = visible.filter { $0.event.isLiveFeed && $0.event.babyID == babyID }
         guard let last = feeds.max(by: { $0.event.startedAt < $1.event.startedAt }),
               last.event.loggedBy == me,
               let endedAt = last.event.endedAt, now.timeIntervalSince(endedAt) < 2 * 3600,
@@ -173,7 +177,7 @@ struct HomeFacts {
 
     /// The latest feed that has finished.
     var lastFinishedFeed: EventSnapshot? {
-        data.snapshots
+        visible
             .filter { $0.event.isLiveFeed && $0.event.babyID == babyID && $0.event.endedAt != nil }
             .max { $0.event.startedAt < $1.event.startedAt }
     }
@@ -199,11 +203,11 @@ struct HomeFacts {
 
     /// The totals under the chart: the same stretch as the chart.
     var totals: FeedSummary {
-        summarise(data.snapshots, babyID: babyID, from: now.addingTimeInterval(-24 * 3600), to: now)
+        summarise(visible, babyID: babyID, from: now.addingTimeInterval(-24 * 3600), to: now)
     }
 
     var chart: [DayChartFeed] {
-        dayChart(data.snapshots, babyID: babyID, now: now)
+        dayChart(visible, babyID: babyID, now: now)
     }
 
     /// The night that is on now, or the one coming tonight.

@@ -35,6 +35,20 @@ final class AppModel {
         store = HouseholdStore()
         sync = HouseholdSync(store: store)
         reconciler = Reconciler(store: store, sync: sync, defaults: UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard)
+        // After any change, from this phone or the other: if both parents tapped Start feed at
+        // once, this phone's copy (hidden on the screens) finishes when the first feed does.
+        let reconcile = store.onDataChange
+        store.onDataChange = { [weak self] in
+            self?.finishStrandedDuplicates()
+            reconcile?()
+        }
+    }
+
+    /// Ends this parent's hidden copies of a feed that has finished. Only this parent's own
+    /// records, so the two phones never edit the same one.
+    private func finishStrandedDuplicates() {
+        guard let me, !store.data.strandedDuplicates(by: me).isEmpty else { return }
+        store.change { $0.finishStrandedDuplicates(by: me, now: Date()) }
     }
 
     /// This parent: their iCloud user record name. The simulator has no iCloud, so Feeding Dev

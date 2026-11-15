@@ -13,8 +13,14 @@ struct HistoryView: View {
     var body: some View {
         let data = model.store.data
         let zone = data.householdSettings.timeZone
+        // A feed logged on both phones shows once: the copy is left out, and the feed logged
+        // first says so (the user's choice, 15 Nov 2026).
+        let pairs = data.duplicatePairs(babyID: model.baby?.name ?? "")
+        let copyOf = Dictionary(pairs.map { ($0.kept, $0.duplicate) }, uniquingKeysWith: { first, _ in first })
+        let hidden = Set(pairs.map(\.duplicate))
         let events = data.events.values
             .filter { ($0.event.kind == .feed || $0.event.kind == .pump) && $0.event.deletedAt == nil }
+            .filter { !hidden.contains($0.event.id) }
             .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
         let days = Dictionary(grouping: events) { PlainDate($0.event.startedAt, in: zone) }
         let today = PlainDate(Date(), in: zone)
@@ -36,7 +42,7 @@ struct HistoryView: View {
                     .padding(.top, 8)
                     .historyRow()
                 ForEach(days[day] ?? [], id: \.event.id) { stored in
-                    row(stored, zone: zone)
+                    row(stored, zone: zone, copy: copyOf[stored.event.id])
                         .historyRow()
                 }
             }
@@ -56,14 +62,23 @@ struct HistoryView: View {
         }
     }
 
-    private func row(_ stored: StoredEvent, zone: TimeZone) -> some View {
+    private func row(_ stored: StoredEvent, zone: TimeZone, copy: String?) -> some View {
         let snapshot = stored.snapshot
         let event = snapshot.event
         return Button {
             // Details from a newer app version can't be edited here.
             if snapshot.payload != nil { editing = .edit(id: event.id) }
         } label: {
-            HistoryRow(snapshot, zone: zone)
+            HistoryRow(snapshot, zone: zone, loggedTwice: copy != nil)
+        }
+        // Undo a merge: both feeds show again, on both phones.
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            if let copy, let me = model.me {
+                Button("Two feeds", systemImage: "arrow.triangle.branch") {
+                    model.store.change { $0.markDistinct(event.id, copy, by: me, now: Date()) }
+                }
+                .tint(Theme.primary)
+            }
         }
         .buttonStyle(PressStyle())
         .accessibilityHint(snapshot.payload == nil ? "" : "Opens it to change. Swipe left to delete.")

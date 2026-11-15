@@ -101,10 +101,13 @@ public struct HouseholdData: Hashable, Sendable, Codable {
 
     public var allEvents: [Event] { events.values.map(\.event) }
 
-    /// The newest feed for `babyID` that has started and not finished, if any.
+    /// The newest feed for `babyID` that has started and not finished, if any. A copy of a feed
+    /// logged on both phones (`hiddenDuplicates`) is left out, so when both parents tap Start feed
+    /// at once, both phones show the feed logged first.
     public func feedInProgress(babyID: String) -> EventSnapshot? {
-        events.values.lazy.map(\.event)
-            .filter { $0.isLiveFeed && $0.babyID == babyID && $0.endedAt == nil }
+        let hidden = hiddenDuplicates(babyID: babyID)
+        return events.values.lazy.map(\.event)
+            .filter { $0.isLiveFeed && $0.babyID == babyID && $0.endedAt == nil && !hidden.contains($0.id) }
             .max { ($0.startedAt, $0.id) < ($1.startedAt, $1.id) }
             .map { EventSnapshot(event: $0) }
     }
@@ -374,5 +377,93 @@ extension HouseholdData {
         updated.modifiedAt = now
         put(updated)
         return true
+    }
+}
+
+// MARK: - One feed logged on both phones
+
+/// Two feeds the parents said are two real feeds, not one feed logged on both phones ("They were
+/// two feeds"). A Setting record, so both phones see it.
+public struct DistinctFeeds: Hashable, Sendable, Codable {
+    /// The two event IDs, sorted.
+    public var ids: [String]
+    public var by: MemberID
+    public var at: Date
+
+    public init(_ first: String, _ second: String, by: MemberID, at: Date) {
+        ids = [first, second].sorted()
+        self.by = by
+        self.at = at
+    }
+}
+
+extension SettingKey {
+    /// "distinct-<id>-<id>", the two IDs sorted, so both phones name the record the same.
+    public static func distinct(_ first: String, _ second: String) -> String {
+        let ids = [first, second].sorted()
+        return "distinct-\(ids[0])-\(ids[1])"
+    }
+}
+
+extension HouseholdData {
+    /// Every pair the parents marked as two feeds.
+    public var distinctFeedPairs: Set<Set<String>> {
+        Set(plainRecords(of: .setting).filter { $0.name.hasPrefix("distinct-") }.compactMap {
+            PayloadCoder.decode(SettingPayload<DistinctFeeds>.self, from: $0.payload).map { Set($0.value.ids) }
+        })
+    }
+
+    /// Feeds of `babyID` that look like one feed logged on both phones: starting within 5 minutes
+    /// of each other, logged by different parents, and not marked as two feeds.
+    public func duplicatePairs(babyID: String) -> [DuplicatePair] {
+        duplicateFeeds(allEvents.filter { $0.babyID == babyID }, confirmedDistinct: distinctFeedPairs)
+    }
+
+    /// The copies the screens leave out: in each pair, the feed logged second. Only the screens
+    /// use this: `reconcile` reads every feed, so alerts never depend on a merge.
+    public func hiddenDuplicates(babyID: String) -> Set<String> {
+        Set(duplicatePairs(babyID: babyID).map(\.duplicate))
+    }
+
+    /// What the screens show for `babyID`: every event except the hidden copies.
+    public func visibleSnapshots(babyID: String) -> [EventSnapshot] {
+        let hidden = hiddenDuplicates(babyID: babyID)
+        return snapshots.filter { !hidden.contains($0.id) }
+    }
+
+    /// "They were two feeds": both show again, on both phones.
+    public mutating func markDistinct(_ first: String, _ second: String, by member: MemberID, now: Date) {
+        putSetting(DistinctFeeds(first, second, by: member, at: now), key: SettingKey.distinct(first, second), now: now)
+    }
+
+    /// This parent's own hidden copies still running after the feed they copy has finished, with
+    /// the time to end each: the kept feed's end, or the copy's start if that is later.
+    public func strandedDuplicates(by member: MemberID) -> [(id: String, end: Date)] {
+        let babies = Set(allEvents.map(\.babyID))
+        return babies.flatMap { baby in
+            duplicatePairs(babyID: baby).compactMap { pair -> (id: String, end: Date)? in
+                guard let copy = events[pair.duplicate]?.event, copy.loggedBy == member, copy.endedAt == nil,
+                      copy.isLiveFeed, let keptEnd = events[pair.kept]?.event.endedAt else { return nil }
+                return (copy.id, max(keptEnd, copy.startedAt))
+            }
+        }
+    }
+
+    /// Ends this parent's stranded copies (see `strandedDuplicates`), so a copy put aside when both
+    /// parents tapped Start feed finishes with the feed it copies. Changes only this parent's own
+    /// records, so the two phones never fight over one. Returns false when there was nothing to do.
+    @discardableResult
+    public mutating func finishStrandedDuplicates(by member: MemberID, now: Date) -> Bool {
+        let stranded = strandedDuplicates(by: member)
+        for (id, end) in stranded {
+            edit(id, by: member, now: now) { snapshot in
+                if var feed = snapshot.payload?.feed {
+                    Self.closeOpenSegment(&feed, now: end)
+                    snapshot.payload?.feed = feed
+                }
+                snapshot.event.endedAt = end
+            }
+        }
+        return !stranded.isEmpty
     }
 }

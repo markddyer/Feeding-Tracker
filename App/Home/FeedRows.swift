@@ -44,6 +44,8 @@ struct HistoryRow: View {
     let time: String
     let loggedBy: RowPerson
     var finishedBy: RowPerson?
+    /// The other phone logged this feed too, and the screens show it once.
+    var loggedTwice = false
 
     var body: some View {
         let tint = Self.tint(snapshot)
@@ -52,8 +54,15 @@ struct HistoryRow: View {
                 .feedText(.smallButton)
                 .fixedSize()
                 .frame(minWidth: 50, alignment: .leading)
-            FeedChips(snapshot: snapshot, detailed: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 5) {
+                FeedChips(snapshot: snapshot, detailed: true)
+                if loggedTwice {
+                    Label("Logged on both phones", systemImage: "arrow.triangle.merge")
+                        .feedText(.small)
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: -6) {
                 Avatar(name: loggedBy.name, colour: loggedBy.colour, size: 26)
                 if let finishedBy {
@@ -86,7 +95,8 @@ struct HistoryRow: View {
         let chips = HomeText.chips(snapshot, detailed: true).map(\.spoken).joined(separator: ", ")
         let running = snapshot.event.kind == .feed && snapshot.event.endedAt == nil ? ", running" : ""
         let finished = finishedBy.map { ", finished by \($0.spoken)" } ?? ""
-        return "\(time): \(chips)\(running). Logged by \(loggedBy.spoken)\(finished)."
+        let twice = loggedTwice ? " Logged on both phones, shown once." : ""
+        return "\(time): \(chips)\(running). Logged by \(loggedBy.spoken)\(finished).\(twice)"
     }
 }
 
@@ -94,13 +104,14 @@ extension HistoryRow {
     /// A row for a feed or pumping session, with the household's clock and both phones' names
     /// and colours. History and the Duo's second column both use it.
     @MainActor
-    init(_ snapshot: EventSnapshot, zone: TimeZone) {
+    init(_ snapshot: EventSnapshot, zone: TimeZone, loggedTwice: Bool = false) {
         let event = snapshot.event
         let finisher = event.endedAt == nil ? nil : snapshot.payload?.stamp(.endedAt)?.by
         self.init(snapshot: snapshot,
                   time: event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
                   loggedBy: RowPerson(event.loggedBy),
-                  finishedBy: finisher.flatMap { $0 == event.loggedBy ? nil : RowPerson($0) })
+                  finishedBy: finisher.flatMap { $0 == event.loggedBy ? nil : RowPerson($0) },
+                  loggedTwice: loggedTwice)
     }
 }
 

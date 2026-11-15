@@ -20,7 +20,9 @@ struct DayColumn: View {
                                   names: model.memberNames, colours: model.memberColours, now: context.date)
             let zone = facts.settings.timeZone
             let since = context.date.addingTimeInterval(-24 * 3600)
-            let entries = facts.data.snapshots
+            let pairs = facts.data.duplicatePairs(babyID: babyID)
+            let kept = Set(pairs.map(\.kept))
+            let entries = facts.visible
                 .filter { $0.event.babyID == babyID && $0.event.deletedAt == nil && $0.event.startedAt >= since }
                 .filter { $0.event.kind == .feed || $0.event.kind == .pump }
                 .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
@@ -43,7 +45,7 @@ struct DayColumn: View {
                             // Details from a newer app version can't be edited here.
                             if entry.payload != nil { editing = .edit(id: entry.id) }
                         } label: {
-                            HistoryRow(entry, zone: zone)
+                            HistoryRow(entry, zone: zone, loggedTwice: kept.contains(entry.id))
                         }
                         .buttonStyle(PressStyle())
                     }
