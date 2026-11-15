@@ -67,14 +67,17 @@ enum HomeText {
         seconds < 60 ? "<1m" : "\(seconds / 60)m"
     }
 
-    /// One chip per side, bottle and pumping session, in the order they were logged.
-    static func chips(_ snapshot: EventSnapshot) -> [ChipFact] {
+    /// One chip per side, bottle and pumping session, in the order they were logged. `detailed`
+    /// (History) names each bottle's milk and the pumping ("Formula 30 ml", "Pumped 120 ml");
+    /// Home shows the amount only.
+    static func chips(_ snapshot: EventSnapshot, detailed: Bool = false) -> [ChipFact] {
         guard let payload = snapshot.payload else {
             return [ChipFact(mark: nil, text: "Feed", spoken: "Feed. Its details need a newer version of the app.")]
         }
-        var chips = (payload.feed?.breast ?? []).map(sideChip) + (payload.feed?.bottles ?? []).map(bottleChip)
+        var chips = (payload.feed?.breast ?? []).map(sideChip) + (payload.feed?.bottles ?? []).map { bottleChip($0, detailed: detailed) }
         if let pump = payload.pump {
-            chips.append(ChipFact(mark: .pump, text: "\(pump.totalML) ml", spoken: "Pumped \(pump.totalML) ml"))
+            chips.append(ChipFact(mark: .pump, text: detailed ? "Pumped \(pump.totalML) ml" : "\(pump.totalML) ml",
+                                  spoken: "Pumped \(pump.totalML) ml"))
         }
         if chips.isEmpty {
             chips.append(ChipFact(mark: nil, text: snapshot.event.kind == .pump ? "Pumping" : "Feed",
@@ -92,10 +95,26 @@ enum HomeText {
     }
 
     /// A bottle: its amount ("30 ml"), or its kind ("Formula") until the amount is known.
-    static func bottleChip(_ bottle: Bottle) -> ChipFact {
+    static func bottleChip(_ bottle: Bottle, detailed: Bool = false) -> ChipFact {
         let spokenKind = bottle.milk == .formula ? "Formula bottle" : "Expressed milk bottle"
-        guard let ml = bottle.ml else { return ChipFact(mark: .bottle, text: milkName(bottle.milk, short: true), spoken: spokenKind) }
-        return ChipFact(mark: .bottle, text: "\(ml) ml", spoken: "\(spokenKind), \(ml) ml")
+        let kind = milkName(bottle.milk, short: true)
+        guard let ml = bottle.ml else { return ChipFact(mark: .bottle, text: kind, spoken: spokenKind) }
+        return ChipFact(mark: .bottle, text: detailed ? "\(kind) \(ml) ml" : "\(ml) ml", spoken: "\(spokenKind), \(ml) ml")
+    }
+
+    /// A day heading in History: "Today", "Yesterday", or the date ("Thursday 12 November" in
+    /// British English), read on the household's calendar.
+    static func dayTitle(_ day: PlainDate, today: PlainDate, in timeZone: TimeZone, locale: Locale = .current) -> String {
+        if day == today { return "Today" }
+        if day == today.adding(days: -1) { return "Yesterday" }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        guard let noon = calendar.date(from: DateComponents(year: day.year, month: day.month, day: day.day, hour: 12)) else {
+            return day.description
+        }
+        var style = Date.FormatStyle(timeZone: timeZone).weekday(.wide).day().month(.wide)
+        style.locale = locale
+        return noon.formatted(style)
     }
 
     /// "Formula", "Expressed milk" ("Expressed" where room is short).

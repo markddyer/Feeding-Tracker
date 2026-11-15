@@ -290,18 +290,13 @@ struct FeedDetailsPanel: View {
 
     var body: some View {
         let choices = DetailChoices(feed.payload?.feed ?? FeedDetails(), bottleOnly: bottleOnly)
-        let chips = HomeText.chips(feed)
         VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 7) {
                 Text("This feed").feedText(.label).foregroundStyle(Theme.textMuted)
                 if let note {
                     Text(note).feedText(.subheadline).foregroundStyle(Theme.textMuted)
                 }
-                FlowLayout(spacing: 6) {
-                    ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
-                        Chip(chip.mark, chip.text, spoken: chip.spoken)
-                    }
-                }
+                FeedChips(snapshot: feed)
             }
             if !choices.sides.isEmpty || !choices.milks.isEmpty {
                 question(bottleOnly ? "Which bottle?" : "Add to this feed") {

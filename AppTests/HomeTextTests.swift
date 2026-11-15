@@ -1,5 +1,6 @@
 import FeedingCore
 import Foundation
+import SwiftUI
 import Testing
 @testable import FeedingDev
 
@@ -110,5 +111,55 @@ struct RunningFeedTests {
         #expect(RunningFeed(feed(FeedDetails()), bottleOnly: false).centre == nil)
         #expect(RunningFeed(feed(FeedDetails()), bottleOnly: true).isBottle)
         #expect(RunningFeed(feed(nil), bottleOnly: true).bottleKinds == nil)
+    }
+}
+
+/// The words on History (`05-visual-redesign.md`, "History").
+@Suite("History words")
+struct HistoryTextTests {
+    let london = TimeZone(identifier: "Europe/London")!
+    let today = PlainDate(year: 2026, month: 11, day: 15)!
+
+    @Test func dayHeadings() {
+        #expect(HomeText.dayTitle(today, today: today, in: london) == "Today")
+        #expect(HomeText.dayTitle(today.adding(days: -1), today: today, in: london) == "Yesterday")
+        #expect(HomeText.dayTitle(today.adding(days: -3), today: today, in: london, locale: Locale(identifier: "en_GB"))
+                == "Thursday 12 November")
+    }
+
+    @Test func aDayHeadingIsTheHouseholdsDate() {
+        // Far from London, noon on the day is still that day.
+        let kiritimati = TimeZone(identifier: "Pacific/Kiritimati")!
+        #expect(HomeText.dayTitle(today.adding(days: -3), today: today, in: kiritimati, locale: Locale(identifier: "en_GB"))
+                == "Thursday 12 November")
+    }
+
+    @Test func historyChipsNameTheMilkAndThePumping() {
+        let feed = EventSnapshot(
+            event: Event(id: "f", babyID: "b", kind: .feed, startedAt: Date(), timeZoneID: "Europe/London",
+                         loggedBy: "a", createdAt: Date(), modifiedAt: Date()),
+            payload: EventPayload(feed: FeedDetails(bottles: [Bottle(milk: .formula, ml: 30), Bottle(milk: .expressed)])))
+        #expect(HomeText.chips(feed, detailed: true).map(\.text) == ["Formula 30 ml", "Expressed"])
+        #expect(HomeText.chips(feed).map(\.text) == ["30 ml", "Expressed"])
+        let pump = EventSnapshot(
+            event: Event(id: "p", babyID: "b", kind: .pump, startedAt: Date(), timeZoneID: "Europe/London",
+                         loggedBy: "a", createdAt: Date(), modifiedAt: Date()),
+            payload: EventPayload(pump: PumpDetails(side: .both, leftML: 50, rightML: 40)))
+        #expect(HomeText.chips(pump, detailed: true).map(\.text) == ["Pumped 90 ml"])
+        #expect(HomeText.chips(pump).map(\.text) == ["90 ml"])
+    }
+
+    @Test func rowsAreTintedByKind() {
+        func row(_ kind: EventKind, _ payload: EventPayload?) -> Color {
+            HistoryRow.tint(EventSnapshot(
+                event: Event(id: "x", babyID: "b", kind: kind, startedAt: Date(), timeZoneID: "Europe/London",
+                             loggedBy: "a", createdAt: Date(), modifiedAt: Date()),
+                payload: payload))
+        }
+        #expect(row(.pump, EventPayload(pump: PumpDetails(side: .left))) == Theme.pumpTint)
+        #expect(row(.feed, EventPayload(feed: FeedDetails(breast: [BreastSegment(side: .left)], bottles: [Bottle(milk: .formula)])))
+                == Theme.breastTint)
+        #expect(row(.feed, EventPayload(feed: FeedDetails(bottles: [Bottle(milk: .formula)]))) == Theme.bottleTint)
+        #expect(row(.feed, nil) == Theme.surface)
     }
 }

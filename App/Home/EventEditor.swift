@@ -68,13 +68,16 @@ struct EventEditor: View {
                     }
                     bottlesSection
                 }
-                Section("Note") {
+                Section {
                     TextField("Optional", text: Binding {
                         draft.payload?.note ?? ""
                     } set: {
                         draft.payload?.note = $0.isEmpty ? nil : $0
                     }, axis: .vertical)
+                } header: {
+                    header("Note")
                 }
+                .listRowBackground(Theme.surface)
                 if case .edit = mode {
                     Section {
                         if draft.event.deletedAt == nil {
@@ -83,16 +86,23 @@ struct EventEditor: View {
                             Button("Bring back") { save { $0.event.deletedAt = nil } }
                         }
                     }
+                    .listRowBackground(Theme.surface)
                 }
             }
             .scrollContentBackground(.hidden)
+            .foregroundStyle(Theme.text)
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                // The title in Fredoka, like every screen title (DESIGN.md).
+                ToolbarItem(placement: .principal) {
+                    Text(title).feedText(.dayHeading).accessibilityAddTraits(.isHeader)
+                }
+                // The text colour, not coral: coral text on cream is hard to read.
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.tint(Theme.text) }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }.disabled(problem != nil)
+                    Button("Save") { save() }.disabled(problem != nil).tint(Theme.text)
                 }
             }
         }
@@ -126,13 +136,54 @@ struct EventEditor: View {
                     draft.event.endedAt = $0
                 }, in: draft.event.startedAt...)
             }
+        } header: {
+            header("Time")
         } footer: {
-            if let problem { Text(problem).foregroundStyle(Theme.warning) }
+            if let problem { Text(problem).feedText(.subheadline).foregroundStyle(Theme.notice) }
         }
+        .listRowBackground(Theme.surface)
+    }
+
+    /// A section's small upper-case label, as on the tiles.
+    private func header(_ title: String) -> some View {
+        Text(title).feedText(.label).foregroundStyle(Theme.textMuted)
+    }
+
+    /// A shape and a value on a row: "◐ Left · 12 min".
+    private func shapeRow(_ mark: FeedMark, _ name: String, _ value: String?, unset: String) -> some View {
+        HStack(spacing: 8) {
+            FeedMarkView(mark, size: 18, relativeTo: .body)
+            Text(name)
+            Spacer(minLength: 4)
+            Text(value ?? unset)
+                .foregroundStyle(value == nil ? Theme.textMuted : Theme.text)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(name), \(value ?? unset)")
+    }
+
+    /// "Add left", "Add formula": a shape and words on a small button in the background colour.
+    private func addButton(_ mark: FeedMark, _ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                FeedMarkView(mark, size: 16, relativeTo: .subheadline)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .feedText(.smallButton)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(Theme.background, in: RoundedRectangle(cornerRadius: Radius.smallButton))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.smallButton))
+        }
+        .buttonStyle(PressStyle())
+        .foregroundStyle(Theme.text)
     }
 
     private var breastSection: some View {
-        Section("Breast") {
+        Section {
             ForEach(Array((draft.payload?.feed?.breast ?? []).enumerated()), id: \.element.id) { index, segment in
                 Stepper(value: Binding {
                     (draft.payload?.feed?.breast[index].durationSeconds ?? 0) / 60
@@ -140,43 +191,46 @@ struct EventEditor: View {
                     draft.payload?.feed?.breast[index].durationSeconds = minutes == 0 ? nil : minutes * 60
                 }, in: 0...90) {
                     let minutes = (segment.durationSeconds ?? 0) / 60
-                    Text("\(segment.side == .left ? "Left" : "Right") · \(minutes == 0 ? "time not set" : "\(minutes) min")")
+                    shapeRow(.side(segment.side), segment.side == .left ? "Left" : "Right",
+                             minutes == 0 ? nil : "\(minutes) min", unset: "time not set")
                 }
             }
             .onDelete { draft.payload?.feed?.breast.remove(atOffsets: $0) }
-            HStack {
-                Button("+ Left") { draft.payload?.feed?.breast.append(BreastSegment(side: .left)) }
-                Spacer()
-                Button("+ Right") { draft.payload?.feed?.breast.append(BreastSegment(side: .right)) }
+            HStack(spacing: 8) {
+                addButton(.side(.left), "Add left") { draft.payload?.feed?.breast.append(BreastSegment(side: .left)) }
+                addButton(.side(.right), "Add right") { draft.payload?.feed?.breast.append(BreastSegment(side: .right)) }
             }
-            .buttonStyle(.borderless)
+        } header: {
+            header("Breast")
         }
+        .listRowBackground(Theme.surface)
     }
 
     private var bottlesSection: some View {
-        Section("Bottles") {
+        Section {
             ForEach(Array((draft.payload?.feed?.bottles ?? []).enumerated()), id: \.element.id) { index, bottle in
                 Stepper(value: Binding {
                     draft.payload?.feed?.bottles[index].ml ?? 0
                 } set: { ml in
                     draft.payload?.feed?.bottles[index].ml = ml == 0 ? nil : ml
                 }, in: 0...300, step: 10) {
-                    Text("\(bottle.milk == .formula ? "Formula" : "Expressed") · \(bottle.ml.map { "\($0) ml" } ?? "amount not set")")
+                    shapeRow(.bottle, HomeText.milkName(bottle.milk, short: true), bottle.ml.map { "\($0) ml" }, unset: "amount not set")
                 }
             }
             .onDelete { draft.payload?.feed?.bottles.remove(atOffsets: $0) }
-            HStack {
-                Button("+ Expressed") { draft.payload?.feed?.bottles.append(Bottle(milk: .expressed)) }
-                Spacer()
-                Button("+ Formula") { draft.payload?.feed?.bottles.append(Bottle(milk: .formula)) }
+            HStack(spacing: 8) {
+                addButton(.bottle, "Add expressed") { draft.payload?.feed?.bottles.append(Bottle(milk: .expressed)) }
+                addButton(.bottle, "Add formula") { draft.payload?.feed?.bottles.append(Bottle(milk: .formula)) }
             }
-            .buttonStyle(.borderless)
+        } header: {
+            header("Bottles")
         }
+        .listRowBackground(Theme.surface)
     }
 
     private var pumpSection: some View {
         let side = draft.payload?.pump?.side ?? .both
-        return Section("Pumping") {
+        return Section {
             Picker("Side", selection: Binding {
                 side
             } set: { newSide in
@@ -191,7 +245,10 @@ struct EventEditor: View {
             .pickerStyle(.segmented)
             if side != .right { mlStepper("Left", \.leftML) }
             if side != .left { mlStepper("Right", \.rightML) }
+        } header: {
+            header("Pumping")
         }
+        .listRowBackground(Theme.surface)
     }
 
     private func mlStepper(_ label: String, _ keyPath: WritableKeyPath<PumpDetails, Int?>) -> some View {
@@ -201,7 +258,7 @@ struct EventEditor: View {
         } set: { ml in
             draft.payload?.pump?[keyPath: keyPath] = ml == 0 ? nil : ml
         }, in: 0...400, step: 10) {
-            Text("\(label) · \(value.map { "\($0) ml" } ?? "not set")")
+            shapeRow(.pump, label, value.map { "\($0) ml" }, unset: "not set")
         }
     }
 

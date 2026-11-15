@@ -11,6 +11,19 @@ struct ContentView: View {
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
 
     var body: some View {
+        #if FEEDING_DEV
+        if let screen = UserDefaults.standard.string(forKey: "openScreen"), let me = model.me, let baby = model.baby {
+            DevScreen(name: screen, me: me, babyID: baby.name)
+                .tint(Theme.accent)
+        } else {
+            main
+        }
+        #else
+        main
+        #endif
+    }
+
+    private var main: some View {
         NavigationStack {
             Group {
                 #if FEEDING_DEV
@@ -31,6 +44,7 @@ struct ContentView: View {
                         } label: {
                             Label("History", systemImage: "clock.arrow.circlepath")
                         }
+                        .tint(Theme.text)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         NavigationLink {
@@ -38,6 +52,7 @@ struct ContentView: View {
                         } label: {
                             Label("Settings", systemImage: "gearshape")
                         }
+                        .tint(Theme.text)
                     }
                 }
                 #if FEEDING_DEV
@@ -47,11 +62,14 @@ struct ContentView: View {
                     } label: {
                         Label("Tests", systemImage: "testtube.2")
                     }
+                    .tint(Theme.text)
                 }
                 #endif
             }
             .navigationBarTitleDisplayMode(.inline)
         }
+        // Coral for controls (switches, pickers); the top bar's buttons use the text colour
+        // as in the approved mockup, because coral text on cream is hard to read.
         .tint(Theme.accent)
         #if FEEDING_DEV
         .modifier(AlarmSpikeHooks())
@@ -95,6 +113,30 @@ struct AlarmSpikeHooks: ViewModifier {
                 AlarmSpikeStore.shared.recordAppActive()
                 Task { await AlarmSpikeStore.shared.collectDeliveredNotifications() }
             }
+    }
+}
+
+/// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
+/// `-openScreen history`, `earlierFeed`, `pumping` or `editLastFeed`.
+struct DevScreen: View {
+    let name: String
+    let me: MemberID
+    let babyID: String
+
+    var body: some View {
+        switch name {
+        case "history":
+            NavigationStack { HistoryView() }
+        case "pumping":
+            EventEditor(mode: .newPump, me: me, babyID: babyID)
+        case "editLastFeed":
+            let last = AppModel.shared.store.data.snapshots
+                .filter { $0.event.isLiveFeed && $0.event.babyID == babyID }
+                .max { $0.event.startedAt < $1.event.startedAt }
+            EventEditor(mode: last.map { .edit(id: $0.id) } ?? .newFeed, me: me, babyID: babyID)
+        default:
+            EventEditor(mode: .newFeed, me: me, babyID: babyID)
+        }
     }
 }
 

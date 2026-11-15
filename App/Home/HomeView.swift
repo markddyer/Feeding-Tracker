@@ -393,20 +393,7 @@ struct ThisFeedTile: View {
         let bottles = feed.payload?.feed?.bottles ?? []
         if !segments.isEmpty || !bottles.isEmpty {
             Tile(label: "This feed") {
-                FlowLayout(spacing: 6) {
-                    ForEach(segments) { segment in
-                        if segment.id == segments.last?.id, segment.durationSeconds == nil, let started = segment.startedAt {
-                            LiveChip(mark: .side(segment.side), since: started)
-                        } else {
-                            let chip = HomeText.sideChip(segment)
-                            Chip(chip.mark, chip.text, spoken: chip.spoken)
-                        }
-                    }
-                    ForEach(bottles) { bottle in
-                        let chip = HomeText.bottleChip(bottle)
-                        Chip(chip.mark, chip.text, spoken: chip.spoken)
-                    }
-                }
+                FeedChips(snapshot: feed)
             }
         }
     }
@@ -416,6 +403,8 @@ struct ThisFeedTile: View {
 struct LiveChip: View {
     let mark: FeedMark
     let since: Date
+    /// The kind's tint by default; the background colour on a row that already has the tint.
+    var background: Color?
 
     var body: some View {
         HStack(spacing: 5) {
@@ -428,7 +417,7 @@ struct LiveChip: View {
         .foregroundStyle(Theme.text)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(mark.tint, in: RoundedRectangle(cornerRadius: Radius.chip))
+        .background(background ?? mark.tint, in: RoundedRectangle(cornerRadius: Radius.chip))
         .accessibilityElement(children: .combine)
     }
 }
@@ -512,11 +501,7 @@ struct LastFeedTile: View {
         let chips = HomeText.chips(feed)
         Tile(label: "Last feed", tint: Theme.bottleTint,
              accessory: AnyView(Avatar(name: facts.displayName(who), colour: facts.colour(who), size: 20))) {
-            FlowLayout(spacing: 6) {
-                ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
-                    Chip(chip.mark, chip.text, spoken: chip.spoken)
-                }
-            }
+            FeedChips(snapshot: feed)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Last feed: \(chips.map(\.spoken).joined(separator: ", ")). Logged by \(facts.name(who)).")
