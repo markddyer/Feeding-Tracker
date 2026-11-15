@@ -81,4 +81,19 @@ struct HomeFactsTests {
             #expect(home.chart.count == 1)
         }
     }
+
+    /// Parent A asks Parent B to take tonight: the card is on B's Home, the waiting line on A's.
+    @Test func anAskShowsOnTheOtherParentsHome() throws {
+        var data = HouseholdData()
+        let tonight = data.householdSettings.tonight(at: start)
+        data.claimNight(tonight, by: parentA, now: start.addingTimeInterval(-60))
+        data.askNight(tonight, by: parentA, now: start)
+        let ask = try #require(data.nightAsk(for: tonight))
+        let homeA = facts(data, me: parentA, minutesAfterStart: 1)
+        let homeB = facts(data, me: parentB, minutesAfterStart: 1)
+        #expect(homeB.askStatus == .askedOfMe(ask))
+        #expect(homeA.askStatus == .waiting(ask))
+        #expect(homeA.otherMember == parentB)
+        #expect(homeB.otherMember == parentA)
+    }
 }

@@ -74,6 +74,42 @@ struct HomeTextTests {
     }
 }
 
+/// Asking the other parent to take a night (the user's choice of 15 Nov 2026).
+@Suite("Asking for a night: words")
+struct NightAskTextTests {
+    let ask = NightAsk(night: PlainDate(year: 2026, month: 11, day: 15)!, askedBy: "a", askedAt: Date(timeIntervalSince1970: 1_794_769_000))
+
+    @Test func theCardAndTheButton() {
+        #expect(HomeText.askedOfMe(by: "Alex") == "Alex asks you to take tonight")
+        #expect(HomeText.askButton("Sam") == "Ask Sam to take it")
+    }
+
+    /// A request, not a hand-off: the asker's line says they are still on.
+    @Test func theAskerKnowsTheyAreStillOn() {
+        #expect(HomeText.askWaiting("Sam") == "You asked Sam to take tonight. You stay on until Sam says yes.")
+        #expect(HomeText.askDeclined("Sam") == "Sam said not tonight.")
+    }
+
+    @Test func theNotifications() {
+        #expect(HomeText.askNotification(.asked(ask), name: "Alex").body == "Alex asks you to take tonight.")
+        #expect(HomeText.askNotification(.taken(ask, by: "b"), name: "Sam").body == "Sam is taking tonight.")
+        #expect(HomeText.askNotification(.declined(ask, by: "b"), name: "Sam").body == "Sam said not tonight. You're still on tonight.")
+    }
+
+    @Test func noWordSoundsLikeAVerdict() {
+        let news: [NightAskNews] = [.asked(ask), .taken(ask, by: "b"), .declined(ask, by: "b")]
+        let words = [HomeText.askedOfMe(by: "Alex"), HomeText.askButton("Sam"), HomeText.askWaiting("Sam"),
+                     HomeText.askDeclined("Sam"), "I'll take it", "Not tonight"]
+            + news.flatMap { [HomeText.askNotification($0, name: "Sam").title, HomeText.askNotification($0, name: "Sam").body] }
+        for word in words {
+            let plain = word.lowercased().filter { $0.isLetter || $0 == " " || $0 == "'" }
+            for forbidden in AlertText.forbiddenWords {
+                #expect(!plain.split(separator: " ").contains(Substring(forbidden)), "\(word)")
+            }
+        }
+    }
+}
+
 /// The hero's colour and middle shape while a feed runs (`05-visual-redesign.md`, "Home, a feed running").
 @Suite("A running feed")
 struct RunningFeedTests {

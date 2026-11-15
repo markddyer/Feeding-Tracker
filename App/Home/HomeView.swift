@@ -24,6 +24,10 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     SyncProblemBanner()
                     GreetingHeader(facts: facts)
+                    // Above the ring: it waits for an answer. It goes once answered.
+                    if case .askedOfMe(let ask) = facts.askStatus {
+                        AskCard(ask: ask, facts: facts, me: me, onUndo: { undo = $0 })
+                    }
                     HeroTile(facts: facts)
                     if let feed = facts.feedInProgress {
                         ThisFeedTile(feed: feed)
@@ -212,10 +216,17 @@ struct HomeFacts {
 
     /// The night that is on now, or the one coming tonight.
     var tonight: PlainDate {
-        switch settings.dayHours.period(at: now, in: settings.timeZone) {
-        case .night(let night): night
-        case .day(let day): day
-        }
+        settings.tonight(at: now)
+    }
+
+    /// The other parent, once this phone has their Member record.
+    var otherMember: MemberID? {
+        names.keys.filter { $0 != me }.min { $0.rawValue < $1.rawValue }
+    }
+
+    /// Where an ask for tonight stands on this phone: the card, or the asker's line.
+    var askStatus: NightAskStatus? {
+        data.nightAskStatus(night: tonight, me: me)
     }
 
     var partOfDay: PartOfDay {
@@ -675,20 +686,20 @@ struct NightsTile: View {
                 NightsRow(nights: nights, tonight: facts.tonight, facts: facts)
             }
             if onTonight != me {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        whoIsOn(onTonight, noRota: noRota)
-                        Spacer(minLength: 0)
-                        takeButton(noRota: noRota)
-                    }
-                    VStack(alignment: .leading, spacing: 4) {
-                        whoIsOn(onTonight, noRota: noRota)
-                        takeButton(noRota: noRota)
-                    }
-                }
+                lineAndButton(whoIsOn(onTonight, noRota: noRota), takeButton(noRota: noRota))
+            } else if facts.askStatus == nil, let other = facts.otherMember {
+                lineAndButton(whoIsOn(onTonight, noRota: noRota), askButton(other))
             } else {
                 whoIsOn(onTonight, noRota: noRota)
                     .frame(minHeight: 44, alignment: .leading)
+            }
+            switch facts.askStatus {
+            case .waiting:
+                askLine(HomeText.askWaiting(facts.otherMember.map { facts.name($0) } ?? "the other parent"))
+            case .declined(_, let by):
+                askLine(HomeText.askDeclined(facts.name(by).capitalizedFirst))
+            default:
+                EmptyView()
             }
             if waiting {
                 Text("Waiting for \(facts.otherName.map { "\($0)'s phone" } ?? "the other phone") to see your change. Until then, this phone alerts as if on duty.")
@@ -708,14 +719,81 @@ struct NightsTile: View {
         }
     }
 
+    /// A line with its button beside it, or under it when there isn't room.
+    private func lineAndButton(_ line: some View, _ button: some View) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) {
+                line
+                Spacer(minLength: 0)
+                button
+            }
+            VStack(alignment: .leading, spacing: 4) {
+                line
+                button
+            }
+        }
+    }
+
+    private func askLine(_ text: String) -> some View {
+        Text(text)
+            .feedText(.subheadline)
+            .foregroundStyle(Theme.textMuted)
+    }
+
     private func takeButton(noRota: Bool) -> some View {
         // With no rota there is no "on tonight" line before it, so it says which night.
         PillButton(noRota ? "I'll take tonight" : "I'll take it") {
+            Self.take(facts.tonight, me: me, onUndo: onUndo)
+        }
+    }
+
+    /// "I'll take it": a claim, with Undo.
+    static func take(_ night: PlainDate, me: MemberID, onUndo: (UndoAction) -> Void) {
+        AppModel.shared.store.change { $0.claimNight(night, by: me, now: Date()) }
+        onUndo(UndoAction(message: "You're on tonight") {
+            AppModel.shared.store.change { $0.undoClaim(night, by: me) }
+        })
+    }
+
+    /// "Ask Sam to take it". The asker stays on duty; Undo takes the ask back, even after it has
+    /// reached the other phone.
+    private func askButton(_ other: MemberID) -> some View {
+        let name = facts.name(other)
+        return PillButton(HomeText.askButton(name)) {
             let night = facts.tonight
-            AppModel.shared.store.change { $0.claimNight(night, by: me, now: Date()) }
-            onUndo(UndoAction(message: "You're on tonight") {
-                AppModel.shared.store.change { $0.undoClaim(night, by: me) }
+            guard AppModel.shared.store.change({ $0.askNight(night, by: me, now: Date()) }) else { return }
+            onUndo(UndoAction(message: "You asked \(name)") {
+                AppModel.shared.store.change { $0.withdrawAsk(night, by: me, now: Date()) }
             })
+        }
+    }
+}
+
+/// "Alex asks you to take tonight", with "I'll take it" and "Not tonight". Only on the asked
+/// parent's Home, until they answer. A request, not a hand-off: Alex stays on duty until the
+/// answer is yes. After "Not tonight", "I'll take it" stays in the Nights tile.
+struct AskCard: View {
+    let ask: NightAsk
+    let facts: HomeFacts
+    let me: MemberID
+    let onUndo: (UndoAction) -> Void
+
+    var body: some View {
+        let asker = ask.askedBy
+        Tile(label: "Tonight",
+             accessory: AnyView(Avatar(name: facts.displayName(asker), colour: facts.colour(asker), size: 20))) {
+            Text(HomeText.askedOfMe(by: facts.name(asker).capitalizedFirst))
+                .feedText(.tileValue)
+                .fixedSize(horizontal: false, vertical: true)
+            FlowLayout(spacing: 8) {
+                PillButton("I'll take it") {
+                    NightsTile.take(ask.night, me: me, onUndo: onUndo)
+                }
+                PillButton("Not tonight") {
+                    let night = ask.night
+                    AppModel.shared.store.change { $0.declineAsk(night, by: me, now: Date()) }
+                }
+            }
         }
     }
 }

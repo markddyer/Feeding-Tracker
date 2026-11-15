@@ -30,18 +30,29 @@ final class AppModel {
     let store: HouseholdStore
     let sync: HouseholdSync
     let reconciler: Reconciler
+    let nightAskNotifier: NightAskNotifier
 
     private init() {
         store = HouseholdStore()
         sync = HouseholdSync(store: store)
-        reconciler = Reconciler(store: store, sync: sync, defaults: UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard)
+        let defaults = UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
+        reconciler = Reconciler(store: store, sync: sync, defaults: defaults)
+        nightAskNotifier = NightAskNotifier(defaults: defaults)
         // After any change, from this phone or the other: if both parents tapped Start feed at
-        // once, this phone's copy (hidden on the screens) finishes when the first feed does.
+        // once, this phone's copy (hidden on the screens) finishes when the first feed does. An
+        // ask, or its answer, from the other phone becomes a notification.
         let reconcile = store.onDataChange
         store.onDataChange = { [weak self] in
             self?.finishStrandedDuplicates()
             reconcile?()
+            Task { await self?.tellNightAskNews() }
         }
+    }
+
+    /// Notifications about asks to take a night. Also awaited after a push, so it runs before
+    /// the app goes back to sleep.
+    func tellNightAskNews() async {
+        await nightAskNotifier.update(data: store.data, me: me, names: memberNames)
     }
 
     /// Ends this parent's hidden copies of a feed that has finished. Only this parent's own

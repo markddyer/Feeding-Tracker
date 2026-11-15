@@ -30,7 +30,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any]) async -> UIBackgroundFetchResult {
-        await AppModel.shared.sync.handlePush()
+        let result = await AppModel.shared.sync.handlePush()
+        // An ask from the other phone: tell this parent before the app goes back to sleep.
+        await AppModel.shared.tellNightAskNews()
+        return result
     }
 }
 

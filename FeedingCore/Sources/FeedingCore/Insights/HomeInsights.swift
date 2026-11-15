@@ -85,10 +85,9 @@ extension HouseholdState {
     /// first. For the screen only: with no rota, a night nobody took shows as nobody, while
     /// `roster(for:)` counts this phone as on duty so that nothing goes quiet.
     public func nights(around tonight: PlainDate, before: Int, after: Int) -> [NightDuty] {
-        let claimsOnly = DutyRoster(rota: Rota(startDate: tonight, firstOnDuty: "", secondOnDuty: ""), claims: claims)
-        return (-before...after).map { offset in
+        (-before...after).map { offset in
             let night = tonight.adding(days: offset)
-            return NightDuty(night: night, onDuty: claimsOnly.claim(for: night)?.member ?? rota?.scheduledOnDuty(night: night))
+            return NightDuty(night: night, onDuty: onDuty(night: night))
         }
     }
 }

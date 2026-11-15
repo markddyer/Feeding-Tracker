@@ -7,7 +7,8 @@ import Foundation
 /// Launch with `-sampleData YES`. Add `-sampleFeedInProgress` for a feed: `YES` (breast, running),
 /// `bottle` (a formula bottle running), `other` (the other parent's feed running) or
 /// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
-/// Add `-sampleDuplicate YES` for the last feed logged on both phones.
+/// Add `-sampleDuplicate YES` for the last feed logged on both phones, and `-sampleNightAsk` with
+/// `fromOther`, `mine` or `declined` for an ask to take tonight.
 enum SampleData {
     @MainActor
     static func loadIfAsked(into store: HouseholdStore) {
@@ -72,6 +73,21 @@ enum SampleData {
                 data.finishFeed(id, by: other, now: now.addingTimeInterval(-5 * 60))
             default:
                 break
+            }
+            // An ask to take tonight: `fromOther` (Sam asks this parent: the card), `mine` (this
+            // parent asked, no answer yet), `declined` (Sam said not tonight) or `meOnDuty` (this
+            // parent is on tonight, with the button to ask).
+            let tonight = data.householdSettings.tonight(at: now)
+            let ask = defaults.string(forKey: "sampleNightAsk")
+            if let ask, ["fromOther", "mine", "declined", "meOnDuty"].contains(ask) {
+                let asker = ask == "fromOther" ? other : me
+                data.claimNight(tonight, by: asker, now: now.addingTimeInterval(-3600))
+                if ask != "meOnDuty" {
+                    data.askNight(tonight, by: asker, now: now.addingTimeInterval(-300))
+                }
+                if ask == "declined" {
+                    data.declineAsk(tonight, by: other, now: now.addingTimeInterval(-120))
+                }
             }
         }
     }

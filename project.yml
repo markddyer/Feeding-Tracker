@@ -111,6 +111,7 @@ targets:
   # (UITests/AccessibilityAuditTests.swift). A report, not a gate: some of its notes are noise
   # (text scrolled under the pinned buttons), so a person reads them. Run with the FeedingDevAudit
   # scheme: xcodebuild test -scheme FeedingDevAudit -destination 'platform=iOS Simulator,name=iPhone 18 Pro'.
+  # It also holds tap tests of the night ask (UITests/NightAskFlowTests.swift).
   FeedingDevUITests:
     type: bundle.ui-testing
     platform: iOS

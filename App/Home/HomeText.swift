@@ -62,6 +62,36 @@ enum HomeText {
         isMe ? "You're on tonight" : "\(name)'s on tonight"
     }
 
+    // MARK: Asking the other parent to take a night
+
+    /// The card on the asked parent's Home: "Alex asks you to take tonight".
+    static func askedOfMe(by name: String) -> String {
+        "\(name) asks you to take tonight"
+    }
+
+    /// The button in the Nights tile, for the parent on duty: "Ask Sam to take it".
+    static func askButton(_ name: String) -> String {
+        "Ask \(name) to take it"
+    }
+
+    /// The asker's line while there is no answer. A request, not a hand-off: they stay on.
+    static func askWaiting(_ name: String) -> String {
+        "You asked \(name) to take tonight. You stay on until \(name) says yes."
+    }
+
+    static func askDeclined(_ name: String) -> String {
+        "\(name) said not tonight."
+    }
+
+    /// An ordinary notification about an ask: the title and the body.
+    static func askNotification(_ news: NightAskNews, name: String) -> (title: String, body: String) {
+        switch news {
+        case .asked: ("Nights", "\(name) asks you to take tonight.")
+        case .taken: ("Nights", "\(name) is taking tonight.")
+        case .declined: ("Nights", "\(name) said not tonight. You're still on tonight.")
+        }
+    }
+
     /// A breast segment's time on a chip: "12m", or "<1m" for under a minute.
     static func sideMinutes(_ seconds: Int) -> String {
         seconds < 60 ? "<1m" : "\(seconds / 60)m"

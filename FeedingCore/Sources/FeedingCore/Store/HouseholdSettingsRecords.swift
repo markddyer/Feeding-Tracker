@@ -26,6 +26,10 @@ public enum SettingKey {
     public static func night(_ night: PlainDate) -> String { "night-\(night)" }
     public static func change(_ id: String) -> String { "change-\(id)" }
     public static func acknowledgement(_ member: MemberID) -> String { "ack-\(member)" }
+    /// "Can you take tonight?", written by the parent who asks (`NightAsk`).
+    public static func ask(_ night: PlainDate) -> String { "ask-\(night)" }
+    /// "Not tonight", written by the parent who was asked (`NightAskReply`).
+    public static func askReply(_ night: PlainDate) -> String { "askReply-\(night)" }
 }
 
 /// "Seen by Parent B ✓": the changes one parent's phone has received from the other.
