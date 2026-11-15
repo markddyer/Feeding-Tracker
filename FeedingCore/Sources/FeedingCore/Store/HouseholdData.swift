@@ -57,6 +57,13 @@ public struct StoredPlainRecord: Hashable, Sendable, Codable {
     public var needsUpload: Bool
     public var systemFields: Data?
     public var localRevision: Int
+
+    public init(record: PlainRecord, needsUpload: Bool, systemFields: Data?, localRevision: Int) {
+        self.record = record
+        self.needsUpload = needsUpload
+        self.systemFields = systemFields
+        self.localRevision = localRevision
+    }
 }
 
 /// What happened when a copy from iCloud met this phone's own changes.
@@ -121,12 +128,16 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         return id
     }
 
-    /// Starts a feed now, timed live, optionally on a side.
+    /// Starts a feed now, timed live, optionally on a side or with a bottle (for a parent who
+    /// feeds by bottle only).
     @discardableResult
     public mutating func startFeed(id: String = UUID().uuidString, babyID: String, side: BreastSide?,
+                                   bottle: MilkKind? = nil,
                                    by member: MemberID, timeZoneID: String, now: Date) -> String {
         let breast = side.map { [BreastSegment(side: $0, startedAt: now)] } ?? []
-        return add(id: id, kind: .feed, babyID: babyID, startedAt: now, payload: EventPayload(feed: FeedDetails(breast: breast)),
+        let bottles = bottle.map { [Bottle(milk: $0)] } ?? []
+        return add(id: id, kind: .feed, babyID: babyID, startedAt: now,
+                   payload: EventPayload(feed: FeedDetails(breast: breast, bottles: bottles)),
                    by: member, timeZoneID: timeZoneID, now: now)
     }
 
@@ -307,15 +318,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     // MARK: Helpers
 
     static func changedFields(from before: EventSnapshot, to after: EventSnapshot) -> Set<EventField> {
-        var changed: Set<EventField> = []
-        if before.event.startedAt != after.event.startedAt { changed.insert(.startedAt) }
-        if before.event.endedAt != after.event.endedAt { changed.insert(.endedAt) }
-        if before.event.deletedAt != after.event.deletedAt { changed.insert(.deletedAt) }
-        if before.payload?.feed?.breast ?? [] != after.payload?.feed?.breast ?? [] { changed.insert(.breast) }
-        if before.payload?.feed?.bottles ?? [] != after.payload?.feed?.bottles ?? [] { changed.insert(.bottles) }
-        if before.payload?.pump != after.payload?.pump { changed.insert(.pump) }
-        if before.payload?.note != after.payload?.note { changed.insert(.note) }
-        return changed
+        EventSnapshot.changedFields(from: before, to: after)
     }
 
     /// Gives the open segment (started, no length yet) its length up to `now`.

@@ -18,6 +18,38 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
         self.init(event: event, payload: PayloadCoder.decode(EventPayload.self, from: event.payload))
     }
 
+    /// Copies one field's value from `other`. With no payload to write into, payload fields stay.
+    public mutating func copy(_ field: EventField, from other: EventSnapshot) {
+        switch field {
+        case .startedAt: event.startedAt = other.event.startedAt
+        case .endedAt: event.endedAt = other.event.endedAt
+        case .deletedAt: event.deletedAt = other.event.deletedAt
+        case .breast:
+            var feed = payload?.feed ?? FeedDetails()
+            feed.breast = other.payload?.feed?.breast ?? []
+            payload?.feed = feed
+        case .bottles:
+            var feed = payload?.feed ?? FeedDetails()
+            feed.bottles = other.payload?.feed?.bottles ?? []
+            payload?.feed = feed
+        case .pump: payload?.pump = other.payload?.pump
+        case .note: payload?.note = other.payload?.note
+        }
+    }
+
+    /// The fields that differ between two copies of an event.
+    public static func changedFields(from before: EventSnapshot, to after: EventSnapshot) -> Set<EventField> {
+        var changed: Set<EventField> = []
+        if before.event.startedAt != after.event.startedAt { changed.insert(.startedAt) }
+        if before.event.endedAt != after.event.endedAt { changed.insert(.endedAt) }
+        if before.event.deletedAt != after.event.deletedAt { changed.insert(.deletedAt) }
+        if before.payload?.feed?.breast ?? [] != after.payload?.feed?.breast ?? [] { changed.insert(.breast) }
+        if before.payload?.feed?.bottles ?? [] != after.payload?.feed?.bottles ?? [] { changed.insert(.bottles) }
+        if before.payload?.pump != after.payload?.pump { changed.insert(.pump) }
+        if before.payload?.note != after.payload?.note { changed.insert(.note) }
+        return changed
+    }
+
     /// The event with `payload` encoded into it, ready to save.
     public func encoded() throws -> Event {
         var result = event
@@ -45,10 +77,10 @@ public struct MergeResult: Hashable, Sendable {
 /// stamp is later than the stamp on iCloud's copy. Everything else keeps iCloud's value, so a
 /// correction made on the other phone is never overwritten by an old copy.
 public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: Set<EventField>) -> MergeResult {
-    guard var payload = server.payload else {
+    guard server.payload != nil else {
         return MergeResult(snapshot: server, applied: [], overruled: changedLocally, keptServerCopyUnread: true)
     }
-    var event = server.event
+    var result = server
     var applied: Set<EventField> = []
     var overruled: Set<EventField> = []
 
@@ -57,29 +89,14 @@ public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: S
             overruled.insert(field)
             continue
         }
-        if let theirs = payload.stamp(field), theirs >= mine {
+        if let theirs = result.payload?.stamp(field), theirs >= mine {
             overruled.insert(field)
             continue
         }
-        switch field {
-        case .startedAt: event.startedAt = local.event.startedAt
-        case .endedAt: event.endedAt = local.event.endedAt
-        case .deletedAt: event.deletedAt = local.event.deletedAt
-        case .breast:
-            var feed = payload.feed ?? FeedDetails()
-            feed.breast = local.payload?.feed?.breast ?? []
-            payload.feed = feed
-        case .bottles:
-            var feed = payload.feed ?? FeedDetails()
-            feed.bottles = local.payload?.feed?.bottles ?? []
-            payload.feed = feed
-        case .pump: payload.pump = local.payload?.pump
-        case .note: payload.note = local.payload?.note
-        }
-        payload.setStamp(field, mine)
+        result.copy(field, from: local)
+        result.payload?.setStamp(field, mine)
         applied.insert(field)
     }
-    event.modifiedAt = max(local.event.modifiedAt, server.event.modifiedAt)
-    return MergeResult(snapshot: EventSnapshot(event: event, payload: payload), applied: applied,
-                       overruled: overruled, keptServerCopyUnread: false)
+    result.event.modifiedAt = max(local.event.modifiedAt, server.event.modifiedAt)
+    return MergeResult(snapshot: result, applied: applied, overruled: overruled, keptServerCopyUnread: false)
 }

@@ -25,6 +25,18 @@ struct StoreEditTests {
         #expect(feed.event.loggedBy == parentA)
     }
 
+    /// A parent who feeds by bottle only starts a feed that already has its bottle; the amount
+    /// comes after Finish.
+    @Test func aBottleFeedStartsWithItsBottle() throws {
+        var data = HouseholdData()
+        let id = data.startFeed(babyID: baby, side: nil, bottle: .formula, by: parentB, timeZoneID: "Europe/London", now: t0)
+        data.finishFeed(id, by: parentB, now: t0.addingTimeInterval(.minutes(15)))
+        let feed = try #require(data.events[id]?.snapshot.payload?.feed)
+        #expect(feed.breast.isEmpty)
+        #expect(feed.bottles.map(\.milk) == [.formula])
+        #expect(feed.bottles.map(\.ml) == [nil])
+    }
+
     @Test func aNewEventWaitsOutItsUndoWindow() {
         var (data, id) = newFeed()
         #expect(data.eventsToUpload(now: t0.addingTimeInterval(9)).isEmpty)
