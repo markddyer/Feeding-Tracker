@@ -98,3 +98,20 @@ targets:
       base:
         # Turns on the Phase 0 test screens (App/Spikes), which never ship in Feeding.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FEEDING_DEV
+    scheme:
+      testTargets: [FeedingAppTests]
+
+  # Tests of the app's Apple-only parts (CloudKit record mapping and the like), run in the
+  # simulator: xcodebuild test -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
+  FeedingAppTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AppTests
+    dependencies:
+      - target: FeedingDev
+      - package: FeedingCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding.dev.tests
+        GENERATE_INFOPLIST_FILE: YES

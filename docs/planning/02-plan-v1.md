@@ -52,30 +52,36 @@ Every event has a required start time and an optional end time.
 
 ## Screens
 
+**The look of every screen** (colours, letters, shapes, tiles, day and night) is set by `DESIGN.md`, and the screen-by-screen redesign is in `05-visual-redesign.md` (both agreed 15 Nov 2026). The list below says *what* the home screen shows; those files say *how* it looks.
+
 **Home screen** (standard phone, or the Duo folded), from top to bottom:
-1. "Last feed started **1h 40m ago**" with the clock time, and a ring showing progress through the window.
-2. "Window opens 03:50 · Alert at 05:50".
+1. "Last feed **1h 40m** ago, at 01:50", with a ring showing progress through the window.
+2. A bar for the window: "Feeding window 03:50", and a bell with the alarm time, 05:50.
 3. **Suggested next side**: the side not used last. It's only a suggestion.
 4. A summary of the last feed, for example "L 12m · R 8m · Formula 30 ml, logged by Parent A".
 5. The last 24 hours: number of feeds, number of breast sessions, ml of expressed milk and ml of formula. No targets and no red or green colouring.
 6. Tonight's duty: "Parent B is on tonight", with an **"I'll take tonight"** button and a "seen by Parent B ✓" status.
 7. A full-width **Start feed** button at the bottom.
-   - During a feed it changes to large **Left / Right / Bottle** buttons and **Finish**.
+   - During a feed it changes to large **Left / Right / Bottle** buttons, **Finish**, and a narrower **Stop**.
+   - **Stop** (the user's decision, 15 Nov 2026) is for a feed started by mistake. It asks "Remove this feed?" first, because Stop and Finish sound alike, and then removes the feed so nothing is logged. It stays for the whole feed, so starting a feed has no Undo bar.
+   - Only the parent who started the feed gets those buttons, because only they know what the feed is (the user's decision, 14 Nov 2026, after the first two-phone test). The other parent's phone shows "Parent A started this feed" and one **Finish for Parent A** button, for when Parent A is busy. Parent A's phone then offers to add the sides and bottles, for 2 hours or until answered. History shows "finished by Parent B".
    - After Finish come quick ml buttons for any bottle, which can be skipped.
-   - An Undo banner stays up for 10 seconds.
+   - **How you feed** (the user's decision, 14 Nov 2026): each parent chooses on their own phone, once in setup and later in Settings: **Breast and bottle** or **Bottle only**. Bottle only: Start feed asks "Expressed milk or Formula?" and the feed starts with that bottle; there are no Left and Right buttons anywhere on that phone; after Finish come only the ml buttons. It changes only that phone's buttons, never the shared log.
+   - The other parent is always called by name ("logged by Parent B"), never "the other parent", once their phone has joined.
+   - Other taps (a side, a bottle, Finish, "Just finished") get an Undo banner for 10 seconds.
    - It is an ordinary button in the screen's content, not a toolbar item, and it is pinned to the bottom so it stays visible without scrolling. On the Duo folded, the system puts a side bar about 84 pt wide down the right edge, which leaves 382 pt for content. Held sideways, the outer screen is short, so the rest of the home screen scrolls behind the pinned button.
 
 Also on the home screen:
 - **"Just finished, started about 10 / 20 / 30 / 45 min ago"**.
 - **"Log an earlier feed"**.
 
-**Sync status** is shown wherever it matters: "Synced 1 min ago", or a red banner for problems such as the S8 and S9 cases in round 2.
+**Sync status** is shown wherever it matters: "Synced 1 min ago", or a muted orange banner (never red) for problems such as the S8 and S9 cases in round 2.
 
-**History:** a timeline grouped by day. Entries can be edited, and deleting one hides it rather than removing it. Every change goes through `reconcile()`.
+**History:** a timeline grouped by day. Entries can be edited, and deleting one hides it rather than removing it from iCloud. A deleted entry doesn't show in History at all (the user's decision, 15 Nov 2026), so Delete needs a swipe and then a tap, never a full swipe. Every change goes through `reconcile()`.
 
 **Toolbar buttons** (Settings, History and the like) use the system toolbar, `.toolbar` inside a `NavigationStack`. Each has a title and a symbol. The system then moves them into the Duo's side bar by itself. No hand-built bars: the system doesn't move those.
 
-**The Duo unfolded:** two columns, with the home screen on the left and the day's timeline on the right.
+**The Duo unfolded:** two columns, with the home screen on the left and, on the right, the last 24 hours (chart and totals), the week's nights and the recent feeds (see `05-visual-redesign.md`).
 - Use `ArrangementView` with `.split.axes(.horizontal)`, inside the `NavigationStack` (iOS 27.1). This is Apple's container for two views where neither may be hidden. It shows both side by side on the inner screen, and only the home screen on the outer screen. When the phone is partly folded like a book, each column gets its own half.
 - Not `NavigationSplitView`. It is built for a list and its detail, and on a tall, wide screen it can hide the first column behind a button. Apple also says not to put an `ArrangementView` inside one.
 - Lay out from size classes, not from the hinge. iOS 27.1 does report the hinge (`onHingeChange`) and the fold (`reservedRegions(kind: .division)`), but Apple says to use those for effects only.
@@ -85,10 +91,12 @@ Also on the home screen:
 - Build with the iOS 27.1 SDK or later, with iOS 27.1 as the minimum, because `ArrangementView` and the side-bar controls need 27.1.
 - The full Duo notes (Apple's facts, our advice and simulator measurements) are in the shared file `~/.claude/reference/iphone-duo.md` on the Mac.
 
-**Night UI:**
-- Always dark, on true black, with dim warm accents.
-- No white flashes from the launch screen, sheets or keyboard.
-- The black background runs edge to edge (`ignoresSafeArea`), under the Duo's side bar too, so no lighter strip shows. Buttons stay inside the safe area.
+**Day and night looks** (the user's decision, 15 Nov 2026; this replaces "always dark", which came from reviewer finding F10, not from the user):
+- A warm, joyful **day look** and a dim **night look** of the same screens. The rules and colours are in `DESIGN.md`.
+- The night look runs during the household's night hours (the rota's, 21:00 to 07:00 by default). Each phone can choose Automatic, Always night or Match iPhone in Settings.
+- No white flashes at night from sheets, pickers or the keyboard: the app sets its colour scheme to match the look. The launch screen is always dark, because it can't know the time.
+- At night, thinner letters, dim colours, fades only, and haptics in place of animation.
+- The background runs edge to edge (`ignoresSafeArea`), under the Duo's side bar too, so no lighter strip shows. Buttons stay inside the safe area.
 - Large tap targets, haptic feedback, and no typing.
 
 **Disclaimer** on first launch and in Settings: "Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999."
@@ -264,6 +272,14 @@ Everything above. **Done when:** a week of real use on TestFlight with no missed
 - The watch app.
 - A polished Duo unfolded layout.
 - CSV and JSON export.
+- **Graphs** (chosen 14 Nov 2026), drawn with Apple's Swift Charts, so no third-party code. They read the events already stored, so they show every feed back to the first one. No schema change.
+  - Feeds per day.
+  - Bottle millilitres per day, split into formula and expressed milk.
+  - Time between feed starts.
+  - Minutes on each breast side per day.
+  - Millilitres pumped per day.
+  - Facts only, like the home screen: no target lines, no "normal" bands, and no red or green. One colour for each kind of milk.
+  - The small 24-hour chart on the home screen is not this: it is part of the visual redesign (`05-visual-redesign.md`). The graphs here are a full screen of them, and they use the colours and shapes in `DESIGN.md`.
 
 ### Phase 3: growing with her
 - Pumping statistics and a record of the expressed-milk stash.

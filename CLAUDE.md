@@ -8,6 +8,10 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 3. `docs/planning/03-review-round-2.md` and `01-review-gauntlet.md` explain *why* the plan looks the way it does. Read them before changing anything in the alert or sync design.
 4. `CLAUDE.local.md` (gitignored, if present): personal context for this household.
 5. `~/.claude/reference/iphone-duo.md` (on the Mac, shared by every project): Apple's iPhone Duo facts, our advice, and simulator measurements. Read it before any layout work, and add new Duo measurements to it.
+6. `DESIGN.md` and `docs/planning/05-visual-redesign.md`: the look of the app (day and night looks, colours, letters, shapes) and the screen-by-screen redesign, agreed 15 Nov 2026.
+
+## Design System
+Read DESIGN.md before visual or UI work: it defines the fonts, colours, spacing and look. Ask the user before departing from it. When reviewing or testing UI, flag code that doesn't match DESIGN.md.
 
 ## Hard rules
 - **The repo is public. Never commit personal data.** That means names, birth dates, feed logs, screenshots with real data, device UDIDs or Apple IDs. Personal context goes in `CLAUDE.local.md`, which is gitignored. Docs refer to "Parent A", "Parent B" and "the baby".
@@ -28,6 +32,9 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 ## Commands
 - Core tests: `swift test --package-path FeedingCore`
 - App build: `xcodegen generate`, then `xcodebuild build -project Feeding.xcodeproj -scheme FeedingDev -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO`
+- App tests (CloudKit record mapping, including a check that every field written is in `schema.ckdb`), in the simulator: `xcodebuild test -project Feeding.xcodeproj -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'`. Not in CI yet.
+- Screens in the simulator with a made-up day (Feeding Dev only): launch with `-sampleData YES`, plus `-sampleFeedInProgress YES` for a feed running; add `-setup.disclaimerSeen YES -setup.inviteOffered YES -setup.permissionsAsked YES -setup.feedingStyle breastAndBottle` to skip setup (or `bottleOnly`, to see a bottle-only parent's buttons).
+- Sync log from a real phone (Feeding Dev only; record names and errors, no feed details): `xcrun devicectl device copy from --device <device id> --domain-type appGroupDataContainer --domain-identifier group.com.tracker.feeding.dev --source Library/Caches/sync-log.txt --destination sync-log.txt`. Only `Library/` in the App Group can be copied this way; `household.json` at its top can't.
 - Real phone: build with `-destination 'id=<device id>' -allowProvisioningUpdates`, then `xcrun devicectl device install app` and `xcrun devicectl device process launch --terminate-existing com.tracker.feeding.dev`. The phone must be unlocked. A phone that is new to the developer account also needs `-allowProvisioningDeviceRegistration`, or the build fails with "isn't registered in your developer account".
 ## Toolchain
 - Xcode 27.2 with Swift 6.4, on macOS Tahoe 26.6 or later.

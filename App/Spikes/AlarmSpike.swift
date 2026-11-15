@@ -322,7 +322,6 @@ struct SpikeStopAlarmIntent: LiveActivityIntent {
     func perform() async throws -> some IntentResult {
         let now = Date()
         AlarmSpikeStore.shared.recordStop(alarmID: alarmID, at: now)
-        SyncSpikeStore.shared.recordRingStop(alarmID: alarmID, at: now)
         return .result()
     }
 }
