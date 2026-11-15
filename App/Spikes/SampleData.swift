@@ -11,6 +11,10 @@ enum SampleData {
     @MainActor
     static func loadIfAsked(into store: HouseholdStore) {
         let defaults = UserDefaults.standard
+        // `-sampleDataFresh YES` starts again from an empty store (the UI tests' audit uses it).
+        if defaults.bool(forKey: "sampleDataFresh") {
+            store.change { $0 = HouseholdData() }
+        }
         guard defaults.bool(forKey: "sampleData"), store.data.events.isEmpty else { return }
         let me: MemberID = "simulator-parent"
         let other: MemberID = "other-parent"

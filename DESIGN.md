@@ -59,7 +59,7 @@ colors:
   parent-1-night: "#9C7A30"
   on-parent-1-night: "#120A06"
   parent-1-tint-night: "#221B0E"
-  parent-2-night: "#2C6E63"
+  parent-2-night: "#2A695E"
   on-parent-2-night: "#E8D6C2"
   parent-2-tint-night: "#0F1E1B"
   lavender-night: "#68568A"
@@ -270,4 +270,5 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-15 | A shape for each kind of feed; thinner letters at night; "Stop · discard" | Ideas from the outside designers, chosen by the user. |
 | 2026-11-15 | Deeper "mark" shades for shapes and chart bars; darker muted text | Contrast fixes found while writing this file: the first pastel shades were under 3:1 for shapes and 4.5:1 for small text. |
 | 2026-11-15 | Four more parent colours: lavender, plum, caramel and stone | The user picked them from eight on a day/3am page (`parent-colours-20261115/colour-choices.html` in the gstack design folder). Purples, a brown and a grey, because every other hue is a feed colour, the coral button, or red or green. Night values are dimmed copies, tuned so the initial reads at 4.5:1. |
+| 2026-11-15 | Night teal darkened from #2C6E63 to #2A695E | Found by the colour test in build step 9: the initial on teal read at 4.2:1 at night, under 4.5:1. The user chose a slightly darker teal over keeping it. |
 | 2026-11-15 | The age chip uses `surface`; top-bar buttons use `text` | Found while building: the mockup's green age chip broke "green means pumping", and coral text on the cream background was hard to read. Coral stays for switches and the main button. |

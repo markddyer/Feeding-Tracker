@@ -107,6 +107,23 @@ targets:
 
   # Tests of the app's Apple-only parts (CloudKit record mapping and the like), run in the
   # simulator: xcodebuild test -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'
+  # Apple's accessibility audit on every screen, in both looks and at a large text size
+  # (UITests/AccessibilityAuditTests.swift). A report, not a gate: some of its notes are noise
+  # (text scrolled under the pinned buttons), so a person reads them. Run with the FeedingDevAudit
+  # scheme: xcodebuild test -scheme FeedingDevAudit -destination 'platform=iOS Simulator,name=iPhone 18 Pro'.
+  FeedingDevUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: UITests
+    dependencies:
+      - target: FeedingDev
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding.dev.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: FeedingDev
+
   FeedingAppTests:
     type: bundle.unit-test
     platform: iOS
@@ -119,3 +136,13 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding.dev.tests
         GENERATE_INFOPLIST_FILE: YES
+
+schemes:
+  FeedingDevAudit:
+    build:
+      targets:
+        FeedingDev: all
+        FeedingDevUITests: [test]
+    test:
+      config: Debug
+      targets: [FeedingDevUITests]

@@ -37,7 +37,7 @@ enum Theme {
     static let parent1 = Color(day: 0xF2B33D, night: 0x9C7A30)
     static let onParent1 = Color(day: 0x3A1A0E, night: 0x120A06)
     static let parent1Tint = Color(day: 0xFDEBC4, night: 0x221B0E)
-    static let parent2 = Color(day: 0x3FA796, night: 0x2C6E63)
+    static let parent2 = Color(day: 0x3FA796, night: 0x2A695E)
     static let onParent2 = Color(day: 0x3A1A0E, night: 0xE8D6C2)
     static let parent2Tint = Color(day: 0xD3EFEA, night: 0x0F1E1B)
 

@@ -1,0 +1,117 @@
+import XCTest
+
+/// Apple's accessibility audit (contrast, clipped text, Dynamic Type, tap sizes, VoiceOver labels)
+/// on every screen of the redesign, in both looks and at a large text size
+/// (`05-visual-redesign.md`, "Checks"). Each launch starts from a fresh made-up day (Feeding Dev,
+/// simulator only).
+///
+/// A report, not a gate: the audit reads pixels, so text scrolled under the pinned buttons or the
+/// top bar "fails" contrast, and switched-off controls are counted too. Every note is printed as an
+/// AUDIT line and kept as an attachment, with a screenshot of each screen, for a person to read.
+/// Colour contrast itself is checked exactly by `DesignTokensTests`.
+@MainActor
+final class AccessibilityAuditTests: XCTestCase {
+    /// Issues found in this test, as readable lines.
+    private var issues: [String] = []
+
+    /// Launches Feeding Dev on a fresh sample day.
+    private func launch(_ extra: [String], look: String = "automatic", largeText: Bool = false,
+                        setUpDone: Bool = true) -> XCUIApplication {
+        let app = XCUIApplication()
+        var arguments = ["-sampleData", "YES", "-sampleDataFresh", "YES", "-look.setting", look]
+        if setUpDone {
+            arguments += ["-setup.disclaimerSeen", "YES", "-setup.inviteOffered", "YES",
+                          "-setup.permissionsAsked", "YES", "-setup.feedingStyle", "breastAndBottle"]
+        }
+        if largeText {
+            arguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        }
+        app.launchArguments = arguments + extra
+        continueAfterFailure = true
+        app.launch()
+        return app
+    }
+
+    /// Runs the audit on what is on screen now, noting each issue with the screen's name.
+    private func audit(_ app: XCUIApplication, _ screen: String) {
+        sleep(1)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = screen
+        shot.lifetime = .keepAlways
+        add(shot)
+        do {
+            try app.performAccessibilityAudit { issue in
+                let element = issue.element.map { "\($0.elementType.rawValue) '\($0.label)'" } ?? "screen"
+                self.issues.append("[\(screen)] \(issue.auditType): \(issue.compactDescription) — \(element)")
+                return true
+            }
+        } catch {
+            issues.append("[\(screen)] audit could not run: \(error)")
+        }
+    }
+
+    private func report() {
+        for line in issues { print("AUDIT \(line)") }
+        let notes = XCTAttachment(string: issues.joined(separator: "\n"))
+        notes.name = "\(name): \(issues.count) audit notes"
+        notes.lifetime = .keepAlways
+        add(notes)
+    }
+
+    func testHome() {
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch([], look: look), "home \(look)")
+            audit(launch(["-homeAtBottom", "YES"], look: look), "home lower \(look)")
+            audit(launch(["-sampleFeedInProgress", "YES"], look: look), "feed running \(look)")
+            audit(launch(["-sampleFeedInProgress", "other"], look: look), "other's feed \(look)")
+            audit(launch(["-sampleFeedInProgress", "finishedForMe"], look: look), "details panel \(look)")
+        }
+        report()
+    }
+
+    func testOtherScreens() {
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(["-openScreen", "history", "-sampleFeedInProgress", "YES"], look: look), "history \(look)")
+            audit(launch(["-openScreen", "settings"], look: look), "settings \(look)")
+            audit(launch(["-openScreen", "editLastFeed"], look: look), "edit feed \(look)")
+            audit(launch(["-openScreen", "pumping"], look: look), "pumping \(look)")
+            for step in ["disclaimer", "about", "howYouFeed", "permissions"] {
+                audit(launch(["-setupStep", step], look: look, setUpDone: false), "setup \(step) \(look)")
+            }
+        }
+        report()
+    }
+
+    func testLargeText() {
+        audit(launch([], largeText: true), "home large text")
+        audit(launch(["-homeAtBottom", "YES"], largeText: true), "home lower large text")
+        audit(launch(["-sampleFeedInProgress", "YES"], largeText: true), "feed running large text")
+        audit(launch(["-sampleFeedInProgress", "finishedForMe"], largeText: true), "details panel large text")
+        audit(launch(["-openScreen", "history"], largeText: true), "history large text")
+        audit(launch(["-openScreen", "settings"], largeText: true), "settings large text")
+        audit(launch(["-openScreen", "editLastFeed"], largeText: true), "edit feed large text")
+        report()
+    }
+
+    /// Nothing white at night: a menu, the Stop question, and the keyboard (DESIGN.md, "Day and
+    /// night"). Screenshots are kept in the test results to look at.
+    func testNightPopUps() {
+        let settings = launch(["-openScreen", "settings"], look: "alwaysNight")
+        settings.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Look'")).firstMatch.tap()
+        keep(settings, "night menu")
+        let running = launch(["-sampleFeedInProgress", "YES"], look: "alwaysNight")
+        running.buttons["Stop and discard this feed"].tap()
+        keep(running, "night stop question")
+        let edit = launch(["-openScreen", "editLastFeed"], look: "alwaysNight")
+        edit.textFields.firstMatch.tap()
+        keep(edit, "night keyboard")
+    }
+
+    private func keep(_ app: XCUIApplication, _ name: String) {
+        sleep(1)
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+}
