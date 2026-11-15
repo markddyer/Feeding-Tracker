@@ -165,30 +165,15 @@ struct FeedControls: View {
         let current = feed.payload?.feed?.breast.last.flatMap { $0.durationSeconds == nil ? $0 : nil }
         let suggested = facts.nextSide
         let bottles = feed.payload?.feed?.bottles ?? []
-        let bottleLine = bottles.map { $0.milk == .formula ? "Formula" : "Expressed milk" }.joined(separator: " + ")
-        return VStack(spacing: 10) {
-            if bottleOnly {
-                // A bottle-only parent: no sides. The bottle was chosen at Start feed.
-                Text(bottles.isEmpty ? "Bottle" : bottleLine)
-                    .font(.headline)
-                    .foregroundStyle(Theme.secondaryText)
-            } else {
-                if let current, let started = current.startedAt {
-                    HStack(spacing: 6) {
-                        Text(current.side == .left ? "Left" : "Right")
-                        Text(started, style: .timer).monospacedDigit()
-                    }
-                    .font(.headline)
-                    .foregroundStyle(Theme.secondaryText)
-                }
-                if !bottles.isEmpty {
-                    Text(bottleLine).font(.headline).foregroundStyle(Theme.secondaryText)
-                }
-                HStack(spacing: 10) {
+        return VStack(spacing: 8) {
+            // A bottle-only parent has no side buttons: the bottle was chosen at Start feed, and
+            // the hero shows it.
+            if !bottleOnly {
+                HStack(spacing: 8) {
                     ForEach(BreastSide.allCases, id: \.self) { side in
-                        BigButton(title: side == .left ? "Left" : "Right",
-                                  prominent: current?.side == side,
-                                  hint: current == nil && suggested == side ? "suggested" : nil) {
+                        SideButton(mark: .side(side), title: side == .left ? "Left" : "Right",
+                                   selected: current?.side == side,
+                                   hint: current == nil && suggested == side ? "suggested" : nil) {
                             guard current?.side != side else { return }
                             change(feed, message: "\(side == .left ? "Left" : "Right") side") {
                                 $0.switchSide(feed.id, to: side, by: me, now: Date())
@@ -198,15 +183,16 @@ struct FeedControls: View {
                     // Goes once a bottle is added, so a second tap can't add it twice. A second
                     // bottle can be added after Finish.
                     if bottles.isEmpty {
-                        BigButton(title: "Bottle", prominent: false) { choosingBottle = true }
+                        SideButton(mark: .bottle, title: "Bottle", selected: false) { choosingBottle = true }
                     }
                 }
             }
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 // For a feed started by mistake: removes it, after asking (the user's decision,
                 // 15 Nov 2026). Narrower than Finish, so a sleepy tap lands on Finish.
-                BigButton(title: "Stop", prominent: false) { stopping = feed.id }
-                    .frame(width: 110)
+                BigButton(title: "Stop · discard", prominent: false) { stopping = feed.id }
+                    .frame(maxWidth: 150)
+                    .accessibilityLabel("Stop and discard this feed")
                 BigButton(title: "Finish", prominent: true) {
                     change(feed, message: "Feed finished") { $0.finishFeed(feed.id, by: me, now: Date()) }
                     detailsFor = feed.id
@@ -217,18 +203,13 @@ struct FeedControls: View {
 
     /// A feed the other parent started. Only they add sides and bottles while it runs, as they
     /// know what the feed is. If they're busy, this phone can finish it for them, and their phone
-    /// then offers to add the details.
+    /// then offers to add the details. The hero says who started it.
     private func othersFeed(_ feed: EventSnapshot) -> some View {
         let name = facts.name(feed.event.loggedBy)
-        return VStack(spacing: 10) {
-            Text("\(name.capitalizedFirst) started this feed and adds the sides and bottles. If \(name) is busy, you can finish it.")
-                .font(.subheadline)
-                .foregroundStyle(Theme.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            BigButton(title: "Finish for \(name)", prominent: false) {
-                change(feed, message: "Feed finished for \(name)") { $0.finishFeed(feed.id, by: me, now: Date()) }
-            }
+        return BigButton(title: "Finish for \(name)", prominent: false) {
+            change(feed, message: "Feed finished for \(name)") { $0.finishFeed(feed.id, by: me, now: Date()) }
         }
+        .accessibilityHint("\(name.capitalizedFirst) adds the sides and bottles. Their phone offers to add them after.")
     }
 
     private func addBottle(_ milk: MilkKind) {
@@ -309,31 +290,48 @@ struct FeedDetailsPanel: View {
 
     var body: some View {
         let choices = DetailChoices(feed.payload?.feed ?? FeedDetails(), bottleOnly: bottleOnly)
-        VStack(alignment: .leading, spacing: 10) {
-            if let note {
-                Text(note).font(.subheadline).foregroundStyle(Theme.secondaryText)
-            }
-            Text(HomeFacts.details(feed)).font(.headline)
-            if bottleOnly, !choices.milks.isEmpty {
-                Text("Which bottle?").font(.subheadline)
+        let chips = HomeText.chips(feed)
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text("This feed").feedText(.label).foregroundStyle(Theme.textMuted)
+                if let note {
+                    Text(note).feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                }
+                FlowLayout(spacing: 6) {
+                    ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
+                        Chip(chip.mark, chip.text, spoken: chip.spoken)
+                    }
+                }
             }
             if !choices.sides.isEmpty || !choices.milks.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(choices.sides, id: \.self) { side in
-                        small(side == .left ? "+ Left" : "+ Right") { edit { $0.breast.append(BreastSegment(side: side)) } }
+                question(bottleOnly ? "Which bottle?" : "Add to this feed") {
+                    if !choices.sides.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(choices.sides, id: \.self) { side in
+                                ChoiceChip(mark: .side(side), title: side == .left ? "Left" : "Right",
+                                           spoken: "Add the \(side == .left ? "left" : "right") side") {
+                                    edit { $0.breast.append(BreastSegment(side: side)) }
+                                }
+                            }
+                        }
                     }
-                    ForEach(choices.milks, id: \.self) { milk in
-                        let title = milk == .formula ? "Formula" : (bottleOnly ? "Expressed milk" : "Expressed")
-                        small(bottleOnly ? title : "+ \(title)") { edit { $0.bottles.append(Bottle(milk: milk)) } }
+                    if !choices.milks.isEmpty {
+                        HStack(spacing: 8) {
+                            ForEach(choices.milks, id: \.self) { milk in
+                                ChoiceChip(mark: .bottle, title: HomeText.milkName(milk),
+                                           spoken: "Add a \(HomeText.milkName(milk).lowercased()) bottle") {
+                                    edit { $0.bottles.append(Bottle(milk: milk)) }
+                                }
+                            }
+                        }
                     }
                 }
             }
             ForEach(choices.unmeasured) { bottle in
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("\(bottle.milk == .formula ? "Formula" : "Expressed milk"): how much?").font(.subheadline)
+                question("How much \(HomeText.milkName(bottle.milk).lowercased())?") {
                     HStack(spacing: 8) {
                         ForEach([30, 60, 90, 120], id: \.self) { ml in
-                            small("\(ml) ml") { setAmount(bottle.id, ml) }
+                            ChoiceChip(mark: nil, title: "\(ml) ml") { setAmount(bottle.id, ml) }
                         }
                     }
                 }
@@ -341,22 +339,18 @@ struct FeedDetailsPanel: View {
             BigButton(title: "Done", prominent: true, action: done)
         }
         .padding(14)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
         .onChange(of: choices.isComplete, initial: true) { _, complete in
             if complete { done() }
         }
     }
 
-    private func small(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: .infinity, minHeight: 44)
-                .background(Theme.raisedSurface, in: RoundedRectangle(cornerRadius: 10))
+    /// A question as a small label, then its answers as big chips.
+    private func question<Answers: View>(_ title: String, @ViewBuilder answers: () -> Answers) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title).feedText(.label).foregroundStyle(Theme.textMuted)
+            answers()
         }
-        .foregroundStyle(Theme.text)
     }
 
     private func edit(_ change: @escaping (inout FeedDetails) -> Void) {
@@ -401,12 +395,19 @@ struct BigButton: View {
                         FeedMarkView(mark, size: 24, relativeTo: .title3, colour: foreground)
                             .accessibilityHidden(true)
                     }
-                    Text(title).feedText(.button)
+                    Text(title)
+                        .feedText(.button)
+                        // Two lines at the biggest text sizes, rather than cutting a word off.
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                        .minimumScaleFactor(0.75)
                 }
                 if let hint {
                     Text(hint).feedText(.small)
                 }
             }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, minHeight: 60)
             .foregroundStyle(foreground)
             .background(prominent ? Theme.primary : Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
@@ -414,5 +415,87 @@ struct BigButton: View {
         }
         .buttonStyle(PressStyle())
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+    }
+}
+
+/// Left, Right and Bottle during a feed (DESIGN.md, "Side buttons"): 64 points tall, the shape
+/// above the label. The side being fed fills with the breast colour.
+struct SideButton: View {
+    let mark: FeedMark
+    let title: String
+    let selected: Bool
+    var hint: String?
+    let action: () -> Void
+    @Environment(\.look) private var look
+    @State private var taps = 0
+
+    var body: some View {
+        let fill = selected ? (mark == .bottle ? Theme.bottle : Theme.breast) : Theme.surface
+        // Dark letters on the pink by day; the night text colour at night (DESIGN.md mockup).
+        let foreground = selected ? (look == .night ? Theme.text : Theme.onPrimary) : Theme.text
+        Button {
+            taps += 1
+            action()
+        } label: {
+            VStack(spacing: 2) {
+                FeedMarkView(mark, size: 22, relativeTo: .title3, colour: selected ? foreground : nil)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .feedText(.tileValue)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                if let hint {
+                    Text(hint).feedText(.small).foregroundStyle(selected ? foreground : Theme.textMuted)
+                }
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 4)
+            .frame(maxWidth: .infinity, minHeight: 64)
+            .foregroundStyle(foreground)
+            .background(fill, in: RoundedRectangle(cornerRadius: Radius.tile))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.tile))
+        }
+        .buttonStyle(PressStyle())
+        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+        .accessibilityLabel(hint.map { "\(title), \($0)" } ?? title)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// An answer in the details panel ("Formula", "60 ml"): a big chip in the background colour,
+/// so it reads as a hole in the panel, at least 48 points tall.
+struct ChoiceChip: View {
+    let mark: FeedMark?
+    let title: String
+    var spoken: String?
+    let action: () -> Void
+    @State private var taps = 0
+
+    var body: some View {
+        Button {
+            taps += 1
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                if let mark {
+                    FeedMarkView(mark, size: 18, relativeTo: .subheadline)
+                        .accessibilityHidden(true)
+                }
+                Text(title)
+                    .feedText(.smallButton)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.7)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Theme.background, in: RoundedRectangle(cornerRadius: Radius.smallButton))
+            .contentShape(RoundedRectangle(cornerRadius: Radius.smallButton))
+        }
+        .buttonStyle(PressStyle())
+        .foregroundStyle(Theme.text)
+        .sensoryFeedback(.selection, trigger: taps)
+        .accessibilityLabel(spoken ?? title)
     }
 }

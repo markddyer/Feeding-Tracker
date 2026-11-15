@@ -4,7 +4,9 @@ import Foundation
 
 /// Simulator only: fills an empty store with a made-up day, to look at the screens. The names are
 /// made up (the mockup's), with different first letters so the avatars differ.
-/// Launch with `-sampleData YES`; add `-sampleFeedInProgress YES` for a feed running.
+/// Launch with `-sampleData YES`. Add `-sampleFeedInProgress` for a feed: `YES` (breast, running),
+/// `bottle` (a formula bottle running), `other` (the other parent's feed running) or
+/// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
 enum SampleData {
     @MainActor
     static func loadIfAsked(into store: HouseholdStore) {
@@ -41,9 +43,23 @@ enum SampleData {
             let pumpStart = now.addingTimeInterval(-3 * 3600)
             data.add(kind: .pump, babyID: "sample-baby", startedAt: pumpStart, endedAt: pumpStart.addingTimeInterval(20 * 60),
                      payload: EventPayload(pump: PumpDetails(side: .both, leftML: 50, rightML: 40)), by: other, timeZoneID: zone, now: pumpStart)
-            if defaults.bool(forKey: "sampleFeedInProgress") {
-                let id = data.startFeed(babyID: "sample-baby", side: .right, by: me, timeZoneID: zone, now: now.addingTimeInterval(-6 * 60))
-                data.switchSide(id, to: .right, by: me, now: now.addingTimeInterval(-6 * 60))
+            switch defaults.string(forKey: "sampleFeedInProgress") {
+            case "YES", "breast":
+                // Left for 8 minutes, then Right running for 4 (the mockup's feed).
+                let id = data.startFeed(babyID: "sample-baby", side: .left, by: me, timeZoneID: zone, now: now.addingTimeInterval(-12 * 60))
+                data.switchSide(id, to: .right, by: me, now: now.addingTimeInterval(-4 * 60))
+            case "bottle":
+                data.startFeed(babyID: "sample-baby", side: nil, bottle: .formula, by: me, timeZoneID: zone, now: now.addingTimeInterval(-6 * 60))
+            case "other":
+                data.startFeed(babyID: "sample-baby", side: .left, by: other, timeZoneID: zone, now: now.addingTimeInterval(-9 * 60))
+            case "finishedForMe":
+                // This parent's feed, finished by the other parent, waiting for its details.
+                let bottleOnly = defaults.string(forKey: FeedingStyle.storageKey) == FeedingStyle.bottleOnly.rawValue
+                let id = data.startFeed(babyID: "sample-baby", side: nil, bottle: bottleOnly ? .formula : nil, by: me,
+                                        timeZoneID: zone, now: now.addingTimeInterval(-25 * 60))
+                data.finishFeed(id, by: other, now: now.addingTimeInterval(-5 * 60))
+            default:
+                break
             }
         }
     }

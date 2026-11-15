@@ -22,6 +22,9 @@ struct HomeView: View {
                     SyncProblemBanner()
                     GreetingHeader(facts: facts)
                     HeroTile(facts: facts)
+                    if let feed = facts.feedInProgress {
+                        ThisFeedTile(feed: feed)
+                    }
                     if facts.feedInProgress == nil, let window = facts.window {
                         WindowBar(facts: facts, window: window)
                             .padding(.vertical, 4)
@@ -69,8 +72,9 @@ struct HomeView: View {
     /// Next side and Last feed side by side (1 to 1.35), or stacked at the accessibility sizes.
     @ViewBuilder
     private func sideAndLastFeed(_ facts: HomeFacts) -> some View {
+        // During a feed, the "This feed" tile takes their place.
         let next = facts.feedInProgress == nil ? facts.nextSide : nil
-        let last = facts.lastFinishedFeed
+        let last = facts.feedInProgress == nil ? facts.lastFinishedFeed : nil
         if next != nil || last != nil {
             let layout = typeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: 10))
@@ -256,37 +260,55 @@ struct HeroTile: View {
     let facts: HomeFacts
     @Environment(\.look) private var look
     @Environment(\.dynamicTypeSize) private var typeSize
+    @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
     @ScaledMetric(relativeTo: .largeTitle) private var ringSize: CGFloat = 104
 
+    private var running: RunningFeed? {
+        facts.feedInProgress.map { RunningFeed($0, bottleOnly: feedingStyle == FeedingStyle.bottleOnly.rawValue) }
+    }
+
     var body: some View {
+        let running = running
         let layout = typeSize.isAccessibilitySize
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
             : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
+        let ring = min(ringSize, 150)
         layout {
-            WindowRing(progress: facts.windowProgress)
-                .frame(width: min(ringSize, 150), height: min(ringSize, 150))
+            // During a feed the ring takes the feed's colour, with the side being fed (or the
+            // bottle) in the middle.
+            WindowRing(progress: facts.windowProgress, colour: running?.colour ?? Theme.primary,
+                       track: running == nil ? Theme.track : Theme.background)
+                .overlay {
+                    if let mark = running?.centre {
+                        FeedMarkView(mark, size: ring * 0.3, relativeTo: .largeTitle)
+                    }
+                }
+                .frame(width: ring, height: ring)
                 .accessibilityHidden(true)
             words
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.hero))
+        .background(running?.tint ?? Theme.surface, in: RoundedRectangle(cornerRadius: Radius.hero))
     }
 
     private var strong: Font.Weight { look == .night ? .semibold : .bold }
 
     @ViewBuilder
     private var words: some View {
-        if let feed = facts.feedInProgress {
-            // A feed running: build step 5 redesigns this part.
+        if let feed = facts.feedInProgress, let running {
+            let kinds = running.bottleKinds.map { "\($0) · " } ?? ""
+            let by = feed.event.loggedBy == facts.me ? "" : " by \(facts.displayName(feed.event.loggedBy))"
             VStack(alignment: .leading, spacing: 4) {
-                Text("Feed in progress").feedText(.subheadline).foregroundStyle(Theme.textMuted)
-                Text(feed.event.startedAt, style: .timer).feedText(.mainTime)
-                Text(feed.event.loggedBy == facts.me
-                     ? "Started \(facts.clock(feed.event.startedAt))"
-                     : "Started \(facts.clock(feed.event.startedAt)) by \(facts.name(feed.event.loggedBy))")
+                Text("Feeding now").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                Text(feed.event.startedAt, style: .timer)
+                    .feedText(.mainTime)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                Text("\(kinds)started \(Text(facts.clock(feed.event.startedAt)).fontWeight(strong))\(by)")
                     .feedText(.subheadline).foregroundStyle(Theme.textMuted)
             }
+            .accessibilityElement(children: .combine)
         } else if let start = facts.lastFeedStart {
             let elapsed = facts.now.timeIntervalSince(start)
             VStack(alignment: .leading, spacing: 4) {
@@ -314,10 +336,13 @@ struct HeroTile: View {
 struct WindowRing: View {
     let progress: Double
     var colour: Color = Theme.primary
+    var track: Color = Theme.track
+    @Environment(\.look) private var look
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
-            Circle().stroke(Theme.track, lineWidth: 11)
+            Circle().stroke(track, lineWidth: 11)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(colour, style: StrokeStyle(lineWidth: 11, lineCap: .round))
@@ -325,6 +350,86 @@ struct WindowRing: View {
         }
         // Keeps the line inside the frame.
         .padding(5.5)
+        // When a feed starts, the ring empties and starts again (DESIGN.md, "Motion"). Still at
+        // night and with Reduce Motion: the button's haptic marks it instead.
+        .animation(look == .night || reduceMotion ? nil : .easeInOut(duration: 0.3), value: progress)
+    }
+}
+
+/// What a running feed is so far, for the hero's colours and shapes.
+struct RunningFeed {
+    let snapshot: EventSnapshot
+    /// A bottle feed: bottles and no sides, or any feed on a bottle-only phone before it has sides.
+    let isBottle: Bool
+    /// The side being fed now.
+    let currentSide: BreastSide?
+
+    init(_ snapshot: EventSnapshot, bottleOnly: Bool) {
+        let details = snapshot.payload?.feed
+        let sides = details?.breast ?? []
+        self.snapshot = snapshot
+        isBottle = sides.isEmpty && (bottleOnly || !(details?.bottles.isEmpty ?? true))
+        currentSide = sides.last.flatMap { $0.durationSeconds == nil ? $0.side : nil }
+    }
+
+    var tint: Color { isBottle ? Theme.bottleTint : Theme.breastTint }
+    var colour: Color { isBottle ? Theme.bottle : Theme.breast }
+    var centre: FeedMark? { isBottle ? .bottle : currentSide.map { .side($0) } }
+
+    /// "Formula", or "Formula + Expressed milk", for a bottle feed.
+    var bottleKinds: String? {
+        guard isBottle, let bottles = snapshot.payload?.feed?.bottles, !bottles.isEmpty else { return nil }
+        return bottles.map { HomeText.milkName($0.milk) }.joined(separator: " + ")
+    }
+}
+
+/// The running feed so far: a chip for each side and bottle, with a live clock on the side
+/// being fed now ("◑ 4:02 running").
+struct ThisFeedTile: View {
+    let feed: EventSnapshot
+
+    var body: some View {
+        let segments = feed.payload?.feed?.breast ?? []
+        let bottles = feed.payload?.feed?.bottles ?? []
+        if !segments.isEmpty || !bottles.isEmpty {
+            Tile(label: "This feed") {
+                FlowLayout(spacing: 6) {
+                    ForEach(segments) { segment in
+                        if segment.id == segments.last?.id, segment.durationSeconds == nil, let started = segment.startedAt {
+                            LiveChip(mark: .side(segment.side), since: started)
+                        } else {
+                            let chip = HomeText.sideChip(segment)
+                            Chip(chip.mark, chip.text, spoken: chip.spoken)
+                        }
+                    }
+                    ForEach(bottles) { bottle in
+                        let chip = HomeText.bottleChip(bottle)
+                        Chip(chip.mark, chip.text, spoken: chip.spoken)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A chip with a live clock, tinted by its kind: the side being fed now.
+struct LiveChip: View {
+    let mark: FeedMark
+    let since: Date
+
+    var body: some View {
+        HStack(spacing: 5) {
+            FeedMarkView(mark)
+            Text(since, style: .timer)
+            Text("running")
+        }
+        .feedText(.chip)
+        .lineLimit(1)
+        .foregroundStyle(Theme.text)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(mark.tint, in: RoundedRectangle(cornerRadius: Radius.chip))
+        .accessibilityElement(children: .combine)
     }
 }
 

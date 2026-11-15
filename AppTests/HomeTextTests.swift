@@ -49,7 +49,7 @@ struct HomeTextTests {
                 bottles: [Bottle(milk: .formula, ml: 30), Bottle(milk: .expressed)])))
         let chips = HomeText.chips(snapshot)
         #expect(chips.map(\.mark) == [.side(.left), .side(.right), .side(.left), .bottle, .bottle])
-        #expect(chips.map(\.text) == ["12m", "<1m", "", "30 ml", ""])
+        #expect(chips.map(\.text) == ["12m", "<1m", "", "30 ml", "Expressed"])
         #expect(chips.map(\.spoken) == ["Left side, 12 minutes", "Right side, less than a minute", "Left side",
                                         "Formula bottle, 30 ml", "Expressed milk bottle"])
     }
@@ -70,5 +70,45 @@ struct HomeTextTests {
                 #expect(!word.lowercased().split(separator: " ").contains(Substring(forbidden)), "\(word)")
             }
         }
+    }
+}
+
+/// The hero's colour and middle shape while a feed runs (`05-visual-redesign.md`, "Home, a feed running").
+@Suite("A running feed")
+struct RunningFeedTests {
+    func feed(_ details: FeedDetails?) -> EventSnapshot {
+        EventSnapshot(
+            event: Event(id: "f", babyID: "b", kind: .feed, startedAt: Date(), timeZoneID: "Europe/London",
+                         loggedBy: "a", createdAt: Date(), modifiedAt: Date()),
+            payload: details.map { EventPayload(feed: $0) })
+    }
+
+    @Test func theSideBeingFedIsInTheMiddle() {
+        let running = RunningFeed(feed(FeedDetails(breast: [BreastSegment(side: .left, startedAt: Date(), durationSeconds: 480),
+                                                             BreastSegment(side: .right, startedAt: Date())])), bottleOnly: false)
+        #expect(!running.isBottle)
+        #expect(running.centre == .side(.right))
+        #expect(running.bottleKinds == nil)
+    }
+
+    @Test func aBottleAddedToABreastFeedKeepsItABreastFeed() {
+        let running = RunningFeed(feed(FeedDetails(breast: [BreastSegment(side: .left, startedAt: Date())],
+                                                   bottles: [Bottle(milk: .formula)])), bottleOnly: false)
+        #expect(!running.isBottle)
+        #expect(running.centre == .side(.left))
+    }
+
+    @Test func aBottleFeedShowsTheBottleAndItsKind() {
+        let running = RunningFeed(feed(FeedDetails(bottles: [Bottle(milk: .formula)])), bottleOnly: false)
+        #expect(running.isBottle)
+        #expect(running.centre == .bottle)
+        #expect(running.bottleKinds == "Formula")
+    }
+
+    @Test func aFeedWithNothingYetFollowsThePhonesStyle() {
+        #expect(!RunningFeed(feed(FeedDetails()), bottleOnly: false).isBottle)
+        #expect(RunningFeed(feed(FeedDetails()), bottleOnly: false).centre == nil)
+        #expect(RunningFeed(feed(FeedDetails()), bottleOnly: true).isBottle)
+        #expect(RunningFeed(feed(nil), bottleOnly: true).bottleKinds == nil)
     }
 }

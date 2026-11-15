@@ -72,21 +72,7 @@ enum HomeText {
         guard let payload = snapshot.payload else {
             return [ChipFact(mark: nil, text: "Feed", spoken: "Feed. Its details need a newer version of the app.")]
         }
-        var chips: [ChipFact] = []
-        for segment in payload.feed?.breast ?? [] {
-            let mark = FeedMark.side(segment.side)
-            if let seconds = segment.durationSeconds {
-                let spokenTime = seconds < 60 ? "less than a minute" : spokenElapsed(TimeInterval(seconds))
-                chips.append(ChipFact(mark: mark, text: sideMinutes(seconds), spoken: "\(mark.spoken), \(spokenTime)"))
-            } else {
-                chips.append(ChipFact(mark: mark, text: "", spoken: mark.spoken))
-            }
-        }
-        for bottle in payload.feed?.bottles ?? [] {
-            let milk = bottle.milk == .formula ? "Formula bottle" : "Expressed milk bottle"
-            chips.append(ChipFact(mark: .bottle, text: bottle.ml.map { "\($0) ml" } ?? "",
-                                  spoken: bottle.ml.map { "\(milk), \($0) ml" } ?? milk))
-        }
+        var chips = (payload.feed?.breast ?? []).map(sideChip) + (payload.feed?.bottles ?? []).map(bottleChip)
         if let pump = payload.pump {
             chips.append(ChipFact(mark: .pump, text: "\(pump.totalML) ml", spoken: "Pumped \(pump.totalML) ml"))
         }
@@ -95,6 +81,26 @@ enum HomeText {
                                   spoken: snapshot.event.kind == .pump ? "Pumping" : "Feed"))
         }
         return chips
+    }
+
+    /// A side: its half-moon and minutes ("12m"), or the half-moon alone with no time.
+    static func sideChip(_ segment: BreastSegment) -> ChipFact {
+        let mark = FeedMark.side(segment.side)
+        guard let seconds = segment.durationSeconds else { return ChipFact(mark: mark, text: "", spoken: mark.spoken) }
+        let spokenTime = seconds < 60 ? "less than a minute" : spokenElapsed(TimeInterval(seconds))
+        return ChipFact(mark: mark, text: sideMinutes(seconds), spoken: "\(mark.spoken), \(spokenTime)")
+    }
+
+    /// A bottle: its amount ("30 ml"), or its kind ("Formula") until the amount is known.
+    static func bottleChip(_ bottle: Bottle) -> ChipFact {
+        let spokenKind = bottle.milk == .formula ? "Formula bottle" : "Expressed milk bottle"
+        guard let ml = bottle.ml else { return ChipFact(mark: .bottle, text: milkName(bottle.milk, short: true), spoken: spokenKind) }
+        return ChipFact(mark: .bottle, text: "\(ml) ml", spoken: "\(spokenKind), \(ml) ml")
+    }
+
+    /// "Formula", "Expressed milk" ("Expressed" where room is short).
+    static func milkName(_ milk: MilkKind, short: Bool = false) -> String {
+        milk == .formula ? "Formula" : (short ? "Expressed" : "Expressed milk")
     }
 
     /// What a chart bar stands for, for VoiceOver: "breast and bottle".
