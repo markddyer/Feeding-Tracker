@@ -8,7 +8,7 @@ import Foundation
 /// `bottle` (a formula bottle running), `other` (the other parent's feed running) or
 /// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
 /// Add `-sampleDuplicate YES` for the last feed logged on both phones, and `-sampleNightAsk` with
-/// `fromOther`, `mine`, `declined`, `meOnDuty` or `noRota` for an ask to take tonight.
+/// `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for an ask to take tonight.
 enum SampleData {
     @MainActor
     static func loadIfAsked(into store: HouseholdStore) {
@@ -31,7 +31,8 @@ enum SampleData {
             data.put(PlainRecord(type: .member, name: other.rawValue, modifiedAt: now,
                                  payload: try? PayloadCoder.encode(MemberPayload(displayName: "Sam", colour: "teal"))))
             // `-sampleNightAsk noRota`: no rota yet, so nobody is on and both phones alert.
-            if defaults.string(forKey: "sampleNightAsk") != "noRota" {
+            // `takenByOther`: no rota either, and Sam took tonight after this parent asked.
+            if !["noRota", "takenByOther"].contains(defaults.string(forKey: "sampleNightAsk")) {
                 data.putSetting(Rota(startDate: PlainDate(now, in: .current), firstOnDuty: other, secondOnDuty: me),
                                 key: SettingKey.rota, now: now)
             }
@@ -91,6 +92,10 @@ enum SampleData {
                 if ask == "declined" {
                     data.declineAsk(tonight, by: other, now: now.addingTimeInterval(-120))
                 }
+            }
+            if ask == "takenByOther" {
+                data.askNight(tonight, by: me, now: now.addingTimeInterval(-300))
+                data.claimNight(tonight, by: other, now: now.addingTimeInterval(-120))
             }
         }
     }

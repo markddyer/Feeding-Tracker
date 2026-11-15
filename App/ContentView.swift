@@ -15,6 +15,15 @@ struct ContentView: View {
     /// home column is clearly narrower than the whole (`ArrangementView` gives no direct signal).
     @State private var arrangementWidth: CGFloat = 0
     @State private var homeWidth: CGFloat = 0
+    /// The screens opened from the top bar, so a tapped notification can go back to Home.
+    @State private var path = NavigationPath()
+
+    private enum Screen: Hashable {
+        case history, settings
+        #if FEEDING_DEV
+        case tests
+        #endif
+    }
 
     private var secondColumnShowing: Bool {
         DayColumn.isShowing(homeWidth: homeWidth, arrangementWidth: arrangementWidth)
@@ -34,7 +43,7 @@ struct ContentView: View {
     }
 
     private var main: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 #if FEEDING_DEV
                 if UserDefaults.standard.bool(forKey: "designGallery") {
@@ -49,17 +58,13 @@ struct ContentView: View {
             .toolbar {
                 if model.baby != nil {
                     ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            HistoryView()
-                        } label: {
+                        NavigationLink(value: Screen.history) {
                             Label("History", systemImage: "clock.arrow.circlepath")
                         }
                         .tint(Theme.text)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink {
-                            SettingsView()
-                        } label: {
+                        NavigationLink(value: Screen.settings) {
                             Label("Settings", systemImage: "gearshape")
                         }
                         .tint(Theme.text)
@@ -67,16 +72,27 @@ struct ContentView: View {
                 }
                 #if FEEDING_DEV
                 ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        SpikeMenu()
-                    } label: {
+                    NavigationLink(value: Screen.tests) {
                         Label("Tests", systemImage: "testtube.2")
                     }
                     .tint(Theme.text)
                 }
                 #endif
             }
+            .navigationDestination(for: Screen.self) { screen in
+                switch screen {
+                case .history: HistoryView()
+                case .settings: SettingsView()
+                #if FEEDING_DEV
+                case .tests: SpikeMenu()
+                #endif
+                }
+            }
             .navigationBarTitleDisplayMode(.inline)
+        }
+        // A tapped notification about an ask goes back to Home, where its card is.
+        .onChange(of: NotificationTaps.shared.homeRequests) {
+            path = NavigationPath()
         }
         // Coral for controls (switches, pickers); the top bar's buttons use the text colour
         // as in the approved mockup, because coral text on cream is hard to read.

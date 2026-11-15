@@ -101,11 +101,22 @@ struct NightAskTextTests {
                 == "Sam said not tonight. Both phones alert tonight.")
     }
 
+    /// A tap on any notification about an ask opens Home, where the card is; a tap on an alert
+    /// about feeds leaves the app where it was.
+    @Test func aTapOnAnAskNotificationOpensHome() {
+        let news: [NightAskNews] = [.asked(ask), .taken(ask, by: "b"), .declined(ask, by: "b")]
+        for item in news {
+            #expect(NotificationTaps.opensHome(item.id))
+        }
+        #expect(!NotificationTaps.opensHome("windowCloses-baby-1"))
+    }
+
     @Test func noWordSoundsLikeAVerdict() {
         let news: [NightAskNews] = [.asked(ask), .taken(ask, by: "b"), .declined(ask, by: "b")]
         let words = [HomeText.askedOfMe(by: "Alex"), HomeText.askButton("Sam"), HomeText.askButton("Sam", nobodyOn: true),
                      HomeText.askWaiting("Sam"), HomeText.askWaiting("Sam", nobodyOn: true),
-                     HomeText.askDeclined("Sam"), "I'll take it", "Not tonight"]
+                     HomeText.askDeclined("Sam"), "I'll take it", "Not tonight",
+                     HomeText.bothPhonesTonight, HomeText.bothPhonesButton]
             + news.flatMap { item in
                 [false, true].flatMap { nobodyOn in
                     let text = HomeText.askNotification(item, name: "Sam", nobodyOn: nobodyOn)

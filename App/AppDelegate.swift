@@ -1,15 +1,12 @@
 import CloudKit
 import UIKit
-#if FEEDING_DEV
 import UserNotifications
-#endif
 
 /// Push notifications and the start of syncing.
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        #if FEEDING_DEV
-        UNUserNotificationCenter.current().delegate = SpikeNotificationDelegate.shared
-        #endif
+        // Set before launch ends, so a tap that launched the app is handled.
+        UNUserNotificationCenter.current().delegate = NotificationDelegate.shared
         #if FEEDING_DEV && targetEnvironment(simulator)
         SampleData.loadIfAsked(into: AppModel.shared.store)
         #endif

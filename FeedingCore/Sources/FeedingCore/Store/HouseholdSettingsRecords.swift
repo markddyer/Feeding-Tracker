@@ -30,6 +30,8 @@ public enum SettingKey {
     public static func ask(_ night: PlainDate) -> String { "ask-\(night)" }
     /// "Not tonight", written by the parent who was asked (`NightAskReply`).
     public static func askReply(_ night: PlainDate) -> String { "askReply-\(night)" }
+    /// "Both phones tonight" (`BothPhonesNight`).
+    public static func bothPhones(_ night: PlainDate) -> String { "both-\(night)" }
 }
 
 /// "Seen by Parent B ✓": the changes one parent's phone has received from the other.
@@ -51,6 +53,8 @@ public struct HouseholdState: Hashable, Sendable {
     public var claims: [NightClaim]
     /// Every pending change, with `acknowledgedAt` set once the other phone has seen it.
     public var pendingChanges: [PendingChange]
+    /// "Both phones tonight", for any night.
+    public var bothPhones: [BothPhonesNight] = []
 }
 
 extension HouseholdData {
@@ -98,7 +102,8 @@ extension HouseholdData {
     }
 
     public var householdState: HouseholdState {
-        HouseholdState(settings: householdSettings, rota: rota, claims: nightClaims, pendingChanges: pendingChanges)
+        HouseholdState(settings: householdSettings, rota: rota, claims: nightClaims, pendingChanges: pendingChanges,
+                       bothPhones: bothPhonesNights)
     }
 
     // MARK: Changing
@@ -180,9 +185,14 @@ extension HouseholdData {
 
 extension HouseholdState {
     /// The roster for `reconcile`. With no rota set up yet, this phone counts as on duty every
-    /// night, so nothing goes quiet before the parents have chosen.
+    /// night, so nothing goes quiet before the parents have chosen. On a "Both phones tonight"
+    /// night it counts as on duty too, whoever had taken the night.
     public func roster(for me: MemberID) -> DutyRoster {
-        DutyRoster(rota: rota ?? Rota(startDate: PlainDate(year: 2026, month: 1, day: 1)!, firstOnDuty: me, secondOnDuty: me),
-                   claims: claims)
+        let both = Set(bothPhones.map(\.night)).compactMap { bothPhonesInForce(night: $0) }
+        let bothNights = Set(both.map(\.night))
+        let claims = claims.filter { !bothNights.contains($0.night) }
+            + both.map { NightClaim(night: $0.night, member: me, claimedAt: $0.at) }
+        return DutyRoster(rota: rota ?? Rota(startDate: PlainDate(year: 2026, month: 1, day: 1)!, firstOnDuty: me, secondOnDuty: me),
+                          claims: claims)
     }
 }

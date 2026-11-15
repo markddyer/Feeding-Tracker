@@ -62,6 +62,12 @@ enum HomeText {
         isMe ? "You're on tonight" : "\(name)'s on tonight"
     }
 
+    /// Nobody is on tonight: no rota, or a parent tapped "Both phones tonight".
+    static let bothPhonesTonight = "Both phones alert tonight"
+
+    /// Gives a taken night back, so both phones alert (`BothPhonesNight`).
+    static let bothPhonesButton = "Both phones tonight"
+
     // MARK: Asking the other parent to take a night
 
     /// The card on the asked parent's Home: "Alex asks you to take tonight".

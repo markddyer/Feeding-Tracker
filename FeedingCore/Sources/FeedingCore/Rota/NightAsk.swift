@@ -94,15 +94,18 @@ extension HouseholdSettings {
 }
 
 extension HouseholdState {
-    /// The claim that decides `night`, if any.
+    /// The claim that decides `night`, if any. None when "Both phones tonight" came after it.
     public func claim(for night: PlainDate) -> NightClaim? {
-        DutyRoster(rota: Rota(startDate: night, firstOnDuty: "", secondOnDuty: ""), claims: claims).claim(for: night)
+        bothPhonesInForce(night: night) == nil ? latestClaim(for: night) : nil
     }
 
-    /// Who is on duty on `night`, for the screens. Nil when there is no rota and nobody took the
-    /// night (`roster(for:)` counts this phone as on duty then, so that nothing goes quiet).
+    /// Who is on duty on `night`, for the screens. Nil when both phones alert: there is no rota
+    /// and nobody took the night, or a parent tapped "Both phones tonight" (`roster(for:)` counts
+    /// this phone as on duty then, so that nothing goes quiet).
     public func onDuty(night: PlainDate) -> MemberID? {
-        claim(for: night)?.member ?? rota?.scheduledOnDuty(night: night)
+        if let claim = claim(for: night) { return claim.member }
+        if bothPhonesInForce(night: night) != nil { return nil }
+        return rota?.scheduledOnDuty(night: night)
     }
 }
 
@@ -127,8 +130,8 @@ extension HouseholdData {
         let state = householdState
         let onDuty = state.onDuty(night: night)
         // A claim made after the ask answers it: the other parent took the night, or the asker
-        // took it back after that.
-        let claimedSince = state.claim(for: night).map { $0.claimedAt > ask.askedAt } ?? false
+        // took it back after that. So does "Both phones tonight".
+        let claimedSince = state.decidedAt(night: night).map { $0 > ask.askedAt } ?? false
         let reply = setting(NightAskReply.self, SettingKey.askReply(night))
             .flatMap { $0.askedAt.wholeMilliseconds == ask.askedAt.wholeMilliseconds && $0.by != ask.askedBy ? $0 : nil }
         if ask.askedBy == me {

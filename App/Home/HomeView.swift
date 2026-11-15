@@ -13,6 +13,7 @@ struct HomeView: View {
     @Binding var undo: UndoAction?
 
     private let model = AppModel.shared
+    @State private var scroll = ScrollPosition()
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.secondColumnShowing) private var secondColumnShowing
 
@@ -51,6 +52,11 @@ struct HomeView: View {
             }
             .scrollIndicators(.hidden)
             .defaultScrollAnchor(Self.startsAtBottom ? .bottom : nil)
+            .scrollPosition($scroll)
+            // A tapped notification about an ask: back to the top, where its card is.
+            .onChange(of: NotificationTaps.shared.homeRequests) {
+                withAnimation { scroll.scrollTo(edge: .top) }
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 8) {
                     if let undo, undo.expiresAt > context.date {
@@ -676,7 +682,10 @@ struct NightsTile: View {
         let state = facts.data.householdState
         let nights = facts.nights
         let onTonight = nights.first { $0.night == facts.tonight }?.onDuty
-        let noRota = state.rota == nil && state.claims.isEmpty
+        // Nothing in the week's row to show: no rota, and nobody has taken a night.
+        let noRota = state.rota == nil && nights.allSatisfy { $0.onDuty == nil }
+        // Someone took tonight: either parent can give it back to both phones.
+        let taken = state.claim(for: facts.tonight) != nil && facts.otherMember != nil
         let waiting = !facts.data.unacknowledgedChanges(by: me).isEmpty
         Tile(label: "Nights") {
             if noRota {
@@ -687,10 +696,24 @@ struct NightsTile: View {
             }
             if onTonight == me {
                 if facts.askStatus == nil, let other = facts.otherMember {
-                    lineAndButton(whoIsOn(onTonight, noRota: noRota), askButton(other, nobodyOn: false))
+                    if taken {
+                        lineAndButtons(whoIsOn(onTonight, noRota: noRota)) {
+                            askButton(other, nobodyOn: false)
+                            bothPhonesButton
+                        }
+                    } else {
+                        lineAndButton(whoIsOn(onTonight, noRota: noRota), askButton(other, nobodyOn: false))
+                    }
+                } else if taken {
+                    lineAndButton(whoIsOn(onTonight, noRota: noRota), bothPhonesButton)
                 } else {
                     whoIsOn(onTonight, noRota: noRota)
                         .frame(minHeight: 44, alignment: .leading)
+                }
+            } else if taken {
+                lineAndButtons(whoIsOn(onTonight, noRota: noRota)) {
+                    takeButton(noRota: noRota)
+                    bothPhonesButton
                 }
             } else if onTonight == nil, facts.askStatus == nil, let other = facts.otherMember {
                 // Nobody is on (both phones alert): take tonight, or ask the other parent to.
@@ -727,7 +750,26 @@ struct NightsTile: View {
             Text(HomeText.onTonight(facts.names[member] ?? facts.name(member).capitalizedFirst, isMe: member == me))
                 .feedText(.smallButton)
         } else if !noRota {
-            Text("No one has taken tonight").feedText(.smallButton)
+            Text(HomeText.bothPhonesTonight).feedText(.smallButton)
+        }
+    }
+
+    /// A line with two buttons under it, side by side while they fit.
+    private func lineAndButtons(_ line: some View, @ViewBuilder _ buttons: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            line
+            FlowLayout(spacing: 8) {
+                buttons()
+            }
+        }
+    }
+
+    /// "Both phones tonight": gives a taken night back. It only adds alerting, so it needs no
+    /// Undo; "I'll take it" or an ask settles the night again.
+    private var bothPhonesButton: some View {
+        PillButton(HomeText.bothPhonesButton) {
+            let night = facts.tonight
+            AppModel.shared.store.change { $0.setBothPhones(night, by: me, now: Date()) }
         }
     }
 
@@ -759,11 +801,12 @@ struct NightsTile: View {
         }
     }
 
-    /// "I'll take it": a claim, with Undo.
+    /// "I'll take it": a claim, with Undo. Once the claim has reached the other phone, Undo makes
+    /// both phones alert instead (`undoTake`), so nothing goes quiet.
     static func take(_ night: PlainDate, me: MemberID, onUndo: (UndoAction) -> Void) {
         AppModel.shared.store.change { $0.claimNight(night, by: me, now: Date()) }
         onUndo(UndoAction(message: "You're on tonight") {
-            AppModel.shared.store.change { $0.undoClaim(night, by: me) }
+            AppModel.shared.store.change { $0.undoTake(night, by: me, now: Date()) }
         })
     }
 
@@ -797,15 +840,24 @@ struct AskCard: View {
             Text(HomeText.askedOfMe(by: facts.name(asker).capitalizedFirst))
                 .feedText(.tileValue)
                 .fixedSize(horizontal: false, vertical: true)
-            FlowLayout(spacing: 8) {
-                PillButton("I'll take it") {
-                    NightsTile.take(ask.night, me: me, onUndo: onUndo)
-                }
-                PillButton("Not tonight") {
-                    let night = ask.night
-                    AppModel.shared.store.change { $0.declineAsk(night, by: me, now: Date()) }
-                }
+            // Large: the card waits for an answer, often at night (the first phone test found the
+            // small pills hard to hit). Side by side, or one above the other when they don't fit.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { answers }
+                VStack(spacing: 8) { answers }
             }
+            .padding(.top, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var answers: some View {
+        PillButton("I'll take it", large: true) {
+            NightsTile.take(ask.night, me: me, onUndo: onUndo)
+        }
+        PillButton("Not tonight", large: true) {
+            let night = ask.night
+            AppModel.shared.store.change { $0.declineAsk(night, by: me, now: Date()) }
         }
     }
 }
@@ -852,7 +904,7 @@ struct NightsRow: View {
 
     private func label(_ duty: NightDuty, isTonight: Bool) -> String {
         let day = Self.weekday(duty.night, short: false)
-        let who = duty.onDuty.map { facts.name($0) } ?? "nobody yet"
+        let who = duty.onDuty.map { facts.name($0) } ?? "both phones"
         return isTonight ? "Tonight, \(day): \(who)" : "\(day): \(who)"
     }
 

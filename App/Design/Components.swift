@@ -118,11 +118,15 @@ struct FlowLayout: Layout {
 /// a hole in the tile, with a 44 point tap area.
 struct PillButton: View {
     let title: String
+    /// Button-sized letters, taller, filling its share of the width: for an answer a card waits
+    /// for ("I'll take it" / "Not tonight").
+    let large: Bool
     let action: () -> Void
     @State private var taps = 0
 
-    init(_ title: String, action: @escaping () -> Void) {
+    init(_ title: String, large: Bool = false, action: @escaping () -> Void) {
         self.title = title
+        self.large = large
         self.action = action
     }
 
@@ -132,10 +136,11 @@ struct PillButton: View {
             action()
         } label: {
             Text(title)
-                .feedText(.chip)
+                .feedText(large ? .button : .chip)
                 .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, large ? 18 : 12)
+                .padding(.vertical, large ? 14 : 8)
+                .frame(maxWidth: large ? .infinity : nil)
                 .background(Theme.background, in: Capsule())
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())

@@ -46,10 +46,24 @@ final class NightAskFlowTests: XCTestCase {
         XCTAssertTrue(ask.waitForExistence(timeout: 3))
     }
 
+    /// No rota, and Sam took tonight: "Both phones tonight" gives it back, as before the ask.
+    func testBothPhonesTonightGivesTheNightBack() {
+        let app = launch("takenByOther")
+        XCTAssertTrue(text(app, "Sam's on tonight").waitForExistence(timeout: 5))
+        app.buttons["Both phones tonight"].tap()
+        XCTAssertTrue(text(app, "No night rota yet: both phones alert at night.").waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["I'll take tonight"].exists)
+        XCTAssertTrue(app.buttons["Ask Sam to take tonight"].exists)
+        XCTAssertFalse(app.buttons["Both phones tonight"].exists)
+    }
+
     func testNotTonightClosesTheCard() {
         let app = launch("fromOther")
         let card = text(app, "Sam asks you to take tonight")
         XCTAssertTrue(card.waitForExistence(timeout: 5))
+        // Large enough to hit at night (the first phone test found the small pills hard to hit).
+        XCTAssertGreaterThanOrEqual(app.buttons["Not tonight"].frame.height, 50)
+        XCTAssertGreaterThanOrEqual(app.buttons["Not tonight"].frame.width, 120)
         app.buttons["Not tonight"].tap()
         XCTAssertTrue(card.waitForNonExistence(timeout: 3))
         // "I'll take it" stays in the Nights tile.
