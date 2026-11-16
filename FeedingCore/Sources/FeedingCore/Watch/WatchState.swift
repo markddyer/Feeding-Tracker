@@ -134,6 +134,18 @@ public struct WatchState: Codable, Hashable, Sendable {
 }
 
 /// What a tap on the watch face's Start feed does.
+/// The watch face's Start feed piece (the user's choices of 16 Nov 2026). With no feed running it
+/// is Start feed. While this parent's feed runs it shows a stopwatch and the feed's timer, and a
+/// tap finishes the feed, then the watch asks for each bottle's amount. While the other parent's
+/// feed runs it shows their timer, and a tap only opens the app on "Finish for Sam", so ending
+/// their feed takes a second, deliberate tap.
+public enum WatchFaceButton: Hashable, Sendable {
+    case notReady
+    case start
+    case finish(feedID: String, since: Date)
+    case others(feedID: String, since: Date, name: String)
+}
+
 public enum WatchFaceStart: Hashable, Sendable {
     /// The watch hasn't heard from a set-up phone: it shows why.
     case notReady
@@ -377,6 +389,22 @@ extension WatchState {
         guard setUp else { return .notReady }
         if running != nil { return .showRunning }
         return bottleOnly ? .askMilk : .startNow
+    }
+
+    /// What the watch face's Start feed piece shows, and what a tap on it does.
+    public var faceButton: WatchFaceButton {
+        guard setUp else { return .notReady }
+        guard let running else { return .start }
+        return running.mine
+            ? .finish(feedID: running.id, since: running.startedAt)
+            : .others(feedID: running.id, since: running.startedAt, name: running.byName)
+    }
+
+    /// A tap on the watch face's Finish, checked against what the watch knows now (the face can be
+    /// a little behind): only this parent's feed, and only while it is still the one running.
+    public func finishFromFace(feedID: String) -> WatchFeed? {
+        guard let running, running.mine, running.id == feedID else { return nil }
+        return running
     }
 
     /// Remembers an amount the watch saved, so the crown starts there next time.

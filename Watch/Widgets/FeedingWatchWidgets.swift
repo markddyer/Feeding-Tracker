@@ -181,61 +181,127 @@ struct WatchLastFeedView: View {
 
 // MARK: - Start feed
 
-/// Start feed on the watch face (the user's choice of 16 Nov 2026). A tap opens Feeding on its
-/// question: "Formula or expressed?" on a bottle-only watch, and the feed starts from the tap. On
-/// any other watch the feed starts at once, as Start feed in the app does. A watch face piece can
-/// only open its app, so the question is in the app.
+/// Start feed on the watch face (the user's choices of 16 Nov 2026). With no feed running, a tap
+/// opens Feeding on its question: "Formula or expressed?" on a bottle-only watch, and the feed
+/// starts from the tap; on any other watch the feed starts at once, as Start feed in the app does.
+/// While this parent's feed runs, it shows a stopwatch and the feed's timer, and a tap finishes the
+/// feed and asks for the bottle's amount. While the other parent's feed runs, it shows their timer
+/// and a tap only opens the app (`WatchFaceButton`). A watch face piece can only open its app, so
+/// the question and the finish happen in the app.
 struct WatchStartWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "WatchStart", provider: OpenProvider()) { _ in
-            WatchStartView()
-                .widgetURL(WatchLinks.startFeed)
+        StaticConfiguration(kind: "WatchStart", provider: FaceButtonProvider()) { entry in
+            WatchStartView(button: entry.button)
+                .widgetURL(entry.link)
                 .containerBackground(for: .widget) { Color.clear }
         }
         .configurationDisplayName("Start feed")
-        .description("Starts a feed. A bottle-only watch asks: formula or expressed?")
+        .description("Starts a feed, then shows its timer. Tap it again to finish your feed.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner])
     }
 }
 
 struct WatchStartView: View {
+    let button: WatchFaceButton
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
         Group {
-            if family == .accessoryCorner {
-                BottleShape()
-                    .frame(width: 24, height: 24)
-                    .widgetAccentable()
-                    .widgetLabel("Start feed")
-            } else {
-                ZStack {
-                    AccessoryWidgetBackground()
-                    VStack(spacing: 1) {
-                        BottleShape().frame(width: 20, height: 20).widgetAccentable()
-                        Text("Start").font(.system(size: 11, weight: .semibold, design: .rounded))
-                    }
-                }
+            switch button {
+            case .finish(_, let since), .others(_, let since, _):
+                running(since: since)
+            case .start, .notReady:
+                start
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Start feed")
+        .accessibilityLabel(spoken)
+    }
+
+    @ViewBuilder
+    private var start: some View {
+        if family == .accessoryCorner {
+            BottleShape()
+                .frame(width: 24, height: 24)
+                .widgetAccentable()
+                .widgetLabel("Start feed")
+        } else {
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 1) {
+                    BottleShape().frame(width: 20, height: 20).widgetAccentable()
+                    Text("Start").font(.system(size: 11, weight: .semibold, design: .rounded))
+                }
+            }
+        }
+    }
+
+    /// A stopwatch and the feed's timer, which the watch keeps running by itself.
+    @ViewBuilder
+    private func running(since: Date) -> some View {
+        if family == .accessoryCorner {
+            Image(systemName: "stopwatch")
+                .font(.system(size: 22, weight: .semibold))
+                .widgetAccentable()
+                .widgetLabel {
+                    Text(since, style: .timer)
+                        .monospacedDigit()
+                }
+        } else {
+            ZStack {
+                AccessoryWidgetBackground()
+                VStack(spacing: 0) {
+                    Image(systemName: "stopwatch")
+                        .font(.system(size: 15, weight: .semibold))
+                        .widgetAccentable()
+                    Text(since, style: .timer)
+                        .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
+                        .multilineTextAlignment(.center)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                        .padding(.horizontal, 4)
+                }
+            }
+        }
+    }
+
+    private var spoken: String {
+        switch button {
+        case .finish: "Your feed is running. Finish feed"
+        case .others(_, _, let name): "\(name)'s feed is running"
+        case .start, .notReady: "Start feed"
+        }
     }
 }
 
-/// The bottle never changes: one entry.
-struct OpenProvider: TimelineProvider {
+/// What the watch app last heard: one entry, as the timer runs by itself. The watch app reloads
+/// it whenever a feed starts or finishes (`PhoneLink`).
+struct FaceButtonProvider: TimelineProvider {
     struct Entry: TimelineEntry {
         let date: Date
+        let button: WatchFaceButton
+
+        /// Where a tap goes: Start feed, this parent's Finish, or the app on the other parent's feed.
+        var link: URL? {
+            switch button {
+            case .finish(let feedID, _): WatchLinks.finishFeed(feedID)
+            case .others: WatchLinks.showFeed
+            case .start, .notReady: WatchLinks.startFeed
+            }
+        }
     }
 
-    func placeholder(in context: Context) -> Entry { Entry(date: Date()) }
+    func placeholder(in context: Context) -> Entry { Entry(date: Date(), button: .start) }
 
     func getSnapshot(in context: Context, completion: @escaping (Entry) -> Void) {
-        completion(Entry(date: Date()))
+        completion(context.isPreview ? placeholder(in: context) : read())
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<Entry>) -> Void) {
-        completion(Timeline(entries: [Entry(date: Date())], policy: .never))
+        completion(Timeline(entries: [read()], policy: .never))
+    }
+
+    private func read() -> Entry {
+        Entry(date: Date(), button: WatchFile.load().shown?.faceButton ?? .notReady)
     }
 }

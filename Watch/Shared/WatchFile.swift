@@ -29,8 +29,32 @@ enum WatchLinks {
     /// The watch face's Start feed.
     static let startFeedHost = "start-feed"
 
+    /// The watch face's Finish, while this parent's feed runs: names the feed, so a face that is a
+    /// little behind can't finish a different one.
+    static let finishFeedHost = "finish-feed"
+    /// The watch face during the other parent's feed: only opens the app.
+    static let showFeedHost = "show-feed"
+
     static var startFeed: URL? {
         scheme.flatMap { URL(string: "\($0)://\(startFeedHost)") }
+    }
+
+    static func finishFeed(_ feedID: String) -> URL? {
+        guard let scheme else { return nil }
+        var parts = URLComponents()
+        parts.scheme = scheme
+        parts.host = finishFeedHost
+        parts.queryItems = [URLQueryItem(name: "feed", value: feedID)]
+        return parts.url
+    }
+
+    static var showFeed: URL? {
+        scheme.flatMap { URL(string: "\($0)://\(showFeedHost)") }
+    }
+
+    /// The feed a Finish link names.
+    static func feedID(in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "feed" }?.value
     }
 
     private static var scheme: String? {

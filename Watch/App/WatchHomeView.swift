@@ -35,17 +35,28 @@ struct WatchHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { link.refresh() }
         }
-        // Start feed on the watch face.
+        // Start feed on the watch face, and its Finish while this parent's feed runs. Its other
+        // link (during the other parent's feed) only opens the app, which shows that feed.
         .onOpenURL { url in
-            if url.host == WatchLinks.startFeedHost { startFromFace(at: Date()) }
+            switch url.host {
+            case WatchLinks.startFeedHost: startFromFace(at: Date())
+            case WatchLinks.finishFeedHost: WatchLinks.feedID(in: url).map(finishFromFace)
+            default: break
+            }
         }
         #if FEEDING_DEV
         // `-watchFaceTapTest YES`: what a tap on the watch face's Start feed does, four seconds
         // after launch, as the simulator can't open the watch face's link by command.
+        // `-watchFaceTapTest finish`: the watch face's Finish, on the feed running then.
         .task {
-            guard UserDefaults.standard.bool(forKey: "watchFaceTapTest") else { return }
+            let test = UserDefaults.standard.string(forKey: "watchFaceTapTest")
+            guard test == "YES" || test == "finish" else { return }
             try? await Task.sleep(for: .seconds(4))
-            startFromFace(at: Date())
+            if test == "finish" {
+                link.shown?.running.map { finishFromFace($0.id) }
+            } else {
+                startFromFace(at: Date())
+            }
         }
         #endif
     }
@@ -62,6 +73,20 @@ struct WatchHomeView: View {
         case .showRunning, .notReady:
             break
         }
+    }
+
+    /// Finish on the watch face: the same as Finish in the app, then the bottle's amount. Only
+    /// this parent's feed, and only while it is still the one running; otherwise the app just
+    /// shows what is running now.
+    private func finishFromFace(_ feedID: String) {
+        guard let feed = link.shown?.finishFromFace(feedID: feedID) else { return }
+        milkAsk = nil
+        finish(feed)
+    }
+
+    private func finish(_ feed: WatchFeed) {
+        link.send(.finish(feedID: feed.id))
+        question = AmountAsk(feedID: feed.id, bottles: feed.bottles.filter { $0.ml == nil })
     }
 
     @ViewBuilder
@@ -88,9 +113,10 @@ struct WatchHomeView: View {
                 Group {
                     if let running = state.running, running.mine {
                         RunningScreen(state: state, feed: running, waiting: link.waitingForPhone) { command in
-                            link.send(command)
                             if case .finish = command {
-                                question = AmountAsk(feedID: running.id, bottles: running.bottles.filter { $0.ml == nil })
+                                finish(running)
+                            } else {
+                                link.send(command)
                             }
                         }
                     } else if let running = state.running {
@@ -372,6 +398,9 @@ private struct AmountScreen: View {
     let done: (Int?) -> Void
     @State private var crown: Double
     @State private var saved = 0
+    /// The amount box takes the crown as soon as the screen opens. Without this, nothing had it,
+    /// so the crown did nothing (found on the real watch, 16 Nov 2026).
+    @FocusState private var crownFocused: Bool
     @Environment(\.watchLook) private var look
 
     init(ask: AmountAsk, start: Int, done: @escaping (Int?) -> Void) {
@@ -401,6 +430,7 @@ private struct AmountScreen: View {
             .background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
             .overlay(RoundedRectangle(cornerRadius: 16).stroke(palette.primary, lineWidth: 2))
             .focusable()
+            .focused($crownFocused)
             .digitalCrownRotation($crown, from: 5, through: 300, by: 5, sensitivity: .low, isContinuous: false,
                                   isHapticFeedbackEnabled: true)
             .accessibilityElement(children: .ignore)
@@ -411,6 +441,16 @@ private struct AmountScreen: View {
                 case .increment: crown = min(300, crown + 5)
                 case .decrement: crown = max(5, crown - 5)
                 @unknown default: break
+                }
+            }
+            // − and + for a finger, 5 ml a tap (the user's choice of 16 Nov 2026): the box
+            // answered only the crown, and a finger on it did nothing.
+            HStack(spacing: 8) {
+                StepButton(symbol: "minus", label: "5 millilitres less", enabled: ml > 5) {
+                    crown = max(5, crown - 5)
+                }
+                StepButton(symbol: "plus", label: "5 millilitres more", enabled: ml < 300) {
+                    crown = min(300, crown + 5)
                 }
             }
             Spacer(minLength: 0)
@@ -426,6 +466,32 @@ private struct AmountScreen: View {
             }
         }
         .sensoryFeedback(.success, trigger: saved)
+        .onAppear { crownFocused = true }
+    }
+}
+
+/// − or + under the amount: a soft round-ended button with the symbol in coral.
+private struct StepButton: View {
+    let symbol: String
+    let label: String
+    let enabled: Bool
+    let action: () -> Void
+    @Environment(\.watchLook) private var look
+
+    var body: some View {
+        let palette = WatchPalette.of(look)
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 17, weight: look == .night ? .semibold : .bold))
+                .foregroundStyle(palette.primary)
+                .frame(maxWidth: .infinity, minHeight: 34)
+                .background(palette.surface, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.4)
+        .accessibilityLabel(label)
     }
 }
 

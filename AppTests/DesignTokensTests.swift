@@ -16,6 +16,7 @@ struct DesignTokensTests {
         ("breast", Theme.breast), ("breast-mark", Theme.breastMark), ("breast-tint", Theme.breastTint),
         ("bottle", Theme.bottle), ("bottle-mark", Theme.bottleMark), ("bottle-tint", Theme.bottleTint),
         ("pump", Theme.pump), ("pump-mark", Theme.pumpMark), ("pump-tint", Theme.pumpTint),
+        ("bottle-soft", Theme.bottleSoft), ("breast-soft", Theme.breastSoft), ("chart", Theme.chart),
         ("parent-1", Theme.parent1), ("on-parent-1", Theme.onParent1), ("parent-1-tint", Theme.parent1Tint),
         ("parent-2", Theme.parent2), ("on-parent-2", Theme.onParent2), ("parent-2-tint", Theme.parent2Tint),
         ("lavender", Theme.lavender), ("on-lavender", Theme.onLavender), ("lavender-tint", Theme.lavenderTint),
@@ -116,6 +117,21 @@ struct DesignTokensTests {
     func chartBlocksStandOutOnTheStrip(_ look: Look) {
         for (mark, kind) in [(Theme.breastMark, "breast"), (Theme.bottleMark, "bottle"), (Theme.textMuted, "unreadable feed")] {
             #expect(Self.ratio(mark, Theme.track, look) >= 3, "\(kind) block on the strip")
+        }
+    }
+
+    /// The Graphs tab's bars on their tile, and the two shades of a kind told apart.
+    @Test(arguments: [Look.day, .night])
+    func graphBarsStandOut(_ look: Look) {
+        #expect(Self.ratio(Theme.chart, Theme.surface, look) >= 4.5, "plain bars on the tile")
+        #expect(Self.ratio(Theme.pumpMark, Theme.surface, look) >= 3, "pumping bars on the tile")
+        // The soft shade sits on or beside its kind's mark, which carries the 3:1; the two must
+        // look different, with or without colour.
+        #expect(Self.ratio(Theme.bottleMark, Theme.bottleSoft, look) >= 1.5, "formula against expressed milk")
+        #expect(Self.ratio(Theme.breastMark, Theme.breastSoft, look) >= 1.5, "left against right")
+        if look == .night {
+            #expect(Self.ratio(Theme.bottleSoft, Theme.surface, look) >= 3, "expressed milk on the tile")
+            #expect(Self.ratio(Theme.breastSoft, Theme.surface, look) >= 3, "the right side on the tile")
         }
     }
 

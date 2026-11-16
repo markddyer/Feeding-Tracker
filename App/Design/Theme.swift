@@ -33,6 +33,14 @@ enum Theme {
     static let pumpMark = Color(day: 0x23885F, night: 0x3D7A60)
     static let pumpTint = Color(day: 0xD6F2E2, night: 0x121D17)
 
+    // The Graphs tab (the user's choices of 16 Nov 2026). A second shade of a kind, beside its
+    // mark in one bar or pair: expressed milk above formula, and the right breast beside the left.
+    // At night they are lighter than the mark, so they still stand out on a dark tile.
+    static let bottleSoft = Color(day: 0x5FA8E8, night: 0x6E93BA)
+    static let breastSoft = Color(day: 0xF07C8F, night: 0xC27F8C)
+    /// Bars that are no kind of feed (feeds per day, the time between feeds).
+    static let chart = Color(day: 0x3A2A1E, night: 0x978472)
+
     // The two parents' default colours (sunflower and teal).
     static let parent1 = Color(day: 0xF2B33D, night: 0x9C7A30)
     static let onParent1 = Color(day: 0x3A1A0E, night: 0x120A06)

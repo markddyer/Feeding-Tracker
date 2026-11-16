@@ -21,6 +21,10 @@ colors:
   pump: "#4FB58C"
   pump-mark: "#23885F"
   pump-tint: "#D6F2E2"
+  # Graphs: a second shade beside a kind's mark, and bars that are no kind
+  bottle-soft: "#5FA8E8"
+  breast-soft: "#F07C8F"
+  chart: "#3A2A1E"
   parent-1: "#F2B33D"
   on-parent-1: "#3A1A0E"
   parent-1-tint: "#FDEBC4"
@@ -56,6 +60,9 @@ colors:
   bottle-tint-night: "#141B24"
   pump-night: "#3D7A60"
   pump-tint-night: "#121D17"
+  bottle-soft-night: "#6E93BA"
+  breast-soft-night: "#C27F8C"
+  chart-night: "#978472"
   parent-1-night: "#9C7A30"
   on-parent-1-night: "#120A06"
   parent-1-tint-night: "#221B0E"
@@ -200,6 +207,7 @@ At night every weight drops one or two steps (see the table), so fewer pixels li
 ## Layout
 
 - One column on the phone and on the folded Duo (382 and 385 pt). A 16 pt gutter. Tiles are 10-12 pt apart.
+- **Three tabs** (the user's choice, 16 Nov 2026): Home, History and Graphs, in the system tab bar (on the folded Duo, iOS puts it in the bar down the right-hand side). The chosen tab is in `text`, not coral. Settings is the gear at the top of Home.
 - Home, top to bottom: greeting and name, the hero tile (ring and main time), the window bar, two tiles side by side (Next side; Last feed), the 24-hour tile (chart and three totals), the Nights tile (the week's rota and "I'll take it"). Start feed and the three small buttons are pinned to the bottom; the rest scrolls behind them.
 - During a feed the bottom holds Left / Right / Bottle (three equal buttons) and, below them, "Stop · discard" (150 pt wide) beside a wider Finish.
 - Unfolded Duo (594 pt and wider): the left column is the operating column (hero, window, next side, last feed and the buttons); the right column holds the 24-hour tile, the Nights tile and the recent feeds. The big buttons stay at the bottom of the left column, away from the fold.
@@ -230,14 +238,15 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 - **Apple Watch** (added 16 Nov 2026, the user's choices from side-by-side mockups):
   - **A black background by day as well as at night.** This departs from the phone's cream day background on purpose: Apple's advice for watches, so the screen's edge disappears into the watch and nothing is bright when a wrist is lifted. By day the watch uses `#2A1F18` for buttons and tiles, `#FFF4E2` for text, `#BFA995` for muted text, `#3A2C22` for the empty bar and `#7A4A35` for the window, with the phone's day coral and feed colours. At night it uses the phone's night colours on black, and every weight drops as on the phone. Contrast, checked 16 Nov 2026: text on black 19.3:1 (day) and 14.8:1 (night); muted text on a button 7.1:1 and 5.0:1; coral button text 7.0:1 and 5.2:1; the selected side's label 6.0:1 and 3.4:1 (the phone's night side button, large text).
   - **One screen, no title** (on a 41 or 42 mm watch a title takes a row of its own). Big number, not a ring: a "LAST FEED" label, the time in SF Rounded at 38 pt, the window bar (8 pt tall) with "Window 05:00" and the bell, then one big coral button, 50 pt tall with a 20 pt radius, Fredoka label. During a feed: the time running, Left and Right (46 pt, the half-moon above the word, the side being fed in the breast colour), Finish, and "Stop · discard" lower down. The other parent's feed shows a dot in their colour and a soft "Finish for Sam".
-  - **The amount on the Digital Crown** after Finish: the number at 40 pt in a coral outline, 5 to 300 ml in 5 ml steps, a soft Done and a coral Save.
+  - **The amount on the Digital Crown** after Finish: the number at 40 pt in a coral outline, 5 to 300 ml in 5 ml steps, a soft Done and a coral Save. The box takes the crown as soon as the screen opens. Under it, soft − and + buttons (34 pt tall, the symbol in coral) change it by 5 ml a tap, for a finger (the user's choice, 16 Nov 2026: on the real watch the box answered nothing to a finger).
   - **Double tap** presses the main coral button (Start feed, Finish, Save), never "Finish for Sam".
-  - **The watch face** draws the pieces in its own colours: the Lock Screen widget's words, a ring with "1:40", and Start feed, a bottle with "Start" under it. A tap on Start feed opens "Formula or expressed?" on a bottle-only watch: the same label and two coral buttons, "Feed from 05:12" above them, and a soft "Not now" lower down.
+  - **The watch face** draws the pieces in its own colours: the Lock Screen widget's words, a ring with "1:40", and Start feed, a bottle with "Start" under it. A tap on Start feed opens "Formula or expressed?" on a bottle-only watch: the same label and two coral buttons, "Feed from 05:12" above them, and a soft "Not now" lower down. While this parent's feed runs, Start feed becomes a stopwatch with the feed's timer ("12:34", kept running by the watch), and a tap finishes the feed and opens the amount; during the other parent's feed it shows their timer and a tap only opens the app on "Finish for Sam" (the user's choices, 16 Nov 2026).
 - **Amount wheel** (a bottle's ml, added 16 Nov 2026): the iOS wheel, every 5 ml from 5 to 300 ml, in the `background` colour on the panel, amounts in SF Pro Rounded. Turning it saves nothing: "Save 30 ml" does (the word in Fredoka, the amount in SF Pro Rounded).
 - **Window bar:** 12 pt tall. Empty `track`; `primary` fills the time since the last feed; `window` shades the feeding window; a short bar marks now. Under it: "Feeding window 10:25" on the left and a bell with the alarm time on the right.
 - **24-hour chart:** one strip (22 pt tall, `track`) across the last 24 hours. Each feed is a block from when it started to when it ended (to now while it runs), at least 3 pt wide, coloured by kind (`*-mark`; bottle above breast for a feed with both), with a key of shapes. Feeds close together sit side by side and touch only if they really overlapped. Under it, three totals: feeds, at the breast, ml from bottles.
 - **Nights row:** seven days, each with the on-duty parent's initial in their colour. Tonight has a ring round it. Then "Sam's on tonight" and an "I'll take it" pill.
 - **History row:** tinted by kind, time on the left, chips in the middle, the avatar of who logged it on the right.
+- **Graphs tab** (the user's choices from side-by-side mockups, 16 Nov 2026): one long page under a big "Graphs" title and a 7 days / 4 weeks / All switch, one tile per graph, each 140 pt tall, left out when it has nothing to show. Feeds each day: bars in `chart`. Bottles each day: one bar per day, formula in `bottle-mark` at the bottom and expressed milk in `bottle-soft` above, with the day's total over it. Time between feeds: a soft bar (`chart` at 30%) from the day's shortest gap to its longest, with a `chart` dot for the middle gap. Breast each day: two bars per day, left in `breast-mark` and right in `breast-soft`, keyed with the half-moons. Pumped each day: bars in `pump-mark`. Today's bar is at 45% (the day isn't over). For a week the numbers sit on the bars and every day is named ("Tue" … "Today"); for longer, the amounts go up the right side and about five days are named ("26 Oct"). A key, when needed, has its own line under the tile's label. The chart's words stop growing at the xLarge text size, so seven day names still fit; VoiceOver reads each day and its numbers. By day `bottle-soft` and `breast-soft` are the plain kind colours (about 2:1 on the tile; they always sit on or beside the 3:1 mark, with a key); at night they are lighter than the mark (3:1 or better on the tile).
 - Every component has an empty state (for example "No feeds logged yet" with the Start feed button) and a VoiceOver label that reads as a sentence ("Last feed 2 hours 5 minutes ago, at 8:25").
 
 ## Day and night
@@ -281,3 +290,4 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-15 | The 24-hour chart shows each feed as a block as long as it lasted, on one strip | The 8 pt bars ran into each other when feeds came close together. The user chose this (option C) from four on a day/3am page (`chart-overlap-20261115/chart-options.html` in the gstack design folder): true to the clock, so gaps show as gaps. The blocks are 3.4:1 or better on the strip. |
 | 2026-11-15 | Night teal darkened from #2C6E63 to #2A695E | Found by the colour test in build step 9: the initial on teal read at 4.2:1 at night, under 4.5:1. The user chose a slightly darker teal over keeping it. |
 | 2026-11-15 | The age chip uses `surface`; top-bar buttons use `text` | Found while building: the mockup's green age chip broke "green means pumping", and coral text on the cream background was hard to read. Coral stays for switches and the main button. |
+| 2026-11-16 | Three tabs, and the Graphs tab | The user asked for the graphs one tap from the main screen, as a tab, and chose Home, History and Graphs; then layout A (one long page), the time between feeds as shortest-to-longest bars with the middle gap (B), two blues for formula and expressed milk (A), and left and right bars side by side (A), from `graphs-20261116/graph-options.html` in the gstack design folder. New tokens `bottle-soft`, `breast-soft` and `chart`. |

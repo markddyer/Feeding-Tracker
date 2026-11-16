@@ -306,6 +306,29 @@ struct WatchStateTests {
 
     @Test func theWatchFaceStartWaitsForASetUpPhone() {
         #expect(state(HouseholdData()).faceStart == .notReady)
+        #expect(state(HouseholdData()).faceButton == .notReady)
+    }
+
+    /// The user's choice of 16 Nov 2026: while this parent's feed runs, the watch face shows its
+    /// timer, and a tap finishes it.
+    @Test func whileMyFeedRunsTheWatchFaceFinishesIt() {
+        #expect(state(household(), bottleOnly: true).faceButton == .start)
+        var data = household()
+        let id = data.startFeed(babyID: baby, side: nil, bottle: .formula, by: parentA, timeZoneID: "Europe/London", now: now)
+        let watch = state(data, bottleOnly: true, at: now.addingTimeInterval(600))
+        #expect(watch.faceButton == .finish(feedID: id, since: now))
+        #expect(watch.finishFromFace(feedID: id)?.bottles.map(\.milk) == [.formula])
+        // A face a little behind, naming a feed that is no longer the one running, finishes nothing.
+        #expect(watch.finishFromFace(feedID: "an-older-feed") == nil)
+    }
+
+    /// The other parent's feed: the face shows their timer, but a tap only opens the app.
+    @Test func whileTheOtherParentsFeedRunsTheWatchFaceOnlyOpensTheApp() {
+        var data = household()
+        let id = data.startFeed(babyID: baby, side: .left, by: parentB, timeZoneID: "Europe/London", now: now)
+        let watch = state(data)
+        #expect(watch.faceButton == .others(feedID: id, since: now, name: "Sam"))
+        #expect(watch.finishFromFace(feedID: id) == nil)
     }
 
     /// Answered a minute after the tap: the feed starts at the tap, with the milk chosen.

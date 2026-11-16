@@ -82,6 +82,18 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// The Graphs tab, with a made-up week, in the tab bar as a parent sees it.
+    func testGraphs() {
+        let week = ["-sampleWeek", "YES", "-startTab", "graphs", "-graphs.range", "week"]
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(week, look: look), "graphs \(look)")
+            audit(launch(week + ["-graphsAtBottom", "YES"], look: look), "graphs lower \(look)")
+        }
+        audit(launch(week, largeText: true), "graphs large text")
+        audit(launch(week + ["-graphsAtBottom", "YES"], largeText: true), "graphs lower large text")
+        report()
+    }
+
     func testLargeText() {
         audit(launch([], largeText: true), "home large text")
         audit(launch(["-homeAtBottom", "YES"], largeText: true), "home lower large text")

@@ -1,8 +1,9 @@
 import FeedingCore
 import SwiftUI
 
-/// The app's root: the home screen once there is a household, with History and Settings in the
-/// system toolbar (so the iPhone Duo moves them into its side bar by itself).
+/// The app's root: once there is a household, three tabs (Home, History and Graphs; the user's
+/// choice of 16 Nov 2026), with Settings in Home's top bar. Both are system bars, so the iPhone
+/// Duo moves them into its side bar by itself.
 struct ContentView: View {
     private let model = AppModel.shared
     @AppStorage("setup.disclaimerSeen") private var disclaimerSeen = false
@@ -16,13 +17,29 @@ struct ContentView: View {
     /// home column is clearly narrower than the whole (`ArrangementView` gives no direct signal).
     @State private var arrangementWidth: CGFloat = 0
     @State private var homeWidth: CGFloat = 0
-    /// The screens opened from the top bar, so a tapped notification can go back to Home.
+    /// The screens opened from Home's top bar, so a tapped notification can go back to Home.
     @State private var path = NavigationPath()
+    @State private var tab: MainTab = Self.firstTab
+
+    private enum MainTab: Hashable { case home, history, graphs }
 
     private enum Screen: Hashable {
-        case history, settings
+        case settings
         #if FEEDING_DEV
         case tests
+        #endif
+    }
+
+    /// Home, or in Feeding Dev the tab named by `-startTab history` or `graphs` (for screenshots).
+    private static var firstTab: MainTab {
+        #if FEEDING_DEV
+        switch UserDefaults.standard.string(forKey: "startTab") {
+        case "history": return .history
+        case "graphs": return .graphs
+        default: return .home
+        }
+        #else
+        return .home
         #endif
     }
 
@@ -44,56 +61,21 @@ struct ContentView: View {
     }
 
     private var main: some View {
-        NavigationStack(path: $path) {
-            Group {
-                #if FEEDING_DEV
-                if UserDefaults.standard.bool(forKey: "designGallery") {
-                    DesignGalleryView()
-                } else {
-                    screens
-                }
-                #else
-                screens
-                #endif
+        Group {
+            #if FEEDING_DEV
+            if UserDefaults.standard.bool(forKey: "designGallery") {
+                NavigationStack { DesignGalleryView() }
+            } else {
+                root
             }
-            .toolbar {
-                if model.baby != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink(value: Screen.history) {
-                            Label("History", systemImage: "clock.arrow.circlepath")
-                        }
-                        .tint(Theme.text)
-                    }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink(value: Screen.settings) {
-                            Label("Settings", systemImage: "gearshape")
-                        }
-                        .tint(Theme.text)
-                    }
-                }
-                #if FEEDING_DEV
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink(value: Screen.tests) {
-                        Label("Tests", systemImage: "testtube.2")
-                    }
-                    .tint(Theme.text)
-                }
-                #endif
-            }
-            .navigationDestination(for: Screen.self) { screen in
-                switch screen {
-                case .history: HistoryView()
-                case .settings: SettingsView()
-                #if FEEDING_DEV
-                case .tests: SpikeMenu()
-                #endif
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
+            #else
+            root
+            #endif
         }
         // A tapped notification about an ask goes back to Home, where its card is.
         .onChange(of: NotificationTaps.shared.homeRequests) {
             path = NavigationPath()
+            tab = .home
         }
         .onChange(of: feedingStyle, initial: true) {
             model.widgets.feedingStyleChanged(feedingStyle)
@@ -112,20 +94,49 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var screens: some View {
+    private var root: some View {
         if SetupView.isComplete(disclaimerSeen: disclaimerSeen, inviteOffered: inviteOffered,
                                 permissionsAsked: permissionsAsked, feedingStyle: feedingStyle),
            let me = model.me, let baby = model.baby {
+            TabView(selection: $tab) {
+                Tab("Home", systemImage: "house", value: MainTab.home) {
+                    home(me: me, babyID: baby.name)
+                        .tint(Theme.accent)
+                }
+                Tab("History", systemImage: "clock.arrow.circlepath", value: MainTab.history) {
+                    NavigationStack { HistoryView() }
+                        .tint(Theme.accent)
+                }
+                Tab("Graphs", systemImage: "chart.bar", value: MainTab.graphs) {
+                    NavigationStack { GraphsView() }
+                        .tint(Theme.accent)
+                }
+            }
+            // The chosen tab in the text colour, as the top bar's buttons: coral on cream is hard
+            // to read. Each tab sets coral again for its own controls.
+            .tint(Theme.text)
+        } else {
+            NavigationStack {
+                SetupView()
+                    .navigationTitle("Feeding")
+                    .toolbar(removing: .title)
+                    .modifier(TopBar(settings: model.baby != nil))
+            }
+        }
+    }
+
+    private func home(me: MemberID, babyID: String) -> some View {
+        NavigationStack(path: $path) {
             // The unfolded iPhone Duo shows the day's tiles and feeds beside the home screen;
             // anywhere narrower shows the home screen alone (`05-visual-redesign.md`, "The Duo
             // unfolded"). On a real Duo the column shows open flat and in book pose, and hides
             // closed, in tent, in laptop pose and in Split View, with no code of ours.
             ArrangementView {
-                HomeView(me: me, babyID: baby.name, undo: $undo)
+                HomeView(me: me, babyID: babyID, undo: $undo)
                     .environment(\.secondColumnShowing, secondColumnShowing)
                     .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { homeWidth = $0 }
             } secondary: {
-                DayColumn(me: me, babyID: baby.name, onUndo: { undo = $0 })
+                DayColumn(me: me, babyID: babyID, onUndo: { undo = $0 })
             }
             .arrangementViewStyle(.split.axes(.horizontal))
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { arrangementWidth = $0 }
@@ -133,10 +144,43 @@ struct ContentView: View {
             // buttons. "Home" is still the back button's name on the next screen.
             .navigationTitle("Home")
             .toolbar(removing: .title)
-        } else {
-            SetupView()
-                .navigationTitle("Feeding")
-                .toolbar(removing: .title)
+            .modifier(TopBar(settings: true))
+        }
+    }
+
+    /// Settings (and, in Feeding Dev, the tests) in the top bar, and the screens they open.
+    private struct TopBar: ViewModifier {
+        let settings: Bool
+
+        func body(content: Content) -> some View {
+            content
+                .toolbar {
+                    if settings {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            NavigationLink(value: Screen.settings) {
+                                Label("Settings", systemImage: "gearshape")
+                            }
+                            .tint(Theme.text)
+                        }
+                    }
+                    #if FEEDING_DEV
+                    ToolbarItem(placement: .topBarLeading) {
+                        NavigationLink(value: Screen.tests) {
+                            Label("Tests", systemImage: "testtube.2")
+                        }
+                        .tint(Theme.text)
+                    }
+                    #endif
+                }
+                .navigationDestination(for: Screen.self) { screen in
+                    switch screen {
+                    case .settings: SettingsView()
+                    #if FEEDING_DEV
+                    case .tests: SpikeMenu()
+                    #endif
+                    }
+                }
+                .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
@@ -158,7 +202,7 @@ struct AlarmSpikeHooks: ViewModifier {
 }
 
 /// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
-/// `-openScreen history`, `settings`, `duo`, `earlierFeed`, `pumping` or `editLastFeed`.
+/// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping` or `editLastFeed`.
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -170,6 +214,8 @@ struct DevScreen: View {
             NavigationStack { HistoryView() }
         case "settings":
             NavigationStack { SettingsView() }
+        case "graphs":
+            NavigationStack { GraphsView() }
         case "duo":
             DuoPreview(me: me, babyID: babyID)
         case "pumping":

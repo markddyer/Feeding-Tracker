@@ -60,6 +60,34 @@ enum SampleData {
             let pumpStart = now.addingTimeInterval(-3 * 3600)
             data.add(kind: .pump, babyID: "sample-baby", startedAt: pumpStart, endedAt: pumpStart.addingTimeInterval(20 * 60),
                      payload: EventPayload(pump: PumpDetails(side: .both, leftML: 50, rightML: 40)), by: other, timeZoneID: zone, now: pumpStart)
+            // `-sampleWeek YES`: six more made-up days before these, for the Graphs tab
+            // (`-sampleWeek 30` for thirty).
+            let extraDays = defaults.integer(forKey: "sampleWeek") > 0 ? defaults.integer(forKey: "sampleWeek")
+                : defaults.bool(forKey: "sampleWeek") ? 6 : 0
+            if extraDays > 0 {
+                let jitter = [0, 0.3, -0.2, 0.5, 0, -0.4, 0.2, 1.8, 0, 0.1]
+                for dayBack in 1...extraDays {
+                    for k in 0..<(7 + dayBack % 3) {
+                        let hoursAgo = 13.5 + Double(dayBack - 1) * 24 + Double(k) * 2.6 + jitter[k]
+                        let who = k.isMultiple(of: 2) ? me : other
+                        switch k % 3 {
+                        case 0:
+                            feed(hoursAgo: hoursAgo, by: who, FeedDetails(breast: [
+                                BreastSegment(side: .left, durationSeconds: 540 + dayBack * 60),
+                                BreastSegment(side: .right, durationSeconds: 420 + (dayBack % 2) * 180)]))
+                        case 1:
+                            feed(hoursAgo: hoursAgo, by: who, FeedDetails(bottles: [Bottle(milk: .formula, ml: 60 + 10 * (dayBack % 3))]))
+                        default:
+                            feed(hoursAgo: hoursAgo, by: who, FeedDetails(breast: [BreastSegment(side: .right, durationSeconds: 360)],
+                                                                          bottles: [Bottle(milk: .expressed, ml: 40 + 10 * (dayBack % 2))]))
+                        }
+                    }
+                    let pump = now.addingTimeInterval(-(Double(dayBack) * 24 + 3) * 3600)
+                    data.add(kind: .pump, babyID: "sample-baby", startedAt: pump, endedAt: pump.addingTimeInterval(20 * 60),
+                             payload: EventPayload(pump: PumpDetails(side: .both, leftML: 40 + dayBack * 5, rightML: 45)),
+                             by: other, timeZoneID: zone, now: pump)
+                }
+            }
             switch defaults.string(forKey: "sampleFeedInProgress") {
             case "YES", "breast":
                 // Left for 8 minutes, then Right running for 4 (the mockup's feed).
