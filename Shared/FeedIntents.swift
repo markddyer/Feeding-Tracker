@@ -71,6 +71,8 @@ struct StartFeedIntent: AppIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Start feed"
     static let description = IntentDescription("Starts a feed now. Add the sides and bottles in the app.")
     static let supportedModes: IntentModes = .background
+    /// Works on a locked phone, with no Face ID (the user's choice of 16 Nov 2026).
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
     @Parameter(title: "Bottle", requestValueDialog: "Formula or expressed milk?")
@@ -100,6 +102,7 @@ struct FinishFeedIntent: AppIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Finish feed"
     static let description = IntentDescription("Finishes the feed running now. The app then asks for the sides and bottles.")
     static let supportedModes: IntentModes = .background
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
@@ -118,6 +121,10 @@ struct FeedToggleIntent: SetValueIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Start or finish a feed"
     static let isDiscoverable = false
     static let supportedModes: IntentModes = .background
+    /// One tap on the Lock Screen or in Control Center, with no Face ID, even when locked (the
+    /// user's choice of 16 Nov 2026, knowing that a stray Start moves the next alarm later
+    /// until it is discarded).
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
     @Parameter(title: "Feed running")

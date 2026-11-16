@@ -63,6 +63,13 @@ struct GlanceTests {
         #expect(ControlBottle.expressed.symbol == "e.circle.fill")
     }
 
+    /// The user's choice of 16 Nov 2026: Start and Finish work on a locked phone, with no Face ID.
+    @Test func theButtonsWorkOnALockedPhone() {
+        #expect(StartFeedIntent.authenticationPolicy == .alwaysAllowed)
+        #expect(FinishFeedIntent.authenticationPolicy == .alwaysAllowed)
+        #expect(FeedToggleIntent.authenticationPolicy == .alwaysAllowed)
+    }
+
     @Test func theAppAndTheWidgetWriteTimesTheSameWay() {
         #expect(HomeText.elapsed(6000) == GlanceText.elapsed(6000))
         #expect(GlanceText.elapsed(6000) == "1h 40m")
