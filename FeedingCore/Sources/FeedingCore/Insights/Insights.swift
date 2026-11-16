@@ -17,6 +17,15 @@ public func suggestedNextSide(_ snapshots: [EventSnapshot], babyID: String, now:
     return nil
 }
 
+/// The amount of the most recent bottle of `milk` with an amount, or of any bottle when there is
+/// none of that milk. Where the amount wheel starts, so the usual amount is a short turn away.
+public func lastBottleAmount(_ snapshots: [EventSnapshot], babyID: String, milk: MilkKind) -> Int? {
+    let feeds = snapshots.filter { $0.event.isLiveFeed && $0.event.babyID == babyID }
+    let newestFirst = feeds.sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
+    let bottles = newestFirst.flatMap { ($0.payload?.feed?.bottles ?? []).reversed() }.filter { $0.ml != nil }
+    return (bottles.first { $0.milk == milk } ?? bottles.first)?.ml
+}
+
 /// Totals for a stretch of time, such as the last 24 hours. No targets and no verdicts.
 public struct FeedSummary: Hashable, Sendable {
     public var feeds = 0

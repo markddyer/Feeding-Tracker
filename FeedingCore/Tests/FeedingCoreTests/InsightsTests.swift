@@ -47,6 +47,36 @@ struct NextSideTests {
     }
 }
 
+/// Where the amount wheel starts (the user's choice of 16 Nov 2026: a wheel, not set amounts).
+@Suite("The last bottle amount")
+struct LastBottleAmountTests {
+    @Test func theLatestBottleOfThatMilk() {
+        let events = [
+            snapshot(at(2026, 11, 14, 8, 0), payload: bottles((.formula, 60))),
+            snapshot(at(2026, 11, 14, 10, 0), payload: bottles((.formula, 75), (.expressed, 40))),
+            snapshot(at(2026, 11, 14, 11, 0), payload: bottles((.expressed, 50))),
+        ]
+        #expect(lastBottleAmount(events, babyID: baby, milk: .formula) == 75)
+        #expect(lastBottleAmount(events, babyID: baby, milk: .expressed) == 50)
+    }
+
+    @Test func anyBottleWhenThereIsNoneOfThatMilk() {
+        let events = [snapshot(at(2026, 11, 14, 10, 0), payload: bottles((.expressed, 45)))]
+        #expect(lastBottleAmount(events, babyID: baby, milk: .formula) == 45)
+    }
+
+    @Test func bottlesWithNoAmountDeletedFeedsAndOtherBabiesAreSkipped() {
+        let events = [
+            snapshot(at(2026, 11, 14, 8, 0), payload: bottles((.formula, 30))),
+            snapshot(at(2026, 11, 14, 9, 0), deletedAt: at(2026, 11, 14, 9, 30), payload: bottles((.formula, 90))),
+            snapshot(at(2026, 11, 14, 10, 0), babyID: "baby-2", payload: bottles((.formula, 120))),
+            snapshot(at(2026, 11, 14, 11, 0), payload: bottles((.formula, nil))),
+        ]
+        #expect(lastBottleAmount(events, babyID: baby, milk: .formula) == 30)
+        #expect(lastBottleAmount([], babyID: baby, milk: .formula) == nil)
+    }
+}
+
 @Suite("The last 24 hours")
 struct SummaryTests {
     let now = at(2026, 11, 14, 12, 0)

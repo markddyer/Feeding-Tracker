@@ -294,3 +294,35 @@ struct DayChartPlaceTests {
         #expect(place(minutesAgo: 1440, lasting: 20).x == 0)
     }
 }
+
+/// The amount wheel (the user's choice of 16 Nov 2026, in place of the 30, 60, 90 and 120 ml
+/// buttons): every 5 ml from 5 to 300 ml.
+@Suite("The amount wheel")
+struct AmountWheelTests {
+    @Test func everyFiveMillilitresUpTo300() {
+        let amounts = AmountWheel.amounts(including: 60, allowsNotSet: false)
+        #expect(amounts.first == 5)
+        #expect(amounts.last == 300)
+        #expect(amounts.count == 60)
+        #expect(amounts.contains(45))
+    }
+
+    @Test func theFormHasNotSetFirst() {
+        #expect(AmountWheel.amounts(including: 0, allowsNotSet: true).prefix(2) == [0, 5])
+    }
+
+    /// An amount between the steps (logged another way) still shows on the wheel.
+    @Test func anAmountBetweenStepsIsKept() {
+        let amounts = AmountWheel.amounts(including: 47, allowsNotSet: false)
+        #expect(amounts.contains(47))
+        #expect(amounts == amounts.sorted())
+    }
+
+    @Test func itStartsAtTheLastAmount() {
+        #expect(AmountWheel.start(75) == 75)
+        #expect(AmountWheel.start(47) == 45)
+        #expect(AmountWheel.start(2) == 5)
+        #expect(AmountWheel.start(500) == 300)
+        #expect(AmountWheel.start(nil) == 60)
+    }
+}

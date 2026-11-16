@@ -226,6 +226,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 - **Side buttons** (Left, Right, Bottle): 64 pt tall, shape above the label. The current side fills with the breast colour.
 - **Tile:** tinted by what it shows (breast tint for Next side, bottle tint for Last feed, plain surface for totals and nights). A small upper-case label, then the value.
 - **Chip:** `background` colour on a tile, shape plus number. Never a sentence.
+- **Amount wheel** (a bottle's ml, added 16 Nov 2026): the iOS wheel, every 5 ml from 5 to 300 ml, in the `background` colour on the panel, amounts in SF Pro Rounded. Turning it saves nothing: "Save 30 ml" does (the word in Fredoka, the amount in SF Pro Rounded).
 - **Window bar:** 12 pt tall. Empty `track`; `primary` fills the time since the last feed; `window` shades the feeding window; a short bar marks now. Under it: "Feeding window 10:25" on the left and a bell with the alarm time on the right.
 - **24-hour chart:** one strip (22 pt tall, `track`) across the last 24 hours. Each feed is a block from when it started to when it ended (to now while it runs), at least 3 pt wide, coloured by kind (`*-mark`; bottle above breast for a feed with both), with a key of shapes. Feeds close together sit side by side and touch only if they really overlapped. Under it, three totals: feeds, at the breast, ml from bottles.
 - **Nights row:** seven days, each with the on-duty parent's initial in their colour. Tonight has a ring round it. Then "Sam's on tonight" and an "I'll take it" pill.

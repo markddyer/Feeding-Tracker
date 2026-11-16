@@ -151,6 +151,49 @@ struct PillButton: View {
     }
 }
 
+/// The iOS wheel for a bottle amount (the user's choice of 16 Nov 2026, in place of the 30, 60, 90
+/// and 120 ml buttons): every 5 ml from 5 to 300 ml. Amounts in SF Pro Rounded with fixed-width
+/// digits (DESIGN.md).
+struct AmountWheel: View {
+    @Binding var ml: Int
+    let label: String
+    /// The form's first row, "Not set" (0), to take an amount off again.
+    var allowsNotSet = false
+
+    static let step = 5
+    static let range = 5...300
+
+    /// The amounts on the wheel, with `ml` added if it falls between them (an amount logged
+    /// another way), so the wheel can show it.
+    static func amounts(including ml: Int, allowsNotSet: Bool) -> [Int] {
+        var amounts = Array(stride(from: range.lowerBound, through: range.upperBound, by: step))
+        if ml > 0, !amounts.contains(ml) {
+            amounts.append(ml)
+            amounts.sort()
+        }
+        return allowsNotSet ? [0] + amounts : amounts
+    }
+
+    /// Where the wheel starts: the last amount, moved onto the wheel's steps, or 60 ml.
+    static func start(_ last: Int?) -> Int {
+        guard let last else { return 60 }
+        let onStep = Int((Double(last) / Double(step)).rounded()) * step
+        return min(max(onStep, range.lowerBound), range.upperBound)
+    }
+
+    var body: some View {
+        Picker(label, selection: $ml) {
+            ForEach(Self.amounts(including: ml, allowsNotSet: allowsNotSet), id: \.self) { amount in
+                Text(amount == 0 ? "Not set" : "\(amount) ml")
+                    .feedText(.body)
+            }
+        }
+        .pickerStyle(.wheel)
+        .frame(height: 130)
+        .clipped()
+    }
+}
+
 /// The pressed feel from `DESIGN.md`: a quick shrink to 97% by day. At night, and with Reduce
 /// Motion, nothing moves (the button's haptic does the job); it dims a little instead.
 struct PressStyle: ButtonStyle {

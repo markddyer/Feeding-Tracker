@@ -22,6 +22,8 @@ struct EventEditor: View {
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
     @State private var draft: EventSnapshot
     @State private var finished: Bool
+    /// The bottle whose amount wheel is open.
+    @State private var openBottle: String?
     private let original: EventSnapshot
 
     init(mode: Mode, me: MemberID, babyID: String) {
@@ -242,23 +244,59 @@ struct EventEditor: View {
     private var bottlesSection: some View {
         Section {
             ForEach(Array((draft.payload?.feed?.bottles ?? []).enumerated()), id: \.element.id) { index, bottle in
-                Stepper(value: Binding {
-                    draft.payload?.feed?.bottles[index].ml ?? 0
-                } set: { ml in
-                    draft.payload?.feed?.bottles[index].ml = ml == 0 ? nil : ml
-                }, in: 0...300, step: 10) {
-                    shapeRow(.bottle, HomeText.milkName(bottle.milk, short: true), bottle.ml.map { "\($0) ml" }, unset: "amount not set")
+                // Tap the row for the amount wheel, as for a time in Calendar. One row per bottle,
+                // so a swipe still deletes the whole bottle.
+                VStack(spacing: 0) {
+                    Button {
+                        openAmount(bottle)
+                    } label: {
+                        shapeRow(.bottle, HomeText.milkName(bottle.milk, short: true), bottle.ml.map { "\($0) ml" }, unset: "amount not set")
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(openBottle == bottle.id ? "Closes the amount wheel" : "Opens the amount wheel")
+                    if openBottle == bottle.id {
+                        AmountWheel(ml: Binding {
+                            draft.payload?.feed?.bottles[index].ml ?? 0
+                        } set: { ml in
+                            draft.payload?.feed?.bottles[index].ml = ml == 0 ? nil : ml
+                        }, label: "Amount of \(HomeText.milkName(bottle.milk).lowercased())", allowsNotSet: true)
+                    }
                 }
             }
             .onDelete { draft.payload?.feed?.bottles.remove(atOffsets: $0) }
             HStack(spacing: 8) {
-                addButton(.bottle, "Add expressed") { draft.payload?.feed?.bottles.append(Bottle(milk: .expressed)) }
-                addButton(.bottle, "Add formula") { draft.payload?.feed?.bottles.append(Bottle(milk: .formula)) }
+                addButton(.bottle, "Add expressed") { addBottle(.expressed) }
+                addButton(.bottle, "Add formula") { addBottle(.formula) }
             }
         } header: {
             header("Bottles")
         }
         .listRowBackground(Theme.surface)
+    }
+
+    /// A new bottle, with its amount wheel open.
+    private func addBottle(_ milk: MilkKind) {
+        let bottle = Bottle(milk: milk)
+        draft.payload?.feed?.bottles.append(bottle)
+        openAmount(bottle)
+    }
+
+    /// Opens or closes a bottle's amount wheel. A bottle with no amount starts at the last amount
+    /// of that milk; the wheel's "Not set" row takes it off again.
+    private func openAmount(_ bottle: Bottle) {
+        withAnimation {
+            if openBottle == bottle.id {
+                openBottle = nil
+                return
+            }
+            openBottle = bottle.id
+            guard bottle.ml == nil,
+                  let index = draft.payload?.feed?.bottles.firstIndex(where: { $0.id == bottle.id }) else { return }
+            let data = AppModel.shared.store.data
+            let last = lastBottleAmount(data.visibleSnapshots(babyID: babyID), babyID: babyID, milk: bottle.milk)
+            draft.payload?.feed?.bottles[index].ml = AmountWheel.start(last)
+        }
     }
 
     private var pumpSection: some View {

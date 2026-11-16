@@ -322,16 +322,16 @@ struct FeedDetailsPanel: View {
                     }
                 }
             }
-            ForEach(choices.unmeasured) { bottle in
-                question("How much \(HomeText.milkName(bottle.milk).lowercased())?") {
-                    HStack(spacing: 8) {
-                        ForEach([30, 60, 90, 120], id: \.self) { ml in
-                            ChoiceChip(mark: nil, title: "\(ml) ml") { setAmount(bottle.id, ml) }
-                        }
-                    }
-                }
+            // One bottle at a time, so the panel holds one wheel. Its Save is the main button and
+            // Done the soft one beside it, so a sleepy tap saves the amount on the wheel.
+            if let bottle = choices.unmeasured.first {
+                let babyID = feed.event.babyID
+                let last = lastBottleAmount(store.data.visibleSnapshots(babyID: babyID), babyID: babyID, milk: bottle.milk)
+                AmountQuestion(milk: bottle.milk, start: AmountWheel.start(last), done: done) { setAmount(bottle.id, $0) }
+                    .id(bottle.id)
+            } else {
+                BigButton(title: "Done", prominent: true, action: done)
             }
-            BigButton(title: "Done", prominent: true, action: done)
         }
         .padding(14)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
@@ -368,6 +368,42 @@ struct FeedDetailsPanel: View {
     }
 }
 
+/// "How much formula?": the amount wheel, then Save beside a soft Done. Turning the wheel saves
+/// nothing, so a bottle never gets an amount nobody chose; Save does. Done closes the panel with
+/// no amount, as before.
+private struct AmountQuestion: View {
+    let milk: MilkKind
+    let done: () -> Void
+    let save: (Int) -> Void
+    @State private var ml: Int
+
+    init(milk: MilkKind, start: Int, done: @escaping () -> Void, save: @escaping (Int) -> Void) {
+        self.milk = milk
+        self.done = done
+        self.save = save
+        _ml = State(initialValue: start)
+    }
+
+    var body: some View {
+        let title = "How much \(HomeText.milkName(milk).lowercased())?"
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 7) {
+                Text(title).feedText(.label).foregroundStyle(Theme.textMuted)
+                AmountWheel(ml: $ml, label: title)
+                    .frame(maxWidth: .infinity)
+                    .background(Theme.background, in: RoundedRectangle(cornerRadius: Radius.smallButton))
+            }
+            HStack(spacing: 8) {
+                BigButton(title: "Done", prominent: false, action: done)
+                    .frame(maxWidth: 120)
+                    .accessibilityLabel("Done, with no amount")
+                BigButton(title: "Save", prominent: true, mark: .bottle, amount: "\(ml) ml") { save(ml) }
+                    .accessibilityLabel("Save \(ml) millilitres")
+            }
+        }
+    }
+}
+
 /// A large, easy target for one hand in the dark (DESIGN.md, "Big button"): `primary` for the
 /// main action, `surface` for the soft one, with a Fredoka label and an optional feed shape.
 struct BigButton: View {
@@ -375,6 +411,8 @@ struct BigButton: View {
     let prominent: Bool
     var hint: String?
     var mark: FeedMark?
+    /// A number after the title ("30 ml"), in SF Pro Rounded: never a number in Fredoka.
+    var amount: String?
     let action: () -> Void
     @State private var taps = 0
 
@@ -396,6 +434,12 @@ struct BigButton: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.center)
                         .minimumScaleFactor(0.75)
+                    if let amount {
+                        Text(amount)
+                            .feedText(.total)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
                 if let hint {
                     Text(hint).feedText(.small)

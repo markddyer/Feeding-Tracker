@@ -43,7 +43,7 @@ Top to bottom (see the mockup's "1. Home"):
 - On the other parent's phone: the same hero with "Started by Sam", and one "Finish for Sam" button.
 
 ### After Finish (the details panel)
-- A tile with the feed's chips, then the questions as big chips: "Which bottle?" (Expressed milk, Formula, each with the bottle shape) and the amount (30, 60, 90, 120 ml). Each choice goes once it is made, as now.
+- A tile with the feed's chips, then the questions as big chips: "Which bottle?" (Expressed milk, Formula, each with the bottle shape) and the amount (30, 60, 90, 120 ml). Each choice goes once it is made, as now. *Changed 16 Nov 2026 (the user's choice): the amount is an iOS wheel, every 5 ml from 5 to 300 ml, starting at the last amount of that milk, with "Save 30 ml" as the main button and a soft "Done" beside it (turning the wheel saves nothing). One bottle's wheel at a time. The edit form opens the same wheel when a bottle's row is tapped, with "Not set" as its first row (`AmountWheel` in `App/Design/Components.swift`; tap tests in `UITests/AmountWheelFlowTests.swift`).*
 - A bottle-only phone closes the panel by itself after the amount, as now.
 
 ### History
