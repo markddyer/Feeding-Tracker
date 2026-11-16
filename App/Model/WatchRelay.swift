@@ -12,11 +12,11 @@ final class WatchRelay: NSObject {
     private var sent: WatchState?
     /// What the watch face was last sent: it has a small daily allowance of instant updates.
     private var faceSent: FeedGlance?
-    /// The watch's latest taps handled here, newest last, so the watch stops showing them as
-    /// waiting. Kept, as the app may be woken for each tap separately.
-    private var handled: [String] {
-        get { UserDefaults.standard.stringArray(forKey: "watch.handled") ?? [] }
-        set { UserDefaults.standard.set(Array(newValue.suffix(30)), forKey: "watch.handled") }
+    /// The watch's taps handled here, newest last: none is applied twice, and the watch stops
+    /// showing them as waiting. Kept, as the app may be woken for each tap separately.
+    private var handled: WatchTapLog {
+        get { WatchTapLog(ids: UserDefaults.standard.stringArray(forKey: "watch.handled") ?? []) }
+        set { UserDefaults.standard.set(newValue.ids, forKey: "watch.handled") }
     }
 
     private var session: WCSession? {
@@ -36,7 +36,7 @@ final class WatchRelay: NSObject {
         let look = UserDefaults.standard.string(forKey: LookSetting.storageKey).flatMap(LookSetting.init(rawValue:))
         return model.store.data.watchState(me: me, names: model.memberNames, colours: model.memberColours.mapValues(\.rawValue),
                                            bottleOnly: QuickFeedRunner.isBottleOnly, lookSetting: look ?? .automatic,
-                                           handled: handled, now: now)
+                                           handled: handled.latest, now: now)
     }
 
     /// Sends the watch its state, when something it shows has changed.
@@ -63,12 +63,19 @@ final class WatchRelay: NSObject {
     fileprivate func handle(_ request: WatchRequest?) -> WatchState {
         let model = AppModel.shared
         guard let request, let me = model.me, let baby = model.baby else { return state(of: model) }
-        if !handled.contains(request.id) { handled.append(request.id) }
+        // A tap seen before (the watch's kept copy, after the message) is never applied again: a
+        // Start turned down while a feed ran would start a feed at the old tap.
+        var log = handled
+        guard log.firstSight(of: request.id) else {
+            update(model)
+            return state(of: model)
+        }
+        handled = log
         let changed = model.store.change {
             $0.applyWatch(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier)
         }
-        // Nothing changed (a tap seen before, or a start while a feed runs): the watch still needs
-        // to hear that the tap was handled.
+        // Nothing changed (a feed already finished, or a start while a feed runs): the watch still
+        // needs to hear that the tap was handled.
         if !changed { update(model) }
         if changed, case .finish(let id) = request.command, model.store.data.events[id]?.event.loggedBy == me {
             // The details panel opens on Home next time, as after Finish in the app. It closes by

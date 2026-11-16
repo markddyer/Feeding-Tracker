@@ -122,6 +122,52 @@ struct WatchStateTests {
         #expect(data.events["w-feed"] == nil)
     }
 
+    /// The same Start can arrive twice: as a message, and later as the transfer the watch kept. Turned
+    /// down the first time because another feed ran, it must not start a feed when it arrives again
+    /// after that feed has finished: the feed would start at the old tap and move the alarms later.
+    @Test func aStartTurnedDownIsNotAppliedWhenItArrivesAgain() {
+        var data = household()
+        var log = WatchTapLog()
+        let other = data.startFeed(babyID: baby, side: nil, by: parentB, timeZoneID: "Europe/London",
+                                   now: now.addingTimeInterval(-300))
+        let start = request(.start(feedID: "w-feed", bottle: nil, bottleID: "b"), at: now)
+        let new = log.firstSight(of: start.id)
+        #expect(new)
+        let first = data.applyWatch(start, babyID: baby, by: parentA, timeZoneID: "Europe/London")
+        #expect(!first)
+        _ = data.finishFeed(other, by: parentB, now: now.addingTimeInterval(600))
+        // The kept copy arrives: the phone has seen it, so it isn't applied.
+        let again = log.firstSight(of: start.id)
+        #expect(!again)
+        #expect(data.events["w-feed"] == nil)
+        #expect(data.feedInProgress(babyID: baby) == nil)
+    }
+
+    /// A side switch arriving again must not undo a newer one.
+    @Test func anOldSideSwitchArrivingAgainIsNotApplied() {
+        var log = WatchTapLog()
+        let left = request(.switchSide(feedID: "f", side: .left), at: now)
+        let right = request(.switchSide(feedID: "f", side: .right), at: now.addingTimeInterval(60))
+        let sawLeft = log.firstSight(of: left.id)
+        let sawRight = log.firstSight(of: right.id)
+        let leftAgain = log.firstSight(of: left.id)
+        #expect(sawLeft)
+        #expect(sawRight)
+        #expect(!leftAgain)
+    }
+
+    @Test func thePhoneRemembersManyTapsAndTellsTheWatchTheLatest() {
+        var log = WatchTapLog()
+        for number in 0..<250 { _ = log.firstSight(of: "tap-\(number)") }
+        #expect(log.ids.count == WatchTapLog.kept)
+        #expect(log.ids.last == "tap-249")
+        #expect(log.latest.count == WatchTapLog.told)
+        #expect(log.latest.first == "tap-220")
+        // Still remembered, though no longer told to the watch.
+        let old = log.firstSight(of: "tap-100")
+        #expect(!old)
+    }
+
     /// A start kept while the phone was out of reach, from before a feed logged since, would show
     /// a feed running for hours.
     @Test func aLateStartFromBeforeANewerFeedIsDropped() {
@@ -353,7 +399,7 @@ struct WatchStateTests {
         #expect(saved.shown?.running?.id == "f")
         var later = idle
         later.madeAt = now.addingTimeInterval(5)
-        let taken = saved.receive(later)
+        let taken = saved.receive(later, now: now.addingTimeInterval(5))
         #expect(taken)
         #expect(saved.shown?.running?.id == "f")
     }
@@ -366,7 +412,7 @@ struct WatchStateTests {
         saved.pending = [tap, other]
         let handled = household().watchState(me: parentA, names: names, colours: colours, bottleOnly: false,
                                              lookSetting: .automatic, handled: [tap.id], now: now.addingTimeInterval(2))
-        let taken = saved.receive(handled)
+        let taken = saved.receive(handled, now: now.addingTimeInterval(2))
         #expect(taken)
         #expect(saved.pending == [other])
     }
@@ -375,9 +421,28 @@ struct WatchStateTests {
         let newer = state(household(), at: now)
         let older = state(household(), at: now.addingTimeInterval(-60))
         var saved = WatchSaved(phone: newer)
-        let taken = saved.receive(older)
+        let taken = saved.receive(older, now: now.addingTimeInterval(1))
         #expect(!taken)
         #expect(saved.phone?.madeAt == now)
+    }
+
+    /// The clock set back an hour (the watch takes its time from the phone): the phone's new states
+    /// are made "earlier" than the one held, and must still be taken, with their acknowledgements.
+    @Test func afterTheClockIsSetBackTheWatchStillTakesThePhonesNews() {
+        var saved = WatchSaved(phone: state(household(), at: now))
+        let tap = request(.finish(feedID: "g"), at: now)
+        saved.pending = [tap]
+        let clock = now.addingTimeInterval(-3600 + 10)
+        let after = household().watchState(me: parentA, names: names, colours: colours, bottleOnly: false,
+                                           lookSetting: .automatic, handled: [tap.id], now: clock)
+        let taken = saved.receive(after, now: clock)
+        #expect(taken)
+        #expect(saved.phone?.madeAt == clock)
+        #expect(saved.pending.isEmpty)
+        // Out of order again on the new clock: the older one is still turned down.
+        let older = state(household(), at: clock.addingTimeInterval(-5))
+        let late = saved.receive(older, now: clock.addingTimeInterval(1))
+        #expect(!late)
     }
 
     @Test func tapsMoreThanADayOldAreForgotten() {

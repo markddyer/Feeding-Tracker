@@ -10,7 +10,8 @@ import WidgetKit
 ///
 /// A tap goes as a message when the phone is in reach (the phone app is woken for it and replies
 /// with its new state), and otherwise as a transfer that the system delivers when the phone is
-/// near again. Either way it carries the moment of the tap, and sending it twice is harmless.
+/// near again. Either way it carries the moment of the tap. The same tap may arrive twice (as a
+/// message and as its kept transfer): the phone applies it only once (`WatchTapLog`).
 @MainActor
 @Observable
 final class PhoneLink {
@@ -56,11 +57,13 @@ final class PhoneLink {
 
     // MARK: Taps
 
-    /// Sends a tap to the phone and shows it at once.
+    /// Sends a tap to the phone and shows it at once. Any earlier tap the phone hasn't handled goes
+    /// again first, in order, so a Finish can't overtake its Start (one kept as a transfer while
+    /// the phone was out of reach, the next sent as a message). The phone applies each tap once.
     func send(_ command: WatchCommand, now: Date = Date()) {
         let request = WatchRequest(command: command, at: now)
         change { $0.pending.append(request) }
-        deliver(request)
+        deliverWaiting()
     }
 
     /// Remembers an amount saved here, so the crown starts there next time.
@@ -120,7 +123,7 @@ final class PhoneLink {
     }
 
     fileprivate func receive(_ state: WatchState) {
-        change { _ = $0.receive(state) }
+        change { _ = $0.receive(state, now: Date()) }
     }
 
     fileprivate func activationDone() {
@@ -147,18 +150,31 @@ final class PhoneLink {
     }
 
     /// Saves every change, for the next launch and the watch face, and reloads the watch face
-    /// when what it shows has changed.
+    /// when what it shows has changed: the times, the feed running, or its side.
     private func change(_ body: (inout WatchSaved) -> Void) {
-        let before = saved.shown?.glance
+        let before = Self.faceFacts(saved.shown)
         var copy = saved
         body(&copy)
         copy.dropStale(now: Date())
         guard copy != saved else { return }
         saved = copy
         WatchFile.save(copy)
-        if copy.shown?.glance != before {
+        if Self.faceFacts(copy.shown) != before {
             WidgetCenter.shared.reloadAllTimelines()
         }
+    }
+
+    /// What the watch face pieces draw: the wide one shows the side being fed, which the times
+    /// don't change with.
+    private static func faceFacts(_ state: WatchState?) -> FaceFacts {
+        FaceFacts(glance: state?.glance, feedID: state?.running?.id, mine: state?.running?.mine, side: state?.running?.side)
+    }
+
+    private struct FaceFacts: Equatable {
+        var glance: FeedGlance?
+        var feedID: String?
+        var mine: Bool?
+        var side: BreastSide?
     }
 
     /// Keeps the app awake in the background until the system has handed over the phone's news.

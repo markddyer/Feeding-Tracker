@@ -78,6 +78,9 @@ targetTemplates:
         UIBackgroundModes:
           - remote-notification
         CKSharingSupported: true
+        # Only Apple's own encryption (iCloud's HTTPS and CloudKit's encrypted fields), which is
+        # exempt: TestFlight then doesn't ask the export question at each upload.
+        ITSAppUsesNonExemptEncryption: false
         NSAlarmKitUsageDescription: Feeding rings an alarm when the feed window you set closes, even when the phone is on silent.
         FeedingCloudKitContainer: iCloud.com.tracker.feeding${bundleSuffix}
         FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}

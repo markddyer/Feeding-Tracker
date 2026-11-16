@@ -217,8 +217,12 @@ public struct WatchSaved: Codable, Hashable, Sendable {
     /// Takes a state from the phone, unless it is older than the one already held (messages can
     /// arrive out of order), and stops holding the taps the phone has handled. Returns false when
     /// the state was older.
-    public mutating func receive(_ state: WatchState) -> Bool {
-        if let phone, state.madeAt < phone.madeAt { return false }
+    ///
+    /// A held state made later than `now` means the clock has gone back since (the watch takes its
+    /// time from the phone), so the new state is taken: otherwise the watch would turn down every
+    /// state, and every acknowledgement, until the clock caught up again.
+    public mutating func receive(_ state: WatchState, now: Date) -> Bool {
+        if let phone, state.madeAt < phone.madeAt, phone.madeAt <= now { return false }
         phone = state
         pending.removeAll { state.handled.contains($0.id) }
         return true
@@ -255,6 +259,33 @@ public enum WatchCoding {
 }
 
 // MARK: - On the phone
+
+/// The phone's record of the watch's taps it has handled, newest last. One tap can arrive twice:
+/// as a message, and again as the transfer the watch kept for when the phone was out of reach.
+/// Only the first is applied, so a Start turned down while another feed ran can't start a feed
+/// later (which would move the alarms later), and an old side can't undo a newer one.
+public struct WatchTapLog: Hashable, Sendable {
+    /// How many taps the phone remembers.
+    public static let kept = 200
+    /// How many the watch is told about, in each state.
+    public static let told = 30
+
+    public private(set) var ids: [String]
+
+    public init(ids: [String] = []) {
+        self.ids = Array(ids.suffix(Self.kept))
+    }
+
+    /// Records the tap. False when it was seen before: it must not be applied again.
+    public mutating func firstSight(of id: String) -> Bool {
+        guard !ids.contains(id) else { return false }
+        ids = Array((ids + [id]).suffix(Self.kept))
+        return true
+    }
+
+    /// The latest taps, for the watch's `handled`.
+    public var latest: [String] { Array(ids.suffix(Self.told)) }
+}
 
 extension HouseholdData {
     /// The watch's state. `names` and `colours` are by member; `colours` holds colour names.
