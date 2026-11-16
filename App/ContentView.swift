@@ -9,6 +9,7 @@ struct ContentView: View {
     @AppStorage("setup.inviteOffered") private var inviteOffered = false
     @AppStorage("setup.permissionsAsked") private var permissionsAsked = false
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
+    @AppStorage(LookSetting.storageKey) private var lookSetting = LookSetting.automatic.rawValue
     /// The last tap's Undo, shown under the home screen's buttons, from either column.
     @State private var undo: UndoAction?
     /// The arrangement's width and the home column's width. The second column is showing when the
@@ -96,6 +97,11 @@ struct ContentView: View {
         }
         .onChange(of: feedingStyle, initial: true) {
             model.widgets.feedingStyleChanged(feedingStyle)
+            model.watch.update(model)
+        }
+        // The watch shows the same look as this phone.
+        .onChange(of: lookSetting) {
+            model.watch.update(model)
         }
         // Coral for controls (switches, pickers); the top bar's buttons use the text colour
         // as in the approved mockup, because coral text on cream is hard to read.

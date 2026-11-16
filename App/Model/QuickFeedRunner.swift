@@ -46,8 +46,9 @@ enum QuickFeedRunner {
 
     /// Sets this phone's alarms, then sends the change, waiting a few seconds at most, so the
     /// other phone hears about it before this app goes back to sleep. If the send can't finish,
-    /// it goes the next time the app runs; the alarms are already set.
-    private static func settle() async {
+    /// it goes the next time the app runs; the alarms are already set. Also used for the watch's
+    /// taps (`WatchRelay`).
+    static func settle() async {
         let model = AppModel.shared
         await model.reconciler.run()
         model.sync.scheduleUploads()

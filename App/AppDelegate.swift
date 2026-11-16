@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Start at launch, also when a push wakes the app in the background.
         AppModel.shared.sync.start()
         AppModel.shared.reconciler.runSoon()
+        // The watch can wake the app in the background with a tap.
+        AppModel.shared.watch.activate()
         if AppConfig.syncEnabled {
             application.registerForRemoteNotifications()
         }

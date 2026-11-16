@@ -12,6 +12,7 @@ options:
   bundleIdPrefix: com.tracker
   deploymentTarget:
     iOS: "27.1"
+    watchOS: "27.0"
   developmentLanguage: en-GB
   createIntermediateGroups: true
 
@@ -43,6 +44,9 @@ targetTemplates:
     dependencies:
       - package: FeedingCore
       - target: ${widgets}
+        embed: true
+      # The watch app, installed on the paired watch with the phone app.
+      - target: ${watch}
         embed: true
     settings:
       base:
@@ -124,6 +128,84 @@ targetTemplates:
         com.apple.security.application-groups:
           - group.com.tracker.feeding${bundleSuffix}
 
+  # The Apple Watch app (plan v1, Phase 2). It talks only to its own iPhone over
+  # WatchConnectivity (no iCloud of its own), and keeps what it last heard in the watch's App
+  # Group for the watch face.
+  FeedingWatchApp:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Watch/App
+      - path: Watch/Shared
+      - path: Shared/GlanceText.swift
+      - path: Shared/FeedShapes.swift
+      - path: App/Fonts/Fredoka.ttf
+    dependencies:
+      - package: FeedingCore
+      - target: ${watchWidgets}
+        embed: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding${bundleSuffix}.watchkitapp
+        PRODUCT_NAME: ${target_name}
+        TARGETED_DEVICE_FAMILY: "4"
+    info:
+      path: Generated/${target_name}/Info.plist
+      properties:
+        CFBundleDisplayName: ${displayName}
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: com.tracker.feeding${bundleSuffix}
+        UIAppFonts:
+          - Fredoka.ttf
+        FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}
+        # The watch face's Start feed opens the app with this link (Watch/Shared/WatchFile.swift).
+        FeedingWatchScheme: com.tracker.feeding${bundleSuffix}.watch
+        CFBundleURLTypes:
+          - CFBundleURLName: com.tracker.feeding${bundleSuffix}.watch
+            CFBundleURLSchemes:
+              - com.tracker.feeding${bundleSuffix}.watch
+    entitlements:
+      path: Generated/${target_name}/${target_name}.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.tracker.feeding${bundleSuffix}
+    scheme: {}
+
+  # The watch face pieces. They read only the watch app's file in the watch's App Group.
+  FeedingWatchWidgets:
+    type: app-extension
+    platform: watchOS
+    sources:
+      - path: Watch/Widgets
+      - path: Watch/Shared
+      - path: Shared/GlanceText.swift
+      - path: Shared/FeedShapes.swift
+    dependencies:
+      - package: FeedingCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding${bundleSuffix}.watchkitapp.widgets
+        PRODUCT_NAME: ${target_name}
+        SKIP_INSTALL: YES
+        TARGETED_DEVICE_FAMILY: "4"
+    info:
+      path: Generated/${target_name}/Info.plist
+      properties:
+        CFBundleDisplayName: ${displayName}
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}
+        FeedingWatchScheme: com.tracker.feeding${bundleSuffix}.watch
+    entitlements:
+      path: Generated/${target_name}/${target_name}.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.tracker.feeding${bundleSuffix}
+
 targets:
   Feeding:
     templates: [FeedingApp]
@@ -131,12 +213,14 @@ targets:
       bundleSuffix: ""
       displayName: Feeding
       widgets: FeedingWidgets
+      watch: FeedingWatch
   FeedingDev:
     templates: [FeedingApp]
     templateAttributes:
       bundleSuffix: .dev
       displayName: Feeding Dev
       widgets: FeedingDevWidgets
+      watch: FeedingDevWatch
     settings:
       base:
         # Turns on the Phase 0 test screens (App/Spikes), which never ship in Feeding.
@@ -151,6 +235,34 @@ targets:
       displayName: Feeding
   FeedingDevWidgets:
     templates: [FeedingWidgets]
+    templateAttributes:
+      bundleSuffix: .dev
+      displayName: Feeding Dev
+
+  FeedingWatch:
+    templates: [FeedingWatchApp]
+    templateAttributes:
+      bundleSuffix: ""
+      displayName: Feeding
+      watchWidgets: FeedingWatchFaceWidgets
+  FeedingDevWatch:
+    templates: [FeedingWatchApp]
+    templateAttributes:
+      bundleSuffix: .dev
+      displayName: Feeding Dev
+      watchWidgets: FeedingDevWatchFaceWidgets
+    settings:
+      base:
+        # Turns on the made-up states for screenshots (Watch/App/WatchSamples.swift).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FEEDING_DEV
+
+  FeedingWatchFaceWidgets:
+    templates: [FeedingWatchWidgets]
+    templateAttributes:
+      bundleSuffix: ""
+      displayName: Feeding
+  FeedingDevWatchFaceWidgets:
+    templates: [FeedingWatchWidgets]
     templateAttributes:
       bundleSuffix: .dev
       displayName: Feeding Dev

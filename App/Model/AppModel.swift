@@ -32,6 +32,7 @@ final class AppModel {
     let reconciler: Reconciler
     let nightAskNotifier: NightAskNotifier
     let widgets = WidgetRefresher()
+    let watch = WatchRelay()
 
     private init() {
         store = HouseholdStore()
@@ -47,7 +48,10 @@ final class AppModel {
             self?.finishStrandedDuplicates()
             reconcile?()
             Task { await self?.tellNightAskNews() }
-            if let self { widgets.update(store.data) }
+            if let self {
+                widgets.update(store.data)
+                watch.update(self)
+            }
         }
         widgets.update(store.data)
     }
