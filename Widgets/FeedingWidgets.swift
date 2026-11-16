@@ -60,8 +60,9 @@ private struct LastFeedFamilyView: View {
     }
 }
 
-/// One entry a minute for two hours, then one every five minutes up to six hours. The app asks
-/// for a new timeline whenever a feed starts, finishes or changes.
+/// One entry a minute for two hours, then one every five minutes up to six hours; one entry for
+/// the wide size (`LastFeedMoments`). The app asks for a new timeline whenever a feed starts,
+/// finishes or changes.
 struct LastFeedProvider: TimelineProvider {
     func placeholder(in context: Context) -> LastFeedEntry {
         let now = Date()
@@ -80,11 +81,15 @@ struct LastFeedProvider: TimelineProvider {
         let read = HouseholdReader.entry(now: now)
         // Whole minutes, so "1h 40m" turns over on the minute.
         let start = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
-        let offsets = Array(stride(from: 0, to: 120, by: 1)) + Array(stride(from: 120, through: 360, by: 5))
-        let entries = offsets.map {
+        // The wide size gets one moment, as its time updates by itself (`LastFeedMoments`).
+        let minutes = LastFeedMoments.minutes(for: context.family)
+        let entries = minutes.map {
             LastFeedEntry(date: start.addingTimeInterval(Double($0) * 60), glance: read.glance, bottleOnly: read.bottleOnly)
         }
-        completion(Timeline(entries: entries, policy: .atEnd))
+        let policy: TimelineReloadPolicy = minutes.count == 1
+            ? .after(start.addingTimeInterval(LastFeedMoments.oneMomentLifetime))
+            : .atEnd
+        completion(Timeline(entries: entries, policy: policy))
     }
 }
 

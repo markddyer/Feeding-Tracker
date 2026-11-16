@@ -45,6 +45,7 @@ struct GlanceTests {
                      said(.alreadyRunning(feed(by: "b"))),
                      said(.finished(feed(by: "a", minutes: 25))), said(.nothingRunning), GlanceText.notSetUp,
                      "Feed running", "Last feed", "Feeding window", "No feeds logged yet", "Open the app to set up",
+                     "Feed running, from 10:47", "Last feed · window 13:20", "Feed running for", "ago",
                      "Start feed", "Finish feed", "Start or finish a feed", "Formula", "Expressed", "Start a formula bottle",
                      "Start an expressed milk bottle", "Formula or expressed milk?", "Choose later", "Start"]
         for word in words {
@@ -70,6 +71,14 @@ struct GlanceTests {
         #expect(FeedToggleIntent.authenticationPolicy == .alwaysAllowed)
     }
 
+    /// With 90 moments, the wide widget's saved file went missing on the Duo and it showed the
+    /// grey stand-in (16 Nov 2026). Its time updates by itself, so one moment is enough.
+    @Test func theWideWidgetPreparesOneMoment() {
+        #expect(LastFeedMoments.minutes(for: .accessoryRectangular) == [0])
+        #expect(LastFeedMoments.minutes(for: .accessoryCircular).count == 169)
+        #expect(LastFeedMoments.minutes(for: .accessoryInline).count == 169)
+    }
+
     @Test func theAppAndTheWidgetWriteTimesTheSameWay() {
         #expect(HomeText.elapsed(6000) == GlanceText.elapsed(6000))
         #expect(GlanceText.elapsed(6000) == "1h 40m")
@@ -91,7 +100,8 @@ struct GlanceTests {
             ("empty", FeedGlance()),
             ("notSetUp", nil),
         ]
-        let sizes: [(WidgetFamily, CGSize)] = [(.accessoryRectangular, CGSize(width: 172, height: 76)),
+        // The wide size as the Duo draws it (157 × 73.5, from the phone's log of 16 Nov 2026).
+        let sizes: [(WidgetFamily, CGSize)] = [(.accessoryRectangular, CGSize(width: 157, height: 73.5)),
                                               (.accessoryCircular, CGSize(width: 76, height: 76)),
                                               (.accessoryInline, CGSize(width: 260, height: 26))]
         let folder = ProcessInfo.processInfo.environment["GLANCE_PICTURES"].map { URL(fileURLWithPath: $0) }
