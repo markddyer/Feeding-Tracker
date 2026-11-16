@@ -16,4 +16,14 @@ final class WidgetRefresher {
         WidgetCenter.shared.reloadAllTimelines()
         ControlCenter.shared.reloadAllControls()
     }
+
+    /// Tells the widget this phone's "How you feed", so a bottle-only phone's widget shows a
+    /// button per milk. The widget can't read the app's own settings, only the App Group's.
+    func feedingStyleChanged(_ style: String) {
+        let defaults = UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
+        let bottleOnly = style == FeedingStyle.bottleOnly.rawValue
+        guard defaults.object(forKey: WidgetSettings.bottleOnlyKey) as? Bool != bottleOnly else { return }
+        defaults.set(bottleOnly, forKey: WidgetSettings.bottleOnlyKey)
+        WidgetCenter.shared.reloadAllTimelines()
+    }
 }

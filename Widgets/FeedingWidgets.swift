@@ -15,12 +15,25 @@ struct FeedingWidgets: WidgetBundle {
 
 /// Reads this phone's household file, which the app keeps in the App Group.
 enum HouseholdReader {
+    private static var group: String? {
+        Bundle.main.object(forInfoDictionaryKey: "FeedingAppGroup") as? String
+    }
+
     static func glance(now: Date) -> FeedGlance? {
-        guard let group = Bundle.main.object(forInfoDictionaryKey: "FeedingAppGroup") as? String,
+        guard let group,
               let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group),
               let data = try? HouseholdFile.load(from: folder.appendingPathComponent("household.json"))
         else { return nil }
         return data.glance(now: now)
+    }
+
+    /// This phone's "How you feed", as the app last told the widget.
+    static var bottleOnly: Bool {
+        group.flatMap { UserDefaults(suiteName: $0) }?.bool(forKey: WidgetSettings.bottleOnlyKey) ?? false
+    }
+
+    static func entry(now: Date) -> LastFeedEntry {
+        LastFeedEntry(date: now, glance: glance(now: now), bottleOnly: bottleOnly)
     }
 }
 
@@ -59,42 +72,56 @@ struct LastFeedProvider: TimelineProvider {
 
     func getSnapshot(in context: Context, completion: @escaping (LastFeedEntry) -> Void) {
         let now = Date()
-        completion(context.isPreview ? placeholder(in: context) : LastFeedEntry(date: now, glance: HouseholdReader.glance(now: now)))
+        completion(context.isPreview ? placeholder(in: context) : HouseholdReader.entry(now: now))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<LastFeedEntry>) -> Void) {
         let now = Date()
-        let glance = HouseholdReader.glance(now: now)
+        let read = HouseholdReader.entry(now: now)
         // Whole minutes, so "1h 40m" turns over on the minute.
         let start = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
         let offsets = Array(stride(from: 0, to: 120, by: 1)) + Array(stride(from: 120, through: 360, by: 5))
-        let entries = offsets.map { LastFeedEntry(date: start.addingTimeInterval(Double($0) * 60), glance: glance) }
+        let entries = offsets.map {
+            LastFeedEntry(date: start.addingTimeInterval(Double($0) * 60), glance: read.glance, bottleOnly: read.bottleOnly)
+        }
         completion(Timeline(entries: entries, policy: .atEnd))
     }
 }
 
 // MARK: - The control
 
-/// "Start feed" in Control Center, on the Lock Screen and on the Action Button. On while a feed
+/// A Control Center button, also for the Lock Screen's corners and the Action Button. When it is
+/// added, the parent chooses the bottle it starts (Formula, Expressed milk, or Choose later), so a
+/// bottle-only parent can add one per milk (the user's choice of 16 Nov 2026). On while a feed
 /// runs; tapping it then finishes that feed.
 struct FeedControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "FeedControl", provider: FeedControlProvider()) { running in
-            ControlWidgetToggle("Feed", isOn: running, action: FeedToggleIntent()) { isOn in
-                Label(isOn ? "Finish feed" : "Start feed", systemImage: isOn ? "stopwatch.fill" : "waterbottle")
+        AppIntentControlConfiguration(kind: "FeedControl", provider: FeedControlProvider()) { state in
+            ControlWidgetToggle(isOn: state.running, action: FeedToggleIntent(bottle: state.bottle)) {
+                Label(state.bottle.buttonTitle, systemImage: "waterbottle")
+            } valueLabel: { isOn in
+                Label(isOn ? "Finish feed" : "Start", systemImage: isOn ? "stopwatch.fill" : "waterbottle")
             }
             // DESIGN.md's `primary` (day), as on Start feed.
             .tint(Color(red: 0xFF / 255, green: 0x8E / 255, blue: 0x6E / 255))
         }
         .displayName("Start or finish a feed")
-        .description("Starts a feed, or finishes the one running. Add the sides and bottles in the app.")
+        .description("Starts a feed with the bottle you choose, or finishes the one running.")
+        .promptsForUserConfiguration()
     }
 }
 
-struct FeedControlProvider: ControlValueProvider {
-    var previewValue: Bool { false }
+struct FeedControlState {
+    var running: Bool
+    var bottle: ControlBottle
+}
 
-    func currentValue() async throws -> Bool {
-        HouseholdReader.glance(now: Date())?.runningSince != nil
+struct FeedControlProvider: AppIntentControlValueProvider {
+    func previewValue(configuration: FeedControlConfiguration) -> FeedControlState {
+        FeedControlState(running: false, bottle: configuration.bottle)
+    }
+
+    func currentValue(configuration: FeedControlConfiguration) async throws -> FeedControlState {
+        FeedControlState(running: HouseholdReader.glance(now: Date())?.runningSince != nil, bottle: configuration.bottle)
     }
 }

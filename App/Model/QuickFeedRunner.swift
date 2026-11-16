@@ -6,11 +6,16 @@ import Foundation
 /// then sets this phone's alarms and sends the change before the app goes back to sleep.
 @MainActor
 enum QuickFeedRunner {
-    static func start(now: Date = Date()) async -> String {
+    /// This phone's "How you feed" is Bottle only: Start feed then names a bottle.
+    nonisolated static var isBottleOnly: Bool {
+        UserDefaults.standard.string(forKey: FeedingStyle.storageKey) == FeedingStyle.bottleOnly.rawValue
+    }
+
+    static func start(bottle: MilkKind?, now: Date = Date()) async -> String {
         let model = AppModel.shared
         guard let me = model.me, let baby = model.baby else { return GlanceText.notSetUp }
         let result = model.store.change {
-            $0.quickStartFeed(babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier, now: now)
+            $0.quickStartFeed(babyID: baby.name, bottle: bottle, by: me, timeZoneID: TimeZone.current.identifier, now: now)
         }
         await settle()
         return said(result, me: me, now: now)

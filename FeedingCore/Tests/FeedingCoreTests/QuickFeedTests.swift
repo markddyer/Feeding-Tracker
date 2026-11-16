@@ -18,13 +18,24 @@ struct QuickFeedTests {
     @Test func startStartsAFeedWithNothingChosen() throws {
         var data = household()
         let result = data.quickStartFeed(babyID: baby, by: parentA, timeZoneID: "Europe/London", now: now)
-        guard case .started(let id, let at) = result else { Issue.record("\(result)"); return }
+        guard case .started(let id, let at, let bottle) = result else { Issue.record("\(result)"); return }
         #expect(at == now)
+        #expect(bottle == nil)
         let running = try #require(data.feedInProgress(babyID: baby))
         #expect(running.id == id)
         #expect(running.event.loggedBy == parentA)
         let details = try #require(running.payload?.feed)
         #expect(details.breast.isEmpty && details.bottles.isEmpty)
+    }
+
+    /// A bottle-only parent's "Formula" button starts a formula bottle, as Start feed does in the app.
+    @Test func aButtonCanNameTheBottle() throws {
+        var data = household()
+        let result = data.quickStartFeed(babyID: baby, bottle: .formula, by: parentA, timeZoneID: "Europe/London", now: now)
+        guard case .started(_, _, .formula) = result else { Issue.record("\(result)"); return }
+        let running = try #require(data.feedInProgress(babyID: baby))
+        #expect(running.payload?.feed?.bottles.map(\.milk) == [.formula])
+        #expect(running.payload?.feed?.bottles.first?.ml == nil)
     }
 
     /// No Undo bar outside the app, so the feed goes to the other phone at once.

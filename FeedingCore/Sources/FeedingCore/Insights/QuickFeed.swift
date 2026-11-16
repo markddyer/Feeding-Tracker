@@ -36,8 +36,9 @@ public struct FeedGlance: Hashable, Sendable {
 
 /// What a quick start or finish did.
 public enum QuickFeedResult: Hashable, Sendable {
-    /// A feed started now, with nothing chosen yet: the sides and bottles are added in the app.
-    case started(id: String, at: Date)
+    /// A feed started now, with the bottle chosen on the button, or with nothing chosen: the
+    /// sides and bottles are then added in the app.
+    case started(id: String, at: Date, bottle: MilkKind?)
     /// A feed is already running, so nothing was started.
     case alreadyRunning(EventSnapshot)
     /// The running feed was finished. `by` is who started it.
@@ -67,14 +68,16 @@ extension HouseholdData {
         return glance
     }
 
-    /// "Start feed" from outside the app. Nothing happens when a feed is already running, as the
-    /// app shows that feed's buttons instead of Start feed. Sent at once: there is no Undo bar
-    /// outside the app (Stop · discard in the app removes a feed started by mistake).
-    public mutating func quickStartFeed(babyID: String, by member: MemberID, timeZoneID: String, now: Date) -> QuickFeedResult {
+    /// "Start feed" from outside the app, with a bottle when the button names one ("Formula").
+    /// Nothing happens when a feed is already running, as the app shows that feed's buttons
+    /// instead of Start feed. Sent at once: there is no Undo bar outside the app (Stop · discard in
+    /// the app removes a feed started by mistake).
+    public mutating func quickStartFeed(babyID: String, bottle: MilkKind? = nil, by member: MemberID, timeZoneID: String,
+                                        now: Date) -> QuickFeedResult {
         if let running = feedInProgress(babyID: babyID) { return .alreadyRunning(running) }
-        let id = startFeed(babyID: babyID, side: nil, by: member, timeZoneID: timeZoneID, now: now)
+        let id = startFeed(babyID: babyID, side: nil, bottle: bottle, by: member, timeZoneID: timeZoneID, now: now)
         events[id]?.uploadNotBefore = nil
-        return .started(id: id, at: now)
+        return .started(id: id, at: now, bottle: bottle)
     }
 
     /// "Finish feed" from outside the app: finishes the feed running now, whoever started it, as

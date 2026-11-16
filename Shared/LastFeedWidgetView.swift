@@ -9,6 +9,14 @@ struct LastFeedEntry: TimelineEntry {
     let date: Date
     /// Nil before the household is set up on this phone.
     let glance: FeedGlance?
+    /// This phone's "How you feed" is Bottle only: the buttons then name the bottle.
+    var bottleOnly = false
+}
+
+/// Where the app tells the widget this phone's "How you feed" (the widget can't read the app's
+/// own settings).
+enum WidgetSettings {
+    static let bottleOnlyKey = "widgets.bottleOnly"
 }
 
 /// "Last feed 1h 40m ago" on the Lock Screen (plan v1, Phase 2; the user's choice of
@@ -32,37 +40,71 @@ struct LastFeedWidgetView: View {
 
     private var glance: FeedGlance? { entry.glance }
 
-    // MARK: Rectangular: three lines
+    // MARK: Rectangular: the time, a detail, and the buttons (the user's choice of 16 Nov 2026)
 
     @ViewBuilder
     private var rectangular: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let glance, let since = glance.runningSince {
-                Label("Feed running", systemImage: "stopwatch")
-                    .font(.caption.weight(.semibold))
-                Text(GlanceText.elapsed(entry.date.timeIntervalSince(since)))
-                    .font(.title2.weight(.semibold))
-                Text("started \(GlanceText.clock(since, timeZoneID: glance.timeZoneID))")
-                    .font(.caption)
-            } else if let glance, let start = glance.lastFeedStart {
-                Label("Last feed", systemImage: "waterbottle")
-                    .font(.caption.weight(.semibold))
-                Text("\(GlanceText.elapsed(entry.date.timeIntervalSince(start))) ago")
-                    .font(.title2.weight(.semibold))
-                if let opens = glance.windowOpens {
-                    Text("Feeding window \(GlanceText.clock(opens, timeZoneID: glance.timeZoneID))")
+        VStack(alignment: .leading, spacing: 1) {
+            Group {
+                if let glance, let since = glance.runningSince {
+                    Label("Feed running \(GlanceText.elapsed(entry.date.timeIntervalSince(since)))", systemImage: "stopwatch")
+                        .font(.headline)
+                    Text("started \(GlanceText.clock(since, timeZoneID: glance.timeZoneID))")
+                        .font(.caption)
+                } else if let glance, let start = glance.lastFeedStart {
+                    Label("Last feed \(GlanceText.elapsed(entry.date.timeIntervalSince(start))) ago", systemImage: "waterbottle")
+                        .font(.headline)
+                    if let opens = glance.windowOpens {
+                        Text("Feeding window \(GlanceText.clock(opens, timeZoneID: glance.timeZoneID))")
+                            .font(.caption)
+                    }
+                } else {
+                    Label("Feeding", systemImage: "waterbottle")
+                        .font(.headline)
+                    Text(glance == nil ? "Open the app to set up" : "No feeds logged yet")
                         .font(.caption)
                 }
-            } else {
-                Label("Feeding", systemImage: "waterbottle")
-                    .font(.caption.weight(.semibold))
-                Text(glance == nil ? "Open the app to set up" : "No feeds logged yet")
-                    .font(.caption)
+            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(spoken)
+            if glance != nil {
+                buttons
+                    .padding(.top, 3)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(spoken)
+    }
+
+    /// Finish while a feed runs; otherwise Start, or one button per milk on a bottle-only phone.
+    /// They run in the app, as the Control Center button does (`FeedToggleIntent`).
+    @ViewBuilder
+    private var buttons: some View {
+        HStack(spacing: 6) {
+            if glance?.runningSince != nil {
+                button("Finish feed", FeedToggleIntent(value: false, bottle: .later))
+            } else if entry.bottleOnly {
+                button("Formula", FeedToggleIntent(value: true, bottle: .formula), spoken: "Start a formula bottle")
+                button("Expressed", FeedToggleIntent(value: true, bottle: .expressed), spoken: "Start an expressed milk bottle")
+            } else {
+                button("Start feed", FeedToggleIntent(value: true, bottle: .later))
+            }
+        }
+    }
+
+    private func button(_ title: String, _ intent: FeedToggleIntent, spoken: String? = nil) -> some View {
+        Button(intent: intent) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity)
+                .background(.fill.secondary, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(spoken ?? title)
     }
 
     // MARK: Circular: the ring, as on Home, with the time inside

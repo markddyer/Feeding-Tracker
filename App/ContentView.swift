@@ -94,6 +94,9 @@ struct ContentView: View {
         .onChange(of: NotificationTaps.shared.homeRequests) {
             path = NavigationPath()
         }
+        .onChange(of: feedingStyle, initial: true) {
+            model.widgets.feedingStyleChanged(feedingStyle)
+        }
         // Coral for controls (switches, pickers); the top bar's buttons use the text colour
         // as in the approved mockup, because coral text on cream is hard to read.
         .tint(Theme.accent)

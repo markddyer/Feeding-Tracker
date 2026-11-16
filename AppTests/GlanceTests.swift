@@ -28,7 +28,11 @@ struct GlanceTests {
         // "03:00", or "3:00 AM", as the phone's language writes it.
         let three = GlanceText.clock(start, timeZoneID: "Europe/London")
         #expect(three.contains("3:00"))
-        #expect(said(.started(id: "f", at: start)) == "Feed started at \(three). Add the sides and bottles in the app.")
+        #expect(said(.started(id: "f", at: start, bottle: nil)) == "Feed started at \(three). Add the sides and bottles in the app.")
+        #expect(said(.started(id: "f", at: start, bottle: .formula))
+                == "Formula bottle started at \(three). Add the amount in the app when it's finished.")
+        #expect(said(.started(id: "f", at: start, bottle: .expressed))
+                == "Expressed milk bottle started at \(three). Add the amount in the app when it's finished.")
         #expect(said(.alreadyRunning(feed(by: "a"))) == "Your feed is running, started at \(three).")
         #expect(said(.alreadyRunning(feed(by: "b"))) == "Sam's feed is running, started at \(three).")
         #expect(said(.finished(feed(by: "a", minutes: 25))) == "Feed finished, after 25 minutes.")
@@ -37,10 +41,12 @@ struct GlanceTests {
     }
 
     @Test func noWordSoundsLikeAVerdict() {
-        let words = [said(.started(id: "f", at: start)), said(.alreadyRunning(feed(by: "b"))),
+        let words = [said(.started(id: "f", at: start, bottle: nil)), said(.started(id: "f", at: start, bottle: .formula)),
+                     said(.alreadyRunning(feed(by: "b"))),
                      said(.finished(feed(by: "a", minutes: 25))), said(.nothingRunning), GlanceText.notSetUp,
                      "Feed running", "Last feed", "Feeding window", "No feeds logged yet", "Open the app to set up",
-                     "Start feed", "Finish feed", "Start or finish a feed"]
+                     "Start feed", "Finish feed", "Start or finish a feed", "Formula", "Expressed", "Start a formula bottle",
+                     "Start an expressed milk bottle", "Formula or expressed milk?", "Choose later", "Start"]
         for word in words {
             let plain = word.lowercased().filter { $0.isLetter || $0 == " " || $0 == "'" }
             for forbidden in AlertText.forbiddenWords {
@@ -76,7 +82,9 @@ struct GlanceTests {
         let folder = ProcessInfo.processInfo.environment["GLANCE_PICTURES"].map { URL(fileURLWithPath: $0) }
         for (name, glance) in states {
             for (family, size) in sizes {
-                let view = LastFeedWidgetView(entry: LastFeedEntry(date: now, glance: glance), family: family)
+                // Rectangular twice: a breast-and-bottle phone, and a bottle-only phone.
+                for bottleOnly in family == .accessoryRectangular ? [false, true] : [false] {
+                let view = LastFeedWidgetView(entry: LastFeedEntry(date: now, glance: glance, bottleOnly: bottleOnly), family: family)
                     .frame(width: size.width, height: size.height)
                     .foregroundStyle(.white)
                     .background(Color(white: 0.15))
@@ -85,7 +93,8 @@ struct GlanceTests {
                 renderer.scale = 3
                 let image = try #require(renderer.uiImage, "\(name) \(family)")
                 if let folder, let png = image.pngData() {
-                    try png.write(to: folder.appendingPathComponent("widget-\(name)-\(family).png"))
+                    try png.write(to: folder.appendingPathComponent("widget-\(name)-\(family)\(bottleOnly ? "-bottleOnly" : "").png"))
+                }
                 }
             }
         }

@@ -41,8 +41,13 @@ enum GlanceText {
 
     static func said(_ result: QuickFeedResult, me: MemberID, names: [MemberID: String], timeZoneID: String, now: Date) -> String {
         switch result {
-        case .started(_, let at):
-            return "Feed started at \(clock(at, timeZoneID: timeZoneID)). Add the sides and bottles in the app."
+        case .started(_, let at, let bottle):
+            let time = clock(at, timeZoneID: timeZoneID)
+            switch bottle {
+            case .formula: return "Formula bottle started at \(time). Add the amount in the app when it's finished."
+            case .expressed: return "Expressed milk bottle started at \(time). Add the amount in the app when it's finished."
+            case nil: return "Feed started at \(time). Add the sides and bottles in the app."
+            }
         case .alreadyRunning(let feed):
             let who = feed.event.loggedBy == me ? "Your" : "\(names[feed.event.loggedBy] ?? "The other parent")'s"
             return "\(who) feed is running, started at \(clock(feed.event.startedAt, timeZoneID: timeZoneID))."
