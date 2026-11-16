@@ -44,8 +44,14 @@ struct FeedControls: View {
     let babyID: String
     let onUndo: (UndoAction) -> Void
 
-    /// The feed whose details are being filled in after it finished.
-    @State private var detailsFor: String?
+    /// The feed whose details are being filled in after it finished. Kept on the phone, so a feed
+    /// finished from the Lock Screen or Siri (`QuickFeedRunner`) opens the panel here too.
+    @AppStorage(Self.detailsKey) private var detailsForID = ""
+    static let detailsKey = "home.detailsFor"
+    private var detailsFor: String? {
+        get { detailsForID.isEmpty ? nil : detailsForID }
+        nonmutating set { detailsForID = newValue ?? "" }
+    }
     @State private var choosingBottle = false
     /// The running feed that Stop asks about removing.
     @State private var stopping: String?
@@ -66,7 +72,8 @@ struct FeedControls: View {
                 } else {
                     othersFeed(feed)
                 }
-            } else if let id = detailsFor, let feed = store.data.events[id]?.snapshot, feed.event.deletedAt == nil {
+            } else if let id = detailsFor, let feed = store.data.events[id]?.snapshot, feed.event.deletedAt == nil,
+                      let ended = feed.event.endedAt, facts.now.timeIntervalSince(ended) < 2 * 3600 {
                 FeedDetailsPanel(feed: feed, me: me, bottleOnly: bottleOnly) { detailsFor = nil }
             } else if let offer = facts.feedFinishedForMe, offer.feed.id != detailsOfferAnswered {
                 let who = facts.name(offer.by).capitalizedFirst

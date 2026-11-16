@@ -1,0 +1,93 @@
+import FeedingCore
+import Foundation
+import SwiftUI
+import Testing
+import WidgetKit
+@testable import FeedingDev
+
+/// The words outside the app (the user's choice of 16 Nov 2026: start and finish a feed from the
+/// Lock Screen, Control Center, the Action Button and Siri, and a Lock Screen widget).
+@Suite("Outside the app")
+@MainActor
+struct GlanceTests {
+    let start = Date(timeIntervalSince1970: 1_794_798_000) // 16 Nov 2026, 03:00 in London
+    let me: MemberID = "a"
+    let names: [MemberID: String] = ["a": "Alex", "b": "Sam"]
+
+    func feed(by member: MemberID, minutes: Double? = nil) -> EventSnapshot {
+        EventSnapshot(event: Event(id: "f", babyID: "baby", kind: .feed, startedAt: start,
+                                   endedAt: minutes.map { start.addingTimeInterval($0 * 60) },
+                                   timeZoneID: "Europe/London", loggedBy: member, createdAt: start, modifiedAt: start))
+    }
+
+    func said(_ result: QuickFeedResult) -> String {
+        GlanceText.said(result, me: me, names: names, timeZoneID: "Europe/London", now: start)
+    }
+
+    @Test func whatSiriSays() {
+        // "03:00", or "3:00 AM", as the phone's language writes it.
+        let three = GlanceText.clock(start, timeZoneID: "Europe/London")
+        #expect(three.contains("3:00"))
+        #expect(said(.started(id: "f", at: start)) == "Feed started at \(three). Add the sides and bottles in the app.")
+        #expect(said(.alreadyRunning(feed(by: "a"))) == "Your feed is running, started at \(three).")
+        #expect(said(.alreadyRunning(feed(by: "b"))) == "Sam's feed is running, started at \(three).")
+        #expect(said(.finished(feed(by: "a", minutes: 25))) == "Feed finished, after 25 minutes.")
+        #expect(said(.finished(feed(by: "b", minutes: 61))) == "Sam's feed finished, after 1 hour, 1 minute.")
+        #expect(said(.nothingRunning) == "No feed is running.")
+    }
+
+    @Test func noWordSoundsLikeAVerdict() {
+        let words = [said(.started(id: "f", at: start)), said(.alreadyRunning(feed(by: "b"))),
+                     said(.finished(feed(by: "a", minutes: 25))), said(.nothingRunning), GlanceText.notSetUp,
+                     "Feed running", "Last feed", "Feeding window", "No feeds logged yet", "Open the app to set up",
+                     "Start feed", "Finish feed", "Start or finish a feed"]
+        for word in words {
+            let plain = word.lowercased().filter { $0.isLetter || $0 == " " || $0 == "'" }
+            for forbidden in AlertText.forbiddenWords {
+                #expect(!plain.split(separator: " ").contains(Substring(forbidden)), "\(word)")
+            }
+        }
+    }
+
+    @Test func theAppAndTheWidgetWriteTimesTheSameWay() {
+        #expect(HomeText.elapsed(6000) == GlanceText.elapsed(6000))
+        #expect(GlanceText.elapsed(6000) == "1h 40m")
+        #expect(GlanceText.elapsed(300) == "5m")
+        #expect(GlanceText.compactElapsed(6000) == "1:40")
+        #expect(GlanceText.compactElapsed(3900) == "1:05")
+        #expect(GlanceText.compactElapsed(300) == "5m")
+    }
+
+    /// Draws the widget in each size and state, for a person to look at: run with
+    /// `TEST_RUNNER_GLANCE_PICTURES=<folder>` to save the pictures there.
+    @Test func widgetPictures() throws {
+        let now = start.addingTimeInterval(6000)
+        let states: [(String, FeedGlance?)] = [
+            ("last", FeedGlance(lastFeedStart: start, windowOpens: start.addingTimeInterval(7200),
+                                windowCloses: start.addingTimeInterval(14400))),
+            ("running", FeedGlance(lastFeedStart: now.addingTimeInterval(-720), runningSince: now.addingTimeInterval(-720),
+                                   windowOpens: now.addingTimeInterval(6480), windowCloses: now.addingTimeInterval(13680))),
+            ("empty", FeedGlance()),
+            ("notSetUp", nil),
+        ]
+        let sizes: [(WidgetFamily, CGSize)] = [(.accessoryRectangular, CGSize(width: 172, height: 76)),
+                                              (.accessoryCircular, CGSize(width: 76, height: 76)),
+                                              (.accessoryInline, CGSize(width: 260, height: 26))]
+        let folder = ProcessInfo.processInfo.environment["GLANCE_PICTURES"].map { URL(fileURLWithPath: $0) }
+        for (name, glance) in states {
+            for (family, size) in sizes {
+                let view = LastFeedWidgetView(entry: LastFeedEntry(date: now, glance: glance), family: family)
+                    .frame(width: size.width, height: size.height)
+                    .foregroundStyle(.white)
+                    .background(Color(white: 0.15))
+                    .environment(\.colorScheme, .dark)
+                let renderer = ImageRenderer(content: view)
+                renderer.scale = 3
+                let image = try #require(renderer.uiImage, "\(name) \(family)")
+                if let folder, let png = image.pngData() {
+                    try png.write(to: folder.appendingPathComponent("widget-\(name)-\(family).png"))
+                }
+            }
+        }
+    }
+}

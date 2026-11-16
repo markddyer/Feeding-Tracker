@@ -27,7 +27,9 @@ Read DESIGN.md before visual or UI work: it defines the fonts, colours, spacing 
 - `FeedingCore/`: a Swift package that depends only on Foundation. It holds the domain model, `reconcile`, the rota and night logic, the feed and pump details with versioned payload encoding (`PayloadCoder`), the field-level merge (`merge(local:server:changedLocally:)`), the next-side suggestion, the 24-hour summary and duplicate detection. It must build and pass `swift test` on Linux as well as macOS. Adding a payload field that matters means raising that payload's `currentVersion` (see `VersionedPayload`).
 - `project.yml`: the XcodeGen spec for the two variants, `Feeding` and `FeedingDev`. Generate the project with `xcodegen generate` and never hand-edit the generated `Feeding.xcodeproj`. Info.plists and entitlements are generated into `Generated/` (gitignored). The Apple team ID goes in `Config/Local.xcconfig` (gitignored; see the `.example`).
 - `schema.ckdb`: the CloudKit schema as text, loaded with `xcrun cktool import-schema`. Validated by `cktool` and imported into the **Dev** container's Development environment on 14 Nov 2026 (the export matched the file). Not in Production: that waits for the spikes and the user's go-ahead.
-- `App/`, `Widgets/` (Phase 2), `Watch/` (Phase 2).
+- `App/`, `Watch/` (Phase 2).
+- `Widgets/`: the widget extension (the Lock Screen widget and the "Start or finish a feed" control), one per variant (`FeedingWidgets`, `FeedingDevWidgets`). It only reads `household.json` in the App Group.
+- `Shared/`: code built into both the app and the widget extension: the start and finish actions (`FeedIntents.swift`, which run in the app's process: `allowedExecutionTargets` `[.main]`), the widget's view and its words (`GlanceText`). Code that runs only in the app goes in `#if !FEEDING_WIDGETS` or in `App/`.
 - `App/Design/`: `DESIGN.md` in code. Colours with day and night values (`Theme`), the day/night switch (`LookModifier`), text styles (`.feedText(...)`), the feed shapes and the small parts (Tile, Chip, Avatar). `App/Fonts/` holds Fredoka and its licence.
 
 ## Commands

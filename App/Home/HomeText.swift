@@ -11,23 +11,15 @@ struct ChipFact: Hashable {
 /// The words and numbers on the home screen, kept apart from the views so they can be tested.
 /// Facts only: no "due", "missed", "overdue" or "should", no targets and no verdicts.
 enum HomeText {
-    /// "2h 05m", "45m": the time since the last feed started, rounded down to the minute.
+    /// "2h 05m", "45m": the time since the last feed started, rounded down to the minute. The
+    /// same words as the Lock Screen widget (`GlanceText`).
     static func elapsed(_ seconds: TimeInterval) -> String {
-        let (hours, minutes) = Self.hoursAndMinutes(seconds)
-        return hours == 0 ? "\(minutes)m" : "\(hours)h \(minutes < 10 ? "0" : "")\(minutes)m"
+        GlanceText.elapsed(seconds)
     }
 
     /// The same time for VoiceOver: "2 hours, 5 minutes".
     static func spokenElapsed(_ seconds: TimeInterval) -> String {
-        let (hours, minutes) = Self.hoursAndMinutes(seconds)
-        let h = hours == 1 ? "1 hour" : "\(hours) hours"
-        let m = minutes == 1 ? "1 minute" : "\(minutes) minutes"
-        if hours == 0 { return m }
-        return minutes == 0 ? h : "\(h), \(m)"
-    }
-
-    private static func hoursAndMinutes(_ seconds: TimeInterval) -> (Int, Int) {
-        max(0, Int(seconds / 60)).quotientAndRemainder(dividingBy: 60)
+        GlanceText.spokenElapsed(seconds)
     }
 
     static func greeting(_ part: PartOfDay) -> String {

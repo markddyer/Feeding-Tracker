@@ -38,8 +38,12 @@ targetTemplates:
     platform: iOS
     sources:
       - path: App
+      # Shared with the widget extension: the quick feed actions and the Lock Screen widget's view.
+      - path: Shared
     dependencies:
       - package: FeedingCore
+      - target: ${widgets}
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding${bundleSuffix}
@@ -87,23 +91,69 @@ targetTemplates:
         com.apple.developer.usernotifications.time-sensitive: true
     scheme: {}
 
+  # The Lock Screen widget and the Control Center control (plan v1, Phase 2). They only read the
+  # household file in the App Group; the start and finish actions run in the app's own process
+  # (Shared/FeedIntents.swift), so the extension needs no iCloud and no AlarmKit.
+  FeedingWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: Shared
+    dependencies:
+      - package: FeedingCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding${bundleSuffix}.widgets
+        PRODUCT_NAME: ${target_name}
+        SKIP_INSTALL: YES
+        # Marks the extension's copy of the shared actions, whose bodies never run there.
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FEEDING_WIDGETS
+    info:
+      path: Generated/${target_name}/Info.plist
+      properties:
+        CFBundleDisplayName: ${displayName}
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+        FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}
+    entitlements:
+      path: Generated/${target_name}/${target_name}.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.tracker.feeding${bundleSuffix}
+
 targets:
   Feeding:
     templates: [FeedingApp]
     templateAttributes:
       bundleSuffix: ""
       displayName: Feeding
+      widgets: FeedingWidgets
   FeedingDev:
     templates: [FeedingApp]
     templateAttributes:
       bundleSuffix: .dev
       displayName: Feeding Dev
+      widgets: FeedingDevWidgets
     settings:
       base:
         # Turns on the Phase 0 test screens (App/Spikes), which never ship in Feeding.
         SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) FEEDING_DEV
     scheme:
       testTargets: [FeedingAppTests]
+
+  FeedingWidgets:
+    templates: [FeedingWidgets]
+    templateAttributes:
+      bundleSuffix: ""
+      displayName: Feeding
+  FeedingDevWidgets:
+    templates: [FeedingWidgets]
+    templateAttributes:
+      bundleSuffix: .dev
+      displayName: Feeding Dev
 
   # Tests of the app's Apple-only parts (CloudKit record mapping and the like), run in the
   # simulator: xcodebuild test -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'

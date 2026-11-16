@@ -31,6 +31,7 @@ final class AppModel {
     let sync: HouseholdSync
     let reconciler: Reconciler
     let nightAskNotifier: NightAskNotifier
+    let widgets = WidgetRefresher()
 
     private init() {
         store = HouseholdStore()
@@ -46,7 +47,9 @@ final class AppModel {
             self?.finishStrandedDuplicates()
             reconcile?()
             Task { await self?.tellNightAskNews() }
+            if let self { widgets.update(store.data) }
         }
+        widgets.update(store.data)
     }
 
     /// Notifications about asks to take a night. Also awaited after a push, so it runs before
@@ -74,7 +77,7 @@ final class AppModel {
 
     /// The baby the screens show: the first one not archived.
     var baby: PlainRecord? {
-        store.data.plainRecords(of: .baby).first { $0.archivedAt == nil }
+        store.data.currentBaby
     }
 
     /// Display names by member ID, from the Member records.
