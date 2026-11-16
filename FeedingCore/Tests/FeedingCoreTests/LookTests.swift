@@ -46,15 +46,26 @@ struct LookTests {
     }
 
     @Test func theOtherSettingsNeverChangeByThemselves() {
-        let now = at(2026, 11, 15, 12, 0)
-        for dark in [false, true] {
-            #expect(LookSetting.alwaysNight.resolve(dayHours: hours, timeZone: london, phoneIsDark: dark, now: now)
-                    == LookResolution(look: .night, nextChange: nil))
-            #expect(LookSetting.matchPhone.resolve(dayHours: hours, timeZone: london, phoneIsDark: dark, now: now)
-                    == LookResolution(look: dark ? .night : .day, nextChange: nil))
+        // At midday, and at 3am inside the night hours, with the phone's Dark Mode off and on.
+        for now in [at(2026, 11, 15, 12, 0), at(2026, 11, 16, 3, 0)] {
+            for dark in [false, true] {
+                #expect(LookSetting.alwaysDay.resolve(dayHours: hours, timeZone: london, phoneIsDark: dark, now: now)
+                        == LookResolution(look: .day, nextChange: nil))
+                #expect(LookSetting.alwaysNight.resolve(dayHours: hours, timeZone: london, phoneIsDark: dark, now: now)
+                        == LookResolution(look: .night, nextChange: nil))
+                #expect(LookSetting.matchPhone.resolve(dayHours: hours, timeZone: london, phoneIsDark: dark, now: now)
+                        == LookResolution(look: dark ? .night : .day, nextChange: nil))
+            }
         }
         // Automatic ignores the phone's Dark Mode.
-        #expect(LookSetting.automatic.resolve(dayHours: hours, timeZone: london, phoneIsDark: true, now: now).look == .day)
+        let midday = at(2026, 11, 15, 12, 0)
+        #expect(LookSetting.automatic.resolve(dayHours: hours, timeZone: london, phoneIsDark: true, now: midday).look == .day)
+    }
+
+    /// The setting is kept by name, so an older app version that doesn't know a name reads it as
+    /// Automatic, and the names never change.
+    @Test func theSettingsAreKeptByName() {
+        #expect(LookSetting.allCases.map(\.rawValue) == ["automatic", "alwaysDay", "alwaysNight", "matchPhone"])
     }
 
     @Test func aClockSetBackGivesTheLookForTheNewTime() {

@@ -92,12 +92,13 @@ extension EnvironmentValues {
 
 extension LookSetting {
     /// Where this phone keeps its choice (`@AppStorage`). Feeding Dev can be launched with
-    /// `-look.setting alwaysNight` (or `matchPhone`) to pick a look for screenshots.
+    /// `-look.setting alwaysNight` (or `alwaysDay`, `matchPhone`) to pick a look for screenshots.
     static let storageKey = "look.setting"
 
     var title: String {
         switch self {
         case .automatic: "Automatic"
+        case .alwaysDay: "Always day"
         case .alwaysNight: "Always night"
         case .matchPhone: "Match iPhone"
         }

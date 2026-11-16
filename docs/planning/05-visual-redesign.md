@@ -9,7 +9,7 @@ The user wants the app to look far nicer and happier: fewer sentences, more pict
 ## Decisions (15 Nov 2026)
 
 - **D1. Look:** "Joyful by day, gentle by night" (mockup A), plus the 24-hour chart from mockup C and the row of nights from mockup D.
-- **D2. Day and night:** the night look runs during the household's night hours (the rota's, 21:00 to 07:00 by default). Each phone can choose **Automatic**, **Always night** or **Match iPhone** in Settings.
+- **D2. Day and night:** the night look runs during the household's night hours (the rota's, 21:00 to 07:00 by default). Each phone can choose **Automatic**, **Always night** or **Match iPhone** in Settings (and **Always day**, added 16 Nov 2026).
 - **D3. Letters:** Fredoka for headings, names, tile values and button labels. SF Pro Rounded for everything else, and for every time, duration, amount and count, with fixed-width digits. No third typeface.
 - **D4. Window:** keep the ring around the main time **and** the window bar under it, with "Feeding window 10:25" and a bell at the alarm time. (Both outside designers suggested one timeline instead, because a filling ring can feel like a countdown. The user chose to keep both. Revisit if it reads as a deadline.)
 - **D5. Shapes:** each kind of feed has a shape as well as a colour. Breast is a half-moon whose filled half is the side; bottle is a tall bottle; pumping is two drops.

@@ -236,7 +236,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 ## Day and night
 
 - **Automatic** (the default): the night look runs during the household's night hours (the same hours as the night rota: 21:00 to 07:00 by default) and the day look the rest of the time.
-- In Settings, each phone can choose **Automatic**, **Always night**, or **Match iPhone** (follows the phone's own Dark Mode).
+- In Settings, each phone can choose **Automatic**, **Always day** (added 16 Nov 2026, the user's choice), **Always night**, or **Match iPhone** (follows the phone's own Dark Mode).
 - The app sets `.preferredColorScheme` to match the look, so sheets, pickers and the keyboard follow it and nothing flashes white at night.
 - The change is a 0.3 second cross-fade, never a flash.
 

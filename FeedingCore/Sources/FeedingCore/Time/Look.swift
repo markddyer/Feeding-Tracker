@@ -11,6 +11,8 @@ public enum LookSetting: String, Hashable, Sendable, CaseIterable, Codable {
     /// The night look during the household's night hours (the same hours as the night rota), and
     /// the day look the rest of the time. The default.
     case automatic
+    /// The day look all the time, at night too (the user's choice, 16 Nov 2026).
+    case alwaysDay
     case alwaysNight
     /// Follows the phone's own Dark Mode.
     case matchPhone
@@ -34,6 +36,8 @@ extension LookSetting {
     /// set back simply gives the look for the new time.
     public func resolve(dayHours: DayHours, timeZone: TimeZone, phoneIsDark: Bool, now: Date) -> LookResolution {
         switch self {
+        case .alwaysDay:
+            LookResolution(look: .day, nextChange: nil)
         case .alwaysNight:
             LookResolution(look: .night, nextChange: nil)
         case .matchPhone:

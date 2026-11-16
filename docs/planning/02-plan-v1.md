@@ -93,7 +93,7 @@ Also on the home screen:
 
 **Day and night looks** (the user's decision, 15 Nov 2026; this replaces "always dark", which came from reviewer finding F10, not from the user):
 - A warm, joyful **day look** and a dim **night look** of the same screens. The rules and colours are in `DESIGN.md`.
-- The night look runs during the household's night hours (the rota's, 21:00 to 07:00 by default). Each phone can choose Automatic, Always night or Match iPhone in Settings.
+- The night look runs during the household's night hours (the rota's, 21:00 to 07:00 by default). Each phone can choose Automatic, Always day (added 16 Nov 2026), Always night or Match iPhone in Settings.
 - No white flashes at night from sheets, pickers or the keyboard: the app sets its colour scheme to match the look. The launch screen is always dark, because it can't know the time.
 - At night, thinner letters, dim colours, fades only, and haptics in place of animation.
 - The background runs edge to edge (`ignoresSafeArea`), under the Duo's side bar too, so no lighter strip shows. Buttons stay inside the safe area.
