@@ -98,9 +98,9 @@ struct FeedControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         AppIntentControlConfiguration(kind: "FeedControl", provider: FeedControlProvider()) { state in
             ControlWidgetToggle(isOn: state.running, action: FeedToggleIntent(bottle: state.bottle)) {
-                Label(state.bottle.buttonTitle, systemImage: "waterbottle")
+                Label(state.bottle.buttonTitle, systemImage: state.bottle.symbol)
             } valueLabel: { isOn in
-                Label(isOn ? "Finish feed" : "Start", systemImage: isOn ? "stopwatch.fill" : "waterbottle")
+                Label(isOn ? "Finish feed" : "Start", systemImage: isOn ? "stopwatch.fill" : state.bottle.symbol)
             }
             // DESIGN.md's `primary` (day), as on Start feed.
             .tint(Color(red: 0xFF / 255, green: 0x8E / 255, blue: 0x6E / 255))

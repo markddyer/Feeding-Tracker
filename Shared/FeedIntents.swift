@@ -45,6 +45,16 @@ enum ControlBottle: String, AppEnum {
         }
     }
 
+    /// The button's icon. Small Control Center buttons show only the icon, so the two milks
+    /// get letters (the user's choice of 16 Nov 2026): a circled F and a circled E.
+    var symbol: String {
+        switch self {
+        case .later: "waterbottle"
+        case .formula: "f.circle.fill"
+        case .expressed: "e.circle.fill"
+        }
+    }
+
     /// The button's name in Control Center.
     var buttonTitle: String {
         switch self {

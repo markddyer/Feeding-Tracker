@@ -55,6 +55,14 @@ struct GlanceTests {
         }
     }
 
+    /// Small Control Center buttons show only the icon, so each bottle has its own.
+    @Test func eachButtonHasItsOwnIcon() {
+        let symbols = [ControlBottle.later, .formula, .expressed].map(\.symbol)
+        #expect(Set(symbols).count == 3)
+        #expect(ControlBottle.formula.symbol == "f.circle.fill")
+        #expect(ControlBottle.expressed.symbol == "e.circle.fill")
+    }
+
     @Test func theAppAndTheWidgetWriteTimesTheSameWay() {
         #expect(HomeText.elapsed(6000) == GlanceText.elapsed(6000))
         #expect(GlanceText.elapsed(6000) == "1h 40m")
