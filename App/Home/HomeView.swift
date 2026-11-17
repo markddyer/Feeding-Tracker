@@ -618,7 +618,7 @@ struct DayChart: View {
             GeometryReader { proxy in
                 let width = proxy.size.width
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 7).fill(Theme.track)
+                    RoundedRectangle(cornerRadius: 7).fill(Theme.chartStrip)
                     ForEach(feeds) { feed in
                         let place = Self.place(start: feed.startedAt, duration: feed.duration, now: now, hours: hours, width: width)
                         block(feed)

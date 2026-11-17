@@ -42,7 +42,7 @@ The project's `project.yml` will set these Info.plist keys and capabilities, so 
 Also in place for the first upload (16 Nov 2026):
 - **Privacy manifest:** `Shared/PrivacyInfo.xcprivacy`, built into the app and the widget extension. No tracking and no data collected (the feeds stay in the household's iCloud, which the developer can't read). The one API Apple asks a reason for is UserDefaults: `CA92.1` and `1C8F.1` (App Group).
 - **Release build:** the `Feeding` scheme builds in Release for a real iPhone, without the Dev-only code.
-- [x] **App icon** (17 Nov 2026): the user's own picture, for the phone and the watch, with a "DEV" band on Feeding Dev's. See "App icon" in `DESIGN.md`; `tools/make-app-icons.swift` makes all four from one picture.
+- [x] **App icon** (17 Nov 2026): the baby's head on coral (`tools/app-icon.svg`), for the phone and the watch, with a "DEV" band on Feeding Dev's. See "App icon" in `DESIGN.md`; `swift tools/make-app-icons.swift tools/app-icon.svg` makes all four.
 - Background Modes → Remote notifications
 
 ## 3. CloudKit Console (icloud.developer.apple.com)

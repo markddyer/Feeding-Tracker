@@ -17,6 +17,7 @@ struct DesignTokensTests {
         ("bottle", Theme.bottle), ("bottle-mark", Theme.bottleMark), ("bottle-tint", Theme.bottleTint),
         ("pump", Theme.pump), ("pump-mark", Theme.pumpMark), ("pump-tint", Theme.pumpTint),
         ("bottle-soft", Theme.bottleSoft), ("breast-soft", Theme.breastSoft), ("chart", Theme.chart),
+        ("chart-strip", Theme.chartStrip),
         ("parent-1", Theme.parent1), ("on-parent-1", Theme.onParent1), ("parent-1-tint", Theme.parent1Tint),
         ("parent-2", Theme.parent2), ("on-parent-2", Theme.onParent2), ("parent-2-tint", Theme.parent2Tint),
         ("lavender", Theme.lavender), ("on-lavender", Theme.onLavender), ("lavender-tint", Theme.lavenderTint),
@@ -116,7 +117,7 @@ struct DesignTokensTests {
     @Test(arguments: [Look.day, .night])
     func chartBlocksStandOutOnTheStrip(_ look: Look) {
         for (mark, kind) in [(Theme.breastMark, "breast"), (Theme.bottleMark, "bottle"), (Theme.textMuted, "unreadable feed")] {
-            #expect(Self.ratio(mark, Theme.track, look) >= 3, "\(kind) block on the strip")
+            #expect(Self.ratio(mark, Theme.chartStrip, look) >= 3, "\(kind) block on the strip")
         }
     }
 

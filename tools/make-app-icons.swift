@@ -1,6 +1,9 @@
 // Makes the app icons from one square picture.
 //
-//   swift tools/make-app-icons.swift <picture.png> [output folder]
+//   swift tools/make-app-icons.swift <picture.png or .svg> [output folder]
+//
+// The icon's picture today is tools/app-icon.svg. An SVG is drawn at 1024 x 1024 by Quick Look
+// (qlmanage, which draws with WebKit, so its gradients and shadows come out as in a browser).
 //
 // Writes AppIcon.png (Feeding) and AppIcon-Dev.png (Feeding Dev, with a "DEV" band) for the phone
 // and for the watch, all 1024 x 1024 with no transparency, as Apple asks. If the picture has dark rounded-off corners
@@ -28,8 +31,23 @@ func fail(_ message: String) -> Never {
     exit(1)
 }
 
-// 1. Read the picture into RGBA pixels (row 0 is the top).
-guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: args[1]) as CFURL, nil),
+// 1. Read the picture into RGBA pixels (row 0 is the top). ImageIO can't read an SVG, so Quick
+//    Look draws it into a PNG first.
+var input = URL(fileURLWithPath: args[1])
+if input.pathExtension.lowercased() == "svg" {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("make-app-icons-\(getpid())")
+    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let quickLook = Process()
+    quickLook.executableURL = URL(fileURLWithPath: "/usr/bin/qlmanage")
+    quickLook.arguments = ["-t", "-s", "1024", "-o", folder.path, input.path]
+    quickLook.standardOutput = FileHandle.nullDevice
+    quickLook.standardError = FileHandle.nullDevice
+    do { try quickLook.run() } catch { fail("can't run qlmanage: \(error)") }
+    quickLook.waitUntilExit()
+    input = folder.appendingPathComponent(input.lastPathComponent + ".png")
+    guard FileManager.default.fileExists(atPath: input.path) else { fail("Quick Look couldn't draw \(args[1])") }
+}
+guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
       let picture = CGImageSourceCreateImageAtIndex(source, 0, nil) else { fail("can't read \(args[1])") }
 let w = picture.width, h = picture.height
 guard w == h else { fail("the picture must be square (it is \(w) x \(h))") }
@@ -186,8 +204,10 @@ func save(_ image: CGImage, to url: URL) {
     print("wrote \(url.path)")
 }
 
-// The watch scale keeps the picture's round shapes near its edges inside the watch's circle.
-let watchScale: CGFloat = 0.92
+// The watch cuts the icon to a circle. The baby's head (tools/app-icon.svg) sits well inside it, so
+// the watch's copy is full size. For a picture with shapes near its edges, draw it smaller here:
+// the user's earlier picture, with round badges near the edges, needed 0.92.
+let watchScale: CGFloat = 1
 let icons = [
     ("App/Assets.xcassets/AppIcon.appiconset/AppIcon.png", icon(dev: false, scale: 1)),
     ("App/Assets.xcassets/AppIcon-Dev.appiconset/AppIcon-Dev.png", icon(dev: true, scale: 1)),

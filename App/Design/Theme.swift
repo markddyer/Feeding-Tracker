@@ -40,6 +40,9 @@ enum Theme {
     static let breastSoft = Color(day: 0xF07C8F, night: 0xC27F8C)
     /// Bars that are no kind of feed (feeds per day, the time between feeds).
     static let chart = Color(day: 0x3A2A1E, night: 0x978472)
+    /// The strip behind Home's 24-hour chart: plain white by day (the user's choice, 17 Nov 2026),
+    /// the `track` dark at night so it doesn't glare.
+    static let chartStrip = Color(day: 0xFFFFFF, night: 0x231B15)
 
     // The two parents' default colours (sunflower and teal).
     static let parent1 = Color(day: 0xF2B33D, night: 0x9C7A30)
