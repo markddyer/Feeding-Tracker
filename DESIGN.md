@@ -277,6 +277,13 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 - **Night:** fades only, no movement, haptics in place of animation. Respect Reduce Motion at all times.
 - **The one authored moment:** when a feed is logged, the ring empties and starts again from zero with a soft haptic. At night, the haptic only.
 
+## App icon
+- **The user's own picture**, chosen on 17 Nov 2026 "for now": a smiling baby hugging a bunny under a starry blanket, a heart, and five round badges for what the app logs or may log later (bottle, breast, pumping, sleep, growth) on cream.
+- It is soft and shaded, unlike the flat screens. That is on purpose: the screens stay flat. Its colours are the picture's own, not the tokens above, so don't "fix" them to match.
+- Files: `App/Assets.xcassets` (phone) and `Watch/App/Assets.xcassets` (watch). Each has `AppIcon` (Feeding) and `AppIcon-Dev` (Feeding Dev: the same picture with a `text`-brown band along the bottom and "DEV" in Fredoka, in cream).
+- Made from one square picture with `swift tools/make-app-icons.swift <picture.png>`. It fills dark rounded-off corners with the colour next to them (iOS and watchOS round the corners themselves), writes 1024 × 1024 with no transparency, and draws the watch's copy at 92% so the badges near the edge stay inside the watch's circle. To change the icon, run it again with the new picture.
+- No dark or tinted version is supplied yet.
+
 ## Decisions Log
 | Date | Decision | Rationale |
 |------|----------|-----------|
@@ -291,3 +298,4 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-15 | Night teal darkened from #2C6E63 to #2A695E | Found by the colour test in build step 9: the initial on teal read at 4.2:1 at night, under 4.5:1. The user chose a slightly darker teal over keeping it. |
 | 2026-11-15 | The age chip uses `surface`; top-bar buttons use `text` | Found while building: the mockup's green age chip broke "green means pumping", and coral text on the cream background was hard to read. Coral stays for switches and the main button. |
 | 2026-11-16 | Three tabs, and the Graphs tab | The user asked for the graphs one tap from the main screen, as a tab, and chose Home, History and Graphs; then layout A (one long page), the time between feeds as shortest-to-longest bars with the middle gap (B), two blues for formula and expressed milk (A), and left and right bars side by side (A), from `graphs-20261116/graph-options.html` in the gstack design folder. New tokens `bottle-soft`, `breast-soft` and `chart`. |
+| 2026-11-17 | The app icon is the user's own picture, for now | The user supplied it after six rounds of icon ideas (`app-icon-20261116/feeding-icon-choices.html` in the gstack design folder). It shows more than feeding (sleep, growth), as the user wants the app to grow with the family. Feeding Dev adds a "DEV" band so the two apps are easy to tell apart. |

@@ -32,6 +32,7 @@ Read DESIGN.md before visual or UI work: it defines the fonts, colours, spacing 
 - `Widgets/`: the widget extension (the Lock Screen widget and the "Start or finish a feed" control), one per variant (`FeedingWidgets`, `FeedingDevWidgets`). It only reads `household.json` in the App Group.
 - `Shared/`: code built into both the app and the widget extension: the start and finish actions (`FeedIntents.swift`, which run in the app's process: `allowedExecutionTargets` `[.main]`), the widget's view and its words (`GlanceText`). Code that runs only in the app goes in `#if !FEEDING_WIDGETS` or in `App/`.
 - `App/Graphs/`: the Graphs tab (Swift Charts), its words (`GraphText`); the per-day facts are `graphDays` in `FeedingCore/Sources/FeedingCore/Insights/Graphs.swift`. The tabs (Home, History, Graphs) are in `App/ContentView.swift`.
+- App icons: `App/Assets.xcassets` (phone) and `Watch/App/Assets.xcassets` (watch), `AppIcon` for Feeding and `AppIcon-Dev` for Feeding Dev. Never edit the PNGs by hand: make all four from one square picture with `swift tools/make-app-icons.swift <picture.png>` (see "App icon" in `DESIGN.md`).
 - `App/Design/`: `DESIGN.md` in code. Colours with day and night values (`Theme`), the day/night switch (`LookModifier`), text styles (`.feedText(...)`), the feed shapes and the small parts (Tile, Chip, Avatar). `App/Fonts/` holds Fredoka and its licence.
 
 ## Commands
