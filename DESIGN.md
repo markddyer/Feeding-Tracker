@@ -25,8 +25,9 @@ colors:
   bottle-soft: "#5FA8E8"
   breast-soft: "#F07C8F"
   chart: "#3A2A1E"
-  # The strip behind Home's 24-hour chart: plain white by day (the user's choice, 17 Nov 2026)
-  chart-strip: "#FFFFFF"
+  # The strip behind Home's 24-hour chart, and its thin edge (the users' choice D, 17 Nov 2026)
+  chart-strip: "#FCD5AE"
+  chart-strip-edge: "#DDBA97"
   parent-1: "#F2B33D"
   on-parent-1: "#3A1A0E"
   parent-1-tint: "#FDEBC4"
@@ -65,7 +66,8 @@ colors:
   bottle-soft-night: "#6E93BA"
   breast-soft-night: "#C27F8C"
   chart-night: "#978472"
-  chart-strip-night: "#231B15"
+  chart-strip-night: "#2A2119"
+  chart-strip-edge-night: "#453A31"
   parent-1-night: "#9C7A30"
   on-parent-1-night: "#120A06"
   parent-1-tint-night: "#221B0E"
@@ -246,7 +248,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
   - **The watch face** draws the pieces in its own colours: the Lock Screen widget's words, a ring with "1:40", and Start feed, a bottle with "Start" under it. A tap on Start feed opens "Formula or expressed?" on a bottle-only watch: the same label and two coral buttons, "Feed from 05:12" above them, and a soft "Not now" lower down. While this parent's feed runs, Start feed becomes a stopwatch with the feed's timer ("12:34", kept running by the watch), and a tap finishes the feed and opens the amount; during the other parent's feed it shows their timer and a tap only opens the app on "Finish for Sam" (the user's choices, 16 Nov 2026).
 - **Amount wheel** (a bottle's ml, added 16 Nov 2026): the iOS wheel, every 5 ml from 5 to 300 ml, in the `background` colour on the panel, amounts in SF Pro Rounded. Turning it saves nothing: "Save 30 ml" does (the word in Fredoka, the amount in SF Pro Rounded).
 - **Window bar:** 12 pt tall. Empty `track`; `primary` fills the time since the last feed; `window` shades the feeding window; a short bar marks now. Under it: "Feeding window 10:25" on the left and a bell with the alarm time on the right.
-- **24-hour chart:** one strip (22 pt tall, `chart-strip`: plain white by day, the same dark as `track` at night) across the last 24 hours. Each feed is a block from when it started to when it ended (to now while it runs), at least 3 pt wide, coloured by kind (`*-mark`; bottle above breast for a feed with both), with a key of shapes. Feeds close together sit side by side and touch only if they really overlapped. Under it, three totals: feeds, at the breast, ml from bottles.
+- **24-hour chart:** one strip (22 pt tall, `chart-strip`, with a 1 pt `chart-strip-edge` line round it, drawn over the blocks) across the last 24 hours. Each feed is a block from when it started to when it ended (to now while it runs), at least 3 pt wide, coloured by kind (`*-mark`; bottle above breast for a feed with both), with a key of shapes. Feeds close together sit side by side and touch only if they really overlapped. Under it, three totals: feeds, at the breast, ml from bottles.
 - **Nights row:** seven days, each with the on-duty parent's initial in their colour. Tonight has a ring round it. Then "Sam's on tonight" and an "I'll take it" pill.
 - **History row:** tinted by kind, time on the left, chips in the middle, the avatar of who logged it on the right.
 - **Graphs tab** (the user's choices from side-by-side mockups, 16 Nov 2026): one long page under a big "Graphs" title and a 7 days / 4 weeks / All switch, one tile per graph, each 140 pt tall, left out when it has nothing to show. Feeds each day: bars in `chart`. Bottles each day: one bar per day, formula in `bottle-mark` at the bottom and expressed milk in `bottle-soft` above, with the day's total over it. Time between feeds: a soft bar (`chart` at 30%) from the day's shortest gap to its longest, with a `chart` dot for the middle gap. Breast each day: two bars per day, left in `breast-mark` and right in `breast-soft`, keyed with the half-moons. Pumped each day: bars in `pump-mark`. Today's bar is at 45% (the day isn't over). For a week the numbers sit on the bars and every day is named ("Tue" … "Today"); for longer, the amounts go up the right side and about five days are named ("26 Oct"). A key, when needed, has its own line under the tile's label. The chart's words stop growing at the xLarge text size, so seven day names still fit; VoiceOver reads each day and its numbers. By day `bottle-soft` and `breast-soft` are the plain kind colours (about 2:1 on the tile; they always sit on or beside the 3:1 mark, with a key); at night they are lighter than the mark (3:1 or better on the tile).
@@ -303,4 +305,4 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-16 | Three tabs, and the Graphs tab | The user asked for the graphs one tap from the main screen, as a tab, and chose Home, History and Graphs; then layout A (one long page), the time between feeds as shortest-to-longest bars with the middle gap (B), two blues for formula and expressed milk (A), and left and right bars side by side (A), from `graphs-20261116/graph-options.html` in the gstack design folder. New tokens `bottle-soft`, `breast-soft` and `chart`. |
 | 2026-11-17 | The app icon is the user's own picture, for now | The user supplied it after six rounds of icon ideas (`app-icon-20261116/feeding-icon-choices.html` in the gstack design folder). It shows more than feeding (sleep, growth), as the user wants the app to grow with the family. Feeding Dev adds a "DEV" band so the two apps are easy to tell apart. |
 | 2026-11-17 | The app icon is the baby's head on coral, for now | The user found that their own picture did not work as an icon once it was on the phone and watch. The user chose the head on its own on coral (N on G from round six) in its place. It is now an SVG in the repo, so it can be changed and made again. |
-| 2026-11-17 | The 24-hour chart's strip is plain white by day | Parent B asked for plain white in place of the light peach `track`. New token `chart-strip`; at night it stays the dark `track` colour, so the chart doesn't glare at 3am. The blocks stand out more on white (all 3:1 or better). |
+| 2026-11-17 | The 24-hour chart's strip: a deeper peach with a thin edge | The `track` strip was hard to tell from its card. Plain white by day was tried first, at Parent B's request (commit `89f444f`), but once both parents saw it on their phones they didn't like it. They then chose D (deeper, with a thin edge) from four on a day/3am page (`chart-strip-20261117/strip-options.html` in the gstack design folder). New tokens `chart-strip` and `chart-strip-edge`. The strip is as deep as it can go with the blocks still 3:1 or better; the edge does the rest. The edge is the text colour at 16% by day (14% at night), over the strip. |

@@ -17,7 +17,7 @@ struct DesignTokensTests {
         ("bottle", Theme.bottle), ("bottle-mark", Theme.bottleMark), ("bottle-tint", Theme.bottleTint),
         ("pump", Theme.pump), ("pump-mark", Theme.pumpMark), ("pump-tint", Theme.pumpTint),
         ("bottle-soft", Theme.bottleSoft), ("breast-soft", Theme.breastSoft), ("chart", Theme.chart),
-        ("chart-strip", Theme.chartStrip),
+        ("chart-strip", Theme.chartStrip), ("chart-strip-edge", Theme.chartStripEdge),
         ("parent-1", Theme.parent1), ("on-parent-1", Theme.onParent1), ("parent-1-tint", Theme.parent1Tint),
         ("parent-2", Theme.parent2), ("on-parent-2", Theme.onParent2), ("parent-2-tint", Theme.parent2Tint),
         ("lavender", Theme.lavender), ("on-lavender", Theme.onLavender), ("lavender-tint", Theme.lavenderTint),
@@ -119,6 +119,9 @@ struct DesignTokensTests {
         for (mark, kind) in [(Theme.breastMark, "breast"), (Theme.bottleMark, "bottle"), (Theme.textMuted, "unreadable feed")] {
             #expect(Self.ratio(mark, Theme.chartStrip, look) >= 3, "\(kind) block on the strip")
         }
+        // The strip stands out from its card more than `track` did (the users' ask, 17 Nov 2026).
+        #expect(Self.ratio(Theme.chartStrip, Theme.surface, look) > Self.ratio(Theme.track, Theme.surface, look))
+        #expect(Self.ratio(Theme.chartStripEdge, Theme.surface, look) >= 1.3, "the strip's edge on the card")
     }
 
     /// The Graphs tab's bars on their tile, and the two shades of a kind told apart.

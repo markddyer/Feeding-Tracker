@@ -627,6 +627,7 @@ struct DayChart: View {
                     }
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 7))
+                .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Theme.chartStripEdge, lineWidth: 1))
             }
             .frame(height: stripHeight)
             HStack {
