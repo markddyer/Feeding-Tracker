@@ -18,18 +18,25 @@ struct WatchPalette {
     let breast: Color
     let onBreast: Color
     let bottle: Color
+    /// Sleep, wee and poo (`06-more-than-feeds.md`, 17 Nov 2026): the phone's day colours by day
+    /// (poo a little lighter, to read on black), and the phone's night colours at night.
+    let sleep: Color
+    let wee: Color
+    let poo: Color
 
     static let day = WatchPalette(
         background: Color(hex: 0x000000), surface: Color(hex: 0x2A1F18), text: Color(hex: 0xFFF4E2),
         textMuted: Color(hex: 0xBFA995), primary: Color(hex: 0xFF8E6E), onPrimary: Color(hex: 0x3A1A0E),
         track: Color(hex: 0x3A2C22), window: Color(hex: 0x7A4A35), breast: Color(hex: 0xF07C8F),
-        onBreast: Color(hex: 0x3A1A0E), bottle: Color(hex: 0x5FA8E8))
+        onBreast: Color(hex: 0x3A1A0E), bottle: Color(hex: 0x5FA8E8), sleep: Color(hex: 0x8B8FE0),
+        wee: Color(hex: 0xF0C23B), poo: Color(hex: 0xC08A5A))
 
     static let night = WatchPalette(
         background: Color(hex: 0x000000), surface: Color(hex: 0x1C1612), text: Color(hex: 0xE8D6C2),
         textMuted: Color(hex: 0x978472), primary: Color(hex: 0xB9714F), onPrimary: Color(hex: 0x120A06),
         track: Color(hex: 0x231B15), window: Color(hex: 0x4A3022), breast: Color(hex: 0xA85A68),
-        onBreast: Color(hex: 0xE8D6C2), bottle: Color(hex: 0x4A7299))
+        onBreast: Color(hex: 0xE8D6C2), bottle: Color(hex: 0x4A7299), sleep: Color(hex: 0x6A6DB0),
+        wee: Color(hex: 0x9C832F), poo: Color(hex: 0x9A6E48))
 
     static func of(_ look: Look) -> WatchPalette { look == .night ? .night : .day }
 
@@ -57,6 +64,8 @@ extension Color {
 extension EnvironmentValues {
     /// The watch's look now: day or night, from the household's hours and the phone's setting.
     @Entry var watchLook: Look = .night
+    /// False on a page that is out of sight, so a double tap can't press a button there.
+    @Entry var watchDoubleTapAllowed = true
 }
 
 /// The watch's text styles: the phone's (`DESIGN.md`, "Typography") at watch sizes. Fredoka for
@@ -65,6 +74,8 @@ extension EnvironmentValues {
 enum WatchText {
     /// "1h 40m", "12:04".
     case mainTime
+    /// "1h 20m" asleep, on page two, beside the moon.
+    case careTime
     /// "60" on the amount screen.
     case amount
     /// Big button labels.
@@ -81,6 +92,7 @@ enum WatchText {
     var size: CGFloat {
         switch self {
         case .mainTime: 38
+        case .careTime: 28
         case .amount: 40
         case .button: 17
         case .side: 15
@@ -92,7 +104,7 @@ enum WatchText {
 
     var textStyle: Font.TextStyle {
         switch self {
-        case .mainTime, .amount: .largeTitle
+        case .mainTime, .careTime, .amount: .largeTitle
         case .button, .side: .headline
         case .line: .footnote
         case .label, .hint: .caption2
@@ -107,7 +119,7 @@ enum WatchText {
             return Font.custom(night ? "Fredoka-Regular" : "Fredoka-SemiBold", fixedSize: size)
         }
         let weight: Font.Weight = switch self {
-        case .mainTime, .amount: night ? .medium : .bold
+        case .mainTime, .careTime, .amount: night ? .medium : .bold
         case .label: night ? .semibold : .heavy
         case .hint: .semibold
         default: .regular
@@ -129,7 +141,7 @@ private struct WatchTextModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .font(style.font(size: size, look: look))
-            .tracking(style == .label ? size * 0.07 : (style == .mainTime ? -size * 0.02 : 0))
+            .tracking(style == .label ? size * 0.07 : (style == .mainTime || style == .careTime ? -size * 0.02 : 0))
             .textCase(style == .label ? .uppercase : nil)
     }
 }

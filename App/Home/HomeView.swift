@@ -14,6 +14,11 @@ struct HomeView: View {
 
     private let model = AppModel.shared
     @State private var scroll = ScrollPosition()
+    /// "Change time" from the Undo bar, the poo's details (the users' choice Q), and the
+    /// medicine list.
+    @State private var timeChange: TimeChange?
+    @State private var pooDetails: PooDetailsTarget?
+    @State private var editingMedicines = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.secondColumnShowing) private var secondColumnShowing
 
@@ -37,7 +42,11 @@ struct HomeView: View {
                         WindowBar(facts: facts, window: window)
                             .padding(.vertical, 4)
                     }
+                    // Sleep and Nappy above Next side and Last feed (the users' choice A, 17 Nov
+                    // 2026); Medicine under them (K).
+                    sleepAndNappy(facts)
                     sideAndLastFeed(facts)
+                    MedicineTile(facts: facts, log: log) { editingMedicines = true }
                     // On the unfolded Duo these two are in the second column instead.
                     if !secondColumnShowing {
                         DayTile(facts: facts)
@@ -60,7 +69,7 @@ struct HomeView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 8) {
                     if let undo, undo.expiresAt > context.date {
-                        UndoBanner(action: undo) { self.undo = nil }
+                        UndoBanner(action: undo, onChangeTime: { timeChange = $0 }) { self.undo = nil }
                     }
                     FeedControls(facts: facts, me: me, babyID: babyID, onUndo: { undo = $0 })
                 }
@@ -73,6 +82,48 @@ struct HomeView: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
+        .task { openDevSheet() }
+        .sheet(item: $timeChange) { change in
+            ChangeTimeSheet(change: change, me: me, zone: model.store.data.householdSettings.timeZone)
+        }
+        .sheet(item: $pooDetails) { target in
+            PooDetailsSheet(target: target, me: me, zone: model.store.data.householdSettings.timeZone, log: log)
+        }
+        .sheet(isPresented: $editingMedicines) {
+            NavigationStack { MedicineListEditor() }
+        }
+    }
+
+    private var log: CareLog {
+        CareLog(me: me, babyID: babyID, onUndo: { undo = $0 })
+    }
+
+    /// Sleep and Nappy side by side, or stacked at the accessibility sizes.
+    private func sleepAndNappy(_ facts: HomeFacts) -> some View {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(TileRow(shares: [1, 1]))
+        return layout {
+            SleepTile(facts: facts, log: log)
+            NappyTile(facts: facts, log: log) { pooDetails = $0 }
+        }
+    }
+
+    /// Feeding Dev only: launch with `-homeSheet pooDetails` (the poo's colour and consistency,
+    /// for the last nappy), `changeTime` (Change time, for the last nappy) or `medicines` (the
+    /// medicine list), for screenshots.
+    private func openDevSheet() {
+        #if FEEDING_DEV
+        let last = lastNappy(model.store.data.visibleSnapshots(babyID: babyID), babyID: babyID, now: Date())
+        switch UserDefaults.standard.string(forKey: "homeSheet") {
+        case "pooDetails":
+            if let last { pooDetails = PooDetailsTarget(id: last.id, isNew: true) }
+        case "changeTime":
+            if let last { timeChange = TimeChange(ids: [last.id], field: .start, title: "Wee and poo", at: last.at) }
+        case "medicines":
+            editingMedicines = true
+        default:
+            break
+        }
+        #endif
     }
 
     /// Feeding Dev only: launch with `-homeAtBottom YES` to open the page scrolled to its end,

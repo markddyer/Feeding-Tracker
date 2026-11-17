@@ -9,6 +9,8 @@ import SwiftUI
 struct GraphsView: View {
     private let model = AppModel.shared
     @AppStorage("graphs.range") private var rangeName = GraphRange.week.rawValue
+    /// The weight graph's Add (the users' choice K, 17 Nov 2026).
+    @State private var addingGrowth = false
     /// The page's width inside its margins, to choose one column or two.
     @State private var width: CGFloat = 0
 
@@ -18,8 +20,15 @@ struct GraphsView: View {
             let zone = data.householdSettings.timeZone
             let babyID = model.baby?.name ?? ""
             let range = GraphRange(rawValue: rangeName) ?? .week
-            let days = graphDays(data.visibleSnapshots(babyID: babyID), babyID: babyID, timeZone: zone,
-                                 range: range, now: context.date)
+            let visible = data.visibleSnapshots(babyID: babyID)
+            let days = graphDays(visible, babyID: babyID, timeZone: zone, range: range, now: context.date)
+            // The daily rhythm report, above the feed graphs (the users' choice D, 17 Nov 2026).
+            let rhythm = rhythmDays(visible, babyID: babyID, timeZone: zone, dayHours: data.householdSettings.dayHours,
+                                    range: range, now: context.date)
+            let growth = visible.filter { $0.event.kind == .growth && $0.event.deletedAt == nil && $0.event.babyID == babyID }
+                .sorted { ($0.event.startedAt, $0.event.id) < ($1.event.startedAt, $1.event.id) }
+            let rhythmTiles = RhythmTiles(days: Self.hidesRhythm ? [] : rhythm, zone: zone, dayHours: data.householdSettings.dayHours)
+            let growthTile = GrowthTile(entries: growth, zone: zone) { addingGrowth = true }
             ScrollView {
                 VStack(alignment: .leading, spacing: 11) {
                     Text("Graphs")
@@ -32,7 +41,8 @@ struct GraphsView: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.bottom, 2)
-                    if days.isEmpty {
+                    if days.isEmpty && rhythm.isEmpty {
+                        growthTile
                         Tile {
                             Text("No feeds logged yet.")
                                 .feedText(.body)
@@ -45,11 +55,15 @@ struct GraphsView: View {
                         LazyVGrid(columns: [GridItem(.flexible(), spacing: 11, alignment: .top),
                                             GridItem(.flexible(), spacing: 11, alignment: .top)],
                                   alignment: .leading, spacing: 11) {
+                            rhythmTiles
+                            growthTile
                             GraphTiles(days: days, zone: zone)
                         }
                     } else {
                         // One column on a phone and the folded Duo.
                         VStack(alignment: .leading, spacing: 11) {
+                            rhythmTiles
+                            growthTile
                             GraphTiles(days: days, zone: zone)
                         }
                     }
@@ -66,6 +80,21 @@ struct GraphsView: View {
         .navigationTitle("Graphs")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
+        .sheet(isPresented: $addingGrowth) {
+            if let me = model.me {
+                CareEditor(mode: .newGrowth, me: me, babyID: model.baby?.name ?? "")
+            }
+        }
+    }
+
+    /// Feeding Dev only: launch with `-graphsHideRhythm YES` to leave the rhythm tiles out, so the
+    /// weight graph is at the top, for screenshots.
+    private static var hidesRhythm: Bool {
+        #if FEEDING_DEV
+        UserDefaults.standard.bool(forKey: "graphsHideRhythm")
+        #else
+        false
+        #endif
     }
 
     /// Feeding Dev only: launch with `-graphsAtBottom YES` to open the page scrolled to its end,

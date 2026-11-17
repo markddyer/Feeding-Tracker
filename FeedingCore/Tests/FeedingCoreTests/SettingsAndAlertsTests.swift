@@ -185,6 +185,87 @@ struct AlertPlanTests {
     }
 }
 
+/// An alarm whose time has come may be ringing: only a newer feed stops it, never a nappy, a
+/// sleep or any other change (Codex review, 17 Nov 2026).
+@Suite("An alarm whose time has come")
+struct SoundingAlarmTests {
+    let lastFeed = at(2026, 11, 14, 10, 0)
+    let fired = at(2026, 11, 14, 14, 0)
+
+    func ringing(babyID: String? = baby, feed: Date? = nil) -> ScheduledAlarm {
+        ScheduledAlarm(key: "\(baby).windowCloses.alarm", alarmID: UUID(), fireDate: fired, babyID: babyID,
+                       lastFeedStart: babyID == nil ? nil : (feed ?? lastFeed))
+    }
+
+    @Test func itIsKeptWhileItsFeedIsStillTheLatest() {
+        let alarm = ringing()
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [alarm], pendingNotifications: [:],
+                                       now: fired.addingTimeInterval(60), latestFeedStarts: [baby: lastFeed])
+        #expect(changes.alarmsToCancel.isEmpty)
+        #expect(changes.alarmsAfter == [alarm])
+    }
+
+    @Test func aNewerFeedStopsIt() {
+        let alarm = ringing()
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [alarm], pendingNotifications: [:],
+                                       now: fired.addingTimeInterval(60), latestFeedStarts: [baby: fired])
+        #expect(changes.alarmsToCancel == [alarm.alarmID])
+    }
+
+    @Test func aReplacementForTheSameAlertStopsIt() {
+        let alarm = ringing()
+        let later = DesiredAlert(babyID: baby, purpose: .windowCloses, mechanism: .alarm, fireDate: fired.addingTimeInterval(3600),
+                                 lastFeedStart: lastFeed)
+        let changes = planAlertChanges(desired: [later], scheduledAlarms: [alarm], pendingNotifications: [:],
+                                       now: fired.addingTimeInterval(60), latestFeedStarts: [baby: lastFeed])
+        #expect(changes.alarmsToCancel == [alarm.alarmID])
+        #expect(changes.alarmsToSchedule.count == 1)
+    }
+
+    @Test func itIsLetGoSixHoursOn() {
+        let alarm = ringing()
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [alarm], pendingNotifications: [:],
+                                       now: fired.addingTimeInterval(soundingAlarmKept + 1), latestFeedStarts: [baby: lastFeed])
+        #expect(changes.alarmsToCancel == [alarm.alarmID])
+    }
+
+    /// An alarm an older build remembered has no feed start: it goes as before.
+    @Test func anAlarmFromAnOlderBuildGoesAsBefore() {
+        let alarm = ringing(babyID: nil)
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [alarm], pendingNotifications: [:],
+                                       now: fired.addingTimeInterval(60), latestFeedStarts: [baby: lastFeed])
+        #expect(changes.alarmsToCancel == [alarm.alarmID])
+    }
+
+    @Test func anAlarmStillToComeGoesAsBeforeWhenNoLongerWanted() {
+        let alarm = ringing()
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [alarm], pendingNotifications: [:],
+                                       now: fired.addingTimeInterval(-60), latestFeedStarts: [baby: lastFeed])
+        #expect(changes.alarmsToCancel == [alarm.alarmID])
+    }
+
+    @Test func newAlarmsRememberTheirFeed() {
+        let alert = DesiredAlert(babyID: baby, purpose: .backup, mechanism: .alarm, fireDate: fired, lastFeedStart: lastFeed)
+        let changes = planAlertChanges(desired: [alert], scheduledAlarms: [], pendingNotifications: [:])
+        #expect(changes.alarmsAfter.first?.babyID == baby)
+        #expect(changes.alarmsAfter.first?.lastFeedStart == lastFeed)
+    }
+
+    /// The whole path: a nappy logged a minute after the alarm rang leaves it ringing.
+    @Test func aNappyLoggedAfterTheAlarmLeavesItRinging() {
+        var data = HouseholdData()
+        data.add(kind: .feed, babyID: baby, startedAt: lastFeed, endedAt: lastFeed.addingTimeInterval(1200),
+                 payload: EventPayload(feed: FeedDetails()), by: parentA, timeZoneID: "Europe/London", now: lastFeed)
+        let now = fired.addingTimeInterval(60)
+        data.addNappy(babyID: baby, wee: true, poo: false, by: parentA, timeZoneID: "Europe/London", now: now)
+        let latest = data.allEvents.latestFeedStart(babyID: baby, now: now).map { [baby: $0] } ?? [:]
+        let alarm = ringing()
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [alarm], pendingNotifications: [:], now: now,
+                                       latestFeedStarts: latest)
+        #expect(changes.alarmsToCancel.isEmpty)
+    }
+}
+
 @Suite("Alert wording")
 struct AlertTextTests {
     let lastFeed = at(2026, 11, 14, 1, 50)

@@ -44,6 +44,25 @@ enum Theme {
     /// so it stands out from its card, but no deeper, or the feed blocks on it drop under 3:1.
     static let chartStrip = Color(day: 0xFCD5AE, night: 0x2A2119)
 
+    // Sleep and nappies (06-more-than-feeds.md; the users accepted them with round two, 17 Nov
+    // 2026). The same three jobs as a feed kind: plain, mark, tint. One tint for every nappy.
+    static let sleep = Color(day: 0x8B8FE0, night: 0x6A6DB0)
+    static let sleepMark = Color(day: 0x5A5EC4, night: 0x6A6DB0)
+    static let sleepTint = Color(day: 0xE6E6FA, night: 0x15152A)
+    /// Sleep in the day, beside night sleep (`sleepMark`) on the Graphs tab: lighter at night, as
+    /// the other soft shades are.
+    static let sleepSoft = Color(day: 0x8B8FE0, night: 0x9497D0)
+    static let wee = Color(day: 0xF0C23B, night: 0x9C832F)
+    static let weeMark = Color(day: 0x8F6D00, night: 0x9C832F)
+    static let poo = Color(day: 0x9C6B3E, night: 0x9A6E48)
+    static let pooMark = Color(day: 0x7E5128, night: 0x9A6E48)
+    static let nappyTint = Color(day: 0xFFF0C8, night: 0x1E190C)
+    /// A poo's colour, shown as a swatch beside its name ("Brown"): the colour it names, never a
+    /// verdict. Always with its word, so it doesn't rely on colour.
+    static let pooBrown = Color(day: 0x8B5A2B, night: 0x7A5434)
+    static let pooYellow = Color(day: 0xD9A521, night: 0x9C7E2A)
+    static let pooGreen = Color(day: 0x6E8B3D, night: 0x5E7A3A)
+
     // The two parents' default colours (sunflower and teal).
     static let parent1 = Color(day: 0xF2B33D, night: 0x9C7A30)
     static let onParent1 = Color(day: 0x3A1A0E, night: 0x120A06)

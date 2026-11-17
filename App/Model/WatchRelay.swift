@@ -11,7 +11,7 @@ final class WatchRelay: NSObject {
     /// What the watch was last sent, without its time, so an unchanged state isn't sent again.
     private var sent: WatchState?
     /// What the watch face was last sent: it has a small daily allowance of instant updates.
-    private var faceSent: FeedGlance?
+    private var faceSent: FaceFacts?
     /// The watch's taps handled here, newest last: none is applied twice, and the watch stops
     /// showing them as waiting. Kept, as the app may be woken for each tap separately.
     private var handled: WatchTapLog {
@@ -50,11 +50,20 @@ final class WatchRelay: NSObject {
         } catch {
             return
         }
-        // A feed started or finished: the watch face hears at once, if Feeding is on it.
-        if state.glance != faceSent, session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
+        // A feed started or finished, the baby fell asleep or woke, or a nappy was logged: the
+        // watch face hears at once, if Feeding is on it.
+        let face = FaceFacts(glance: state.glance, sleep: state.sleep, nappy: state.lastNappy)
+        if face != faceSent, session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
             session.transferCurrentComplicationUserInfo([WatchKey.state: data])
-            faceSent = state.glance
+            faceSent = face
         }
+    }
+
+    /// What the watch face pieces show: the feed times, the sleep and the last nappy.
+    private struct FaceFacts: Equatable {
+        var glance: FeedGlance?
+        var sleep: WatchSleep?
+        var nappy: WatchNappy?
     }
 
     /// Applies a tap from the watch, then sets the alarms and sends it to the other phone, as

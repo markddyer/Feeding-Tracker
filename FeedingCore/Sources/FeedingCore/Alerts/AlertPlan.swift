@@ -6,13 +6,23 @@ public struct ScheduledAlarm: Hashable, Sendable, Codable {
     public var key: String
     public var alarmID: UUID
     public var fireDate: Date
+    /// The baby and the feed start it was set for, so an alarm whose time has come is kept until a
+    /// newer feed is logged. Nil for an alarm an older build remembered.
+    public var babyID: String?
+    public var lastFeedStart: Date?
 
-    public init(key: String, alarmID: UUID, fireDate: Date) {
+    public init(key: String, alarmID: UUID, fireDate: Date, babyID: String? = nil, lastFeedStart: Date? = nil) {
         self.key = key
         self.alarmID = alarmID
         self.fireDate = fireDate
+        self.babyID = babyID
+        self.lastFeedStart = lastFeedStart
     }
 }
+
+/// How long an alarm whose time has come is kept: it may be ringing, or waiting for the parent.
+/// Cancelling it after that does nothing that can be heard.
+public let soundingAlarmKept: TimeInterval = 6 * 3600
 
 /// What to do to the phone's alarms and notifications so they match `reconcile`'s output.
 public struct AlertChanges: Hashable, Sendable {
@@ -44,10 +54,17 @@ public func notificationIdentifier(for alert: DesiredAlert) -> String { "alert.\
 /// unchanged plan changes nothing. A moved alarm gets a new one first; the old one is cancelled after.
 /// `pendingNotifications` maps this app's pending notification identifiers to their fire dates;
 /// only identifiers starting "alert." are ever removed.
+///
+/// `reconcile` leaves out alerts whose time has passed. An alarm whose time has come is still kept
+/// (it may be ringing, or iOS may deliver it late) for as long as no newer feed has been logged:
+/// `latestFeedStarts` holds each baby's latest feed start. So a nappy, a sleep or any other change
+/// never stops it; a feed does (Codex review, 17 Nov 2026).
 public func planAlertChanges(
     desired: [DesiredAlert],
     scheduledAlarms: [ScheduledAlarm],
     pendingNotifications: [String: Date],
+    now: Date = .distantPast,
+    latestFeedStarts: [String: Date] = [:],
     newID: () -> UUID = UUID.init
 ) -> AlertChanges {
     var schedule: [AlertChanges.NewAlarm] = []
@@ -57,17 +74,25 @@ public func planAlertChanges(
 
     let desiredAlarms = desired.filter { $0.mechanism == .alarm }
     for alert in desiredAlarms {
-        if let existing = scheduledByKey[alert.key], existing.fireDate == alert.fireDate {
+        if var existing = scheduledByKey[alert.key], existing.fireDate == alert.fireDate {
+            existing.babyID = alert.babyID
+            existing.lastFeedStart = alert.lastFeedStart
             after.append(existing)
             continue
         }
         let id = newID()
         schedule.append(.init(alert: alert, alarmID: id))
-        after.append(ScheduledAlarm(key: alert.key, alarmID: id, fireDate: alert.fireDate))
+        after.append(ScheduledAlarm(key: alert.key, alarmID: id, fireDate: alert.fireDate, babyID: alert.babyID,
+                                    lastFeedStart: alert.lastFeedStart))
     }
     let keptIDs = Set(after.map(\.alarmID))
+    let replacedKeys = Set(desiredAlarms.map(\.key))
     for alarm in scheduledAlarms where !keptIDs.contains(alarm.alarmID) {
-        cancel.append(alarm.alarmID)
+        if !replacedKeys.contains(alarm.key), stillSounding(alarm, now: now, latestFeedStarts: latestFeedStarts) {
+            after.append(alarm)
+        } else {
+            cancel.append(alarm.alarmID)
+        }
     }
 
     let notifications = desired.filter { $0.mechanism == .notification }
@@ -80,4 +105,12 @@ public func planAlertChanges(
 
     return AlertChanges(alarmsToSchedule: schedule, alarmsToCancel: cancel, notificationsToAdd: add,
                         notificationsToRemove: remove, alarmsAfter: after)
+}
+
+/// An alarm whose time has come, set for the feed that is still the latest, within the last
+/// `soundingAlarmKept`: it may be ringing now, so it stays.
+func stillSounding(_ alarm: ScheduledAlarm, now: Date, latestFeedStarts: [String: Date]) -> Bool {
+    guard alarm.fireDate <= now, now.timeIntervalSince(alarm.fireDate) < soundingAlarmKept,
+          let baby = alarm.babyID, let start = alarm.lastFeedStart, let latest = latestFeedStarts[baby] else { return false }
+    return abs(latest.timeIntervalSince(start)) < 1
 }

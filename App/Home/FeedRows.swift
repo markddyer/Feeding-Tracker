@@ -127,3 +127,82 @@ extension RowPerson {
                   spoken: isMe ? "you" : (names[member] ?? "the other parent"))
     }
 }
+
+// MARK: - Sleep, nappies, medicine and growth in History (06-more-than-feeds.md)
+
+/// One sleep, nappy, medicine or growth entry in History: tinted by kind, the time on the left,
+/// its shape and facts in the middle, and the avatar of who logged it on the right.
+struct CareRow: View {
+    let snapshot: EventSnapshot
+    let zone: TimeZone
+    let loggedBy: RowPerson
+    let now: Date
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Text(clock(snapshot.event.startedAt))
+                .feedText(.smallButton)
+                .fixedSize()
+                .frame(minWidth: 50, alignment: .leading)
+            HStack(spacing: 7) {
+                FeedMarkView(mark, size: 18, relativeTo: .subheadline)
+                    .accessibilityHidden(true)
+                Text(line)
+                    .feedText(.subheadline)
+                    .lineLimit(3)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Avatar(name: loggedBy.name, colour: loggedBy.colour, size: 26)
+        }
+        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(mark.tint, in: RoundedRectangle(cornerRadius: 18))
+        .contentShape(RoundedRectangle(cornerRadius: 18))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(clock(snapshot.event.startedAt)): \(spoken). Logged by \(loggedBy.spoken).")
+    }
+
+    private func clock(_ date: Date) -> String {
+        date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone))
+    }
+
+    private var mark: FeedMark {
+        switch snapshot.event.kind {
+        case .sleep: .sleep
+        case .nappy: .nappy(wee: snapshot.payload?.nappy?.wee ?? false, poo: snapshot.payload?.nappy?.poo ?? false)
+        case .medicine: .medicine
+        default: .growth
+        }
+    }
+
+    /// "Asleep 1h 20m, to 11:25", "Poo · yellow, loose", "Vitamin D", "3.85 kg (8 lb 8 oz)".
+    private var line: String {
+        let event = snapshot.event
+        guard let payload = snapshot.payload else { return "Details need a newer version of the app" }
+        switch event.kind {
+        case .sleep:
+            if let end = event.endedAt {
+                return "Asleep \(HomeText.elapsed(max(0, end.timeIntervalSince(event.startedAt)))), to \(clock(end))"
+            }
+            return "Asleep \(HomeText.elapsed(max(0, now.timeIntervalSince(event.startedAt)))) so far"
+        case .nappy:
+            return payload.nappy.map(CareText.nappyLine) ?? "Nappy"
+        case .medicine:
+            return payload.medicine.map(CareText.medicineLine) ?? "Medicine"
+        default:
+            return payload.growth.map(CareText.growthLine) ?? "Growth"
+        }
+    }
+
+    private var spoken: String {
+        line.replacingOccurrences(of: " · ", with: ", ")
+    }
+}
+
+extension CareRow {
+    @MainActor
+    init(_ snapshot: EventSnapshot, zone: TimeZone, now: Date = Date()) {
+        self.init(snapshot: snapshot, zone: zone, loggedBy: RowPerson(snapshot.event.loggedBy), now: now)
+    }
+}

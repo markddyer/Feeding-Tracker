@@ -18,6 +18,10 @@ struct DesignTokensTests {
         ("pump", Theme.pump), ("pump-mark", Theme.pumpMark), ("pump-tint", Theme.pumpTint),
         ("bottle-soft", Theme.bottleSoft), ("breast-soft", Theme.breastSoft), ("chart", Theme.chart),
         ("chart-strip", Theme.chartStrip),
+        ("sleep", Theme.sleep), ("sleep-mark", Theme.sleepMark), ("sleep-tint", Theme.sleepTint),
+        ("sleep-soft", Theme.sleepSoft), ("wee", Theme.wee), ("wee-mark", Theme.weeMark), ("poo", Theme.poo), ("poo-mark", Theme.pooMark),
+        ("nappy-tint", Theme.nappyTint),
+        ("poo-brown", Theme.pooBrown), ("poo-yellow", Theme.pooYellow), ("poo-green", Theme.pooGreen),
         ("parent-1", Theme.parent1), ("on-parent-1", Theme.onParent1), ("parent-1-tint", Theme.parent1Tint),
         ("parent-2", Theme.parent2), ("on-parent-2", Theme.onParent2), ("parent-2-tint", Theme.parent2Tint),
         ("lavender", Theme.lavender), ("on-lavender", Theme.onLavender), ("lavender-tint", Theme.lavenderTint),
@@ -88,7 +92,24 @@ struct DesignTokensTests {
     static let tiles: [(String, Color)] = [
         ("background", Theme.background), ("surface", Theme.surface), ("breast-tint", Theme.breastTint),
         ("bottle-tint", Theme.bottleTint), ("pump-tint", Theme.pumpTint),
+        ("sleep-tint", Theme.sleepTint), ("nappy-tint", Theme.nappyTint),
     ]
+
+    /// The sleep and nappy shapes and chart bars stand out on every tile, and on the 24-hour strip.
+    @Test(arguments: [Look.day, .night])
+    func sleepAndNappyShapesStandOut(_ look: Look) {
+        for (mark, kind) in [(Theme.sleepMark, "sleep"), (Theme.weeMark, "wee"), (Theme.pooMark, "poo")] {
+            for (name, tile) in Self.tiles {
+                #expect(Self.ratio(mark, tile, look) >= 3, "\(kind) shape on \(name)")
+            }
+            #expect(Self.ratio(mark, Theme.chartStrip, look) >= 3, "\(kind) on the strip")
+        }
+        // Night sleep and day sleep in one stacked bar, told apart; day sleep sits on the 3:1 night bar.
+        #expect(Self.ratio(Theme.sleepMark, Theme.sleepSoft, look) >= 1.5, "night sleep against day sleep")
+        if look == .night {
+            #expect(Self.ratio(Theme.sleepSoft, Theme.surface, look) >= 3, "day sleep on the tile")
+        }
+    }
 
     @Test(arguments: [Look.day, .night])
     func textReadsOnEveryTile(_ look: Look) {

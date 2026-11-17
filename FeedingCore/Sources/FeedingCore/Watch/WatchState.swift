@@ -36,10 +36,45 @@ public struct WatchFeed: Codable, Hashable, Sendable {
     }
 }
 
+/// The baby's latest sleep, as the watch shows it (`06-more-than-feeds.md`, pick I): the one
+/// running, or the one that ended last.
+public struct WatchSleep: Codable, Hashable, Sendable {
+    public var id: String
+    public var start: Date
+    /// Nil while asleep.
+    public var end: Date?
+
+    public init(id: String, start: Date, end: Date? = nil) {
+        self.id = id
+        self.start = start
+        self.end = end
+    }
+
+    public var asleep: Bool { end == nil }
+    /// Asleep since the start, or awake since the end.
+    public var since: Date { end ?? start }
+}
+
+/// The last nappy change, as the watch shows it.
+public struct WatchNappy: Codable, Hashable, Sendable {
+    public var id: String
+    public var at: Date
+    public var wee: Bool
+    public var poo: Bool
+
+    public init(id: String, at: Date, wee: Bool, poo: Bool) {
+        self.id = id
+        self.at = at
+        self.wee = wee
+        self.poo = poo
+    }
+}
+
 /// Everything the watch shows, made by the phone.
 public struct WatchState: Codable, Hashable, Sendable {
-    /// Raised when a field the watch must understand is added.
-    public static let currentVersion = 1
+    /// Raised when a field the watch must understand is added. 2 (17 Nov 2026): the sleep and the
+    /// last nappy. Both are optional, so a state from either version still reads.
+    public static let currentVersion = 2
     public var version: Int
     /// When the phone made it.
     public var madeAt: Date
@@ -67,13 +102,17 @@ public struct WatchState: Codable, Hashable, Sendable {
     /// The IDs of the watch's latest taps that the phone has applied (or found had nothing to
     /// change), newest last, so the watch stops showing them as waiting.
     public var handled: [String]
+    /// The latest sleep, running or ended. Nil before the first sleep is logged.
+    public var sleep: WatchSleep?
+    /// The last nappy change. Nil before the first.
+    public var lastNappy: WatchNappy?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
                 dayHours: DayHours = .standard, lookSetting: LookSetting = .automatic, running: WatchFeed? = nil,
                 bottleOnly: Bool = false, nextSide: BreastSide? = nil, lastFormulaML: Int? = nil,
                 lastExpressedML: Int? = nil, lastMilk: MilkKind? = nil, myColour: String = "sunflower",
-                handled: [String] = []) {
+                handled: [String] = [], sleep: WatchSleep? = nil, lastNappy: WatchNappy? = nil) {
         self.version = version
         self.madeAt = madeAt
         self.setUp = setUp
@@ -91,6 +130,8 @@ public struct WatchState: Codable, Hashable, Sendable {
         self.lastMilk = lastMilk
         self.myColour = myColour
         self.handled = handled
+        self.sleep = sleep
+        self.lastNappy = lastNappy
     }
 
     public var timeZone: TimeZone {
@@ -172,6 +213,13 @@ public enum WatchCommand: Codable, Hashable, Sendable {
     case setAmount(feedID: String, bottleID: String, ml: Int)
     /// "Stop · discard": removes a feed started by mistake.
     case discard(feedID: String)
+    /// "Fell asleep". The watch picks the sleep's ID, so a tap that arrives twice adds one sleep.
+    case fellAsleep(sleepID: String)
+    /// "Woke up", for the sleep the watch shows running.
+    case wokeUp(sleepID: String)
+    /// A nappy change: wee, poo or both. The watch picks the ID. No colour or consistency: those
+    /// are added on the phone ("Add details").
+    case nappy(nappyID: String, wee: Bool, poo: Bool)
 }
 
 /// A tap, with when it was made: a request kept while the phone was out of reach still starts
@@ -317,6 +365,13 @@ extension HouseholdData {
         state.lastMilk = visible.filter { $0.event.isLiveFeed && $0.event.babyID == babyID }
             .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
             .lazy.compactMap { $0.payload?.feed?.bottles.last?.milk }.first
+        // The sleep that started last decides, as on Home (`sleepState`): an end after `now` (a
+        // clock set back) still counts as asleep.
+        if let last = liveSleeps(allEvents, babyID: babyID, now: now).last {
+            state.sleep = WatchSleep(id: last.id, start: last.startedAt, end: last.endedAt.flatMap { $0 <= now ? $0 : nil })
+        }
+        state.lastNappy = lastNappy(snapshots, babyID: babyID, now: now)
+            .map { WatchNappy(id: $0.id, at: $0.at, wee: $0.wee, poo: $0.poo) }
         return state
     }
 
@@ -328,6 +383,8 @@ extension HouseholdData {
         let at = request.at
         let changed: Bool
         let id: String
+        /// Other records the tap changed, sent at once too.
+        var alsoChanged: [String] = []
         switch request.command {
         case .start(let feedID, let bottle, let bottleID):
             id = feedID
@@ -339,6 +396,8 @@ extension HouseholdData {
             add(id: feedID, kind: .feed, babyID: babyID, startedAt: at,
                 payload: EventPayload(feed: FeedDetails(bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [])),
                 by: me, timeZoneID: timeZoneID, now: at)
+            // Start feed ends a running sleep, as in the app (the users' choice O).
+            alsoChanged = endSleepForFeed(babyID: babyID, start: at, by: me, now: at)
             changed = true
         case .switchSide(let feedID, let side):
             id = feedID
@@ -365,8 +424,36 @@ extension HouseholdData {
             guard let feed = events[feedID]?.snapshot, feed.event.deletedAt == nil, feed.event.loggedBy == me
             else { return false }
             changed = delete(feedID, by: me, now: max(at, feed.event.startedAt))
+            if changed {
+                alsoChanged = reopenSleepEnded(byFeed: feed.event, by: me, now: max(at, feed.event.startedAt))
+            }
+        case .fellAsleep(let sleepID):
+            id = sleepID
+            // One sleep at a time. A tap kept while the phone was out of reach, from before a sleep
+            // logged since, would make a second sleep over the first.
+            guard events[sleepID] == nil, sleepInProgress(babyID: babyID, now: at) == nil else { return false }
+            let later = allEvents.contains { $0.kind == .sleep && $0.deletedAt == nil && $0.babyID == babyID && $0.startedAt > at }
+            guard !later else { return false }
+            startSleep(id: sleepID, babyID: babyID, startedAt: at, by: me, timeZoneID: timeZoneID, now: at)
+            changed = true
+        case .wokeUp(let sleepID):
+            id = sleepID
+            // Only while the sleep the watch showed still runs: a late tap must not end a sleep
+            // that began after it.
+            guard let sleep = events[sleepID]?.event, sleep.kind == .sleep, sleep.deletedAt == nil, sleep.endedAt == nil
+            else { return false }
+            let ended = endSleep(babyID: babyID, at: max(at, sleep.startedAt), by: me, now: max(at, sleep.startedAt))
+            alsoChanged = ended
+            changed = !ended.isEmpty
+        case .nappy(let nappyID, let wee, let poo):
+            id = nappyID
+            guard events[nappyID] == nil else { return false }
+            addNappy(id: nappyID, babyID: babyID, wee: wee, poo: poo, at: at, by: me, timeZoneID: timeZoneID, now: at)
+            changed = true
         }
-        if changed { events[id]?.uploadNotBefore = nil }
+        if changed {
+            for changedID in [id] + alsoChanged { events[changedID]?.uploadNotBefore = nil }
+        }
         return changed
     }
 
@@ -387,6 +474,8 @@ extension WatchState {
         switch request.command {
         case .start(let feedID, let bottle, let bottleID):
             guard state.setUp, state.running == nil else { break }
+            // Start feed ends a running sleep, as on the phone (the users' choice O).
+            if let sleep = state.sleep, sleep.asleep, sleep.start < request.at { state.sleep?.end = request.at }
             state.previousFeedStart = state.lastFeedStart
             state.running = WatchFeed(id: feedID, startedAt: request.at, mine: true, byName: "", byColour: myColour,
                                       side: nil, bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [])
@@ -406,9 +495,21 @@ extension WatchState {
             // for the crown next time (`rememberAmount`).
             break
         case .discard(let feedID):
-            guard state.running?.id == feedID else { break }
+            guard let running = state.running, running.id == feedID else { break }
+            // The sleep this feed's start ended runs again, as on the phone (`reopenSleepEnded`).
+            if let end = state.sleep?.end, abs(end.timeIntervalSince(running.startedAt)) < 1 { state.sleep?.end = nil }
             state.running = nil
             state.lastFeedStart = state.previousFeedStart
+        case .fellAsleep(let sleepID):
+            guard state.setUp, state.sleep?.asleep != true, (state.sleep?.since).map({ $0 <= request.at }) ?? true
+            else { break }
+            state.sleep = WatchSleep(id: sleepID, start: request.at)
+        case .wokeUp(let sleepID):
+            guard let sleep = state.sleep, sleep.id == sleepID, sleep.asleep else { break }
+            state.sleep?.end = max(request.at, sleep.start)
+        case .nappy(let nappyID, let wee, let poo):
+            guard state.setUp, (state.lastNappy?.at).map({ $0 <= request.at }) ?? true else { break }
+            state.lastNappy = WatchNappy(id: nappyID, at: request.at, wee: wee, poo: poo)
         }
         return state
     }
@@ -436,6 +537,14 @@ extension WatchState {
     public func finishFromFace(feedID: String) -> WatchFeed? {
         guard let running, running.mine, running.id == feedID else { return nil }
         return running
+    }
+
+    /// What a tap on Fell asleep or Woke up sends: Woke up for the sleep shown running, otherwise
+    /// Fell asleep with a new ID. Nil before the phone is set up.
+    public func sleepTap(newID: String = UUID().uuidString) -> WatchCommand? {
+        guard setUp else { return nil }
+        if let sleep, sleep.asleep { return .wokeUp(sleepID: sleep.id) }
+        return .fellAsleep(sleepID: newID)
     }
 
     /// Remembers an amount the watch saved, so the crown starts there next time.

@@ -10,6 +10,8 @@ struct FeedingWatchWidgets: WidgetBundle {
     var body: some Widget {
         WatchLastFeedWidget()
         WatchStartWidget()
+        WatchSleepWidget()
+        WatchNappyWidget()
     }
 }
 

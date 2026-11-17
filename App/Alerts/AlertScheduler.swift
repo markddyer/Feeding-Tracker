@@ -32,7 +32,9 @@ final class AlertScheduler {
 
     var alarmsAllowed: Bool { AlarmManager.shared.authorizationState == .authorized }
 
-    func apply(_ desired: [DesiredAlert], timeZone: TimeZone) async {
+    /// `latestFeedStarts` (each baby's latest feed start) keeps an alarm whose time has come until
+    /// a newer feed is logged (`planAlertChanges`).
+    func apply(_ desired: [DesiredAlert], latestFeedStarts: [String: Date], now: Date, timeZone: TimeZone) async {
         lastError = nil
         // The plan: reschedule everything after an iOS update, as alarms have gone missing then.
         let os = ProcessInfo.processInfo.operatingSystemVersionString
@@ -56,7 +58,8 @@ final class AlertScheduler {
             }
         }
 
-        let changes = planAlertChanges(desired: wanted, scheduledAlarms: remembered, pendingNotifications: pending)
+        let changes = planAlertChanges(desired: wanted, scheduledAlarms: remembered, pendingNotifications: pending,
+                                       now: now, latestFeedStarts: latestFeedStarts)
         var after = changes.alarmsAfter
 
         // New alarms first, then cancel the old ones: never a moment with neither.

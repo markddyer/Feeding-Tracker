@@ -465,3 +465,258 @@ struct WatchStateTests {
         #expect(state.look(at: at(2026, 11, 16, 3, 0)) == .day)
     }
 }
+
+/// Page two of the watch app and the watch face's Sleep and Nappy pieces (`06-more-than-feeds.md`,
+/// pick I, 17 Nov 2026): what the phone tells the watch, and the watch's taps applied on the phone.
+@Suite("Watch: sleep and nappies")
+struct WatchSleepNappyTests {
+    let now = at(2026, 11, 17, 3, 0)
+    let zone = "Europe/London"
+
+    func household() -> HouseholdData {
+        var data = HouseholdData()
+        data.put(PlainRecord(type: .baby, name: baby, modifiedAt: now,
+                             payload: try? PayloadCoder.encode(BabyPayload(name: "Baby", birthDate: date("2026-11-04")))))
+        return data
+    }
+
+    func state(_ data: HouseholdData, at time: Date? = nil) -> WatchState {
+        data.watchState(me: parentA, names: [parentA: "Alex", parentB: "Sam"], colours: [:], bottleOnly: false,
+                        lookSetting: .automatic, now: time ?? now)
+    }
+
+    @discardableResult
+    func apply(_ data: inout HouseholdData, _ command: WatchCommand, at time: Date, id: String = UUID().uuidString) -> Bool {
+        data.applyWatch(WatchRequest(id: id, command: command, at: time), babyID: baby, by: parentA, timeZoneID: zone)
+    }
+
+    // MARK: What the phone sends
+
+    @Test func noSleepOrNappyYet() {
+        let state = state(household())
+        #expect(state.sleep == nil)
+        #expect(state.lastNappy == nil)
+    }
+
+    @Test func asleepShowsTheRunningSleep() throws {
+        var data = household()
+        let id = data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-80 * 60), by: parentB, timeZoneID: zone, now: now)
+        let sleep = try #require(state(data).sleep)
+        #expect(sleep == WatchSleep(id: id, start: now.addingTimeInterval(-80 * 60)))
+        #expect(sleep.asleep)
+        #expect(sleep.since == now.addingTimeInterval(-80 * 60))
+    }
+
+    @Test func awakeShowsWhenTheLastSleepEnded() throws {
+        var data = household()
+        data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3 * 3600), by: parentA, timeZoneID: zone, now: now)
+        data.endSleep(babyID: baby, at: now.addingTimeInterval(-3600), by: parentA, now: now)
+        let sleep = try #require(state(data).sleep)
+        #expect(!sleep.asleep)
+        #expect(sleep.since == now.addingTimeInterval(-3600))
+    }
+
+    /// An end after now (the clock set back) still counts as asleep, as on Home.
+    @Test func anEndAfterNowStillShowsAsleep() throws {
+        var data = household()
+        data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentA, timeZoneID: zone, now: now)
+        data.endSleep(babyID: baby, at: now.addingTimeInterval(-60), by: parentA, now: now)
+        let earlier = now.addingTimeInterval(-30 * 60)
+        #expect(try #require(state(data, at: earlier).sleep).asleep)
+    }
+
+    @Test func theLastNappyWithWeeAndPoo() throws {
+        var data = household()
+        data.addNappy(babyID: baby, wee: true, poo: false, at: now.addingTimeInterval(-3 * 3600), by: parentA, timeZoneID: zone, now: now)
+        let id = data.addNappy(babyID: baby, wee: true, poo: true, at: now.addingTimeInterval(-40 * 60), by: parentB,
+                               timeZoneID: zone, now: now)
+        #expect(state(data).lastNappy == WatchNappy(id: id, at: now.addingTimeInterval(-40 * 60), wee: true, poo: true))
+    }
+
+    /// The new fields are optional: a state from an older phone still reads, with no sleep or nappy.
+    @Test func anOlderStateStillReads() throws {
+        var old = state(household())
+        old.version = 1
+        var json = try JSONSerialization.jsonObject(with: try WatchCoding.encode(old)) as! [String: Any]
+        json["sleep"] = nil
+        json["lastNappy"] = nil
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let read = try #require(WatchCoding.decode(WatchState.self, from: data))
+        #expect(read.sleep == nil)
+        #expect(read.lastNappy == nil)
+        #expect(read.setUp)
+    }
+
+    @Test func theNewTapsSurviveTheTrip() throws {
+        for command in [WatchCommand.fellAsleep(sleepID: "s"), .wokeUp(sleepID: "s"), .nappy(nappyID: "n", wee: false, poo: true)] {
+            let request = WatchRequest(command: command, at: now)
+            #expect(WatchCoding.decode(WatchRequest.self, from: try WatchCoding.encode(request)) == request)
+        }
+        var state = state(household())
+        state.sleep = WatchSleep(id: "s", start: now, end: now.addingTimeInterval(60))
+        state.lastNappy = WatchNappy(id: "n", at: now, wee: true, poo: true)
+        #expect(WatchCoding.decode(WatchState.self, from: try WatchCoding.encode(state)) == state)
+    }
+
+    // MARK: The watch's taps on the phone
+
+    @Test func fellAsleepStartsASleepAtTheTapAndSendsItAtOnce() throws {
+        var data = household()
+        let tap = now.addingTimeInterval(-90)
+        #expect(apply(&data, .fellAsleep(sleepID: "s"), at: tap))
+        let sleep = try #require(data.events["s"])
+        #expect(sleep.event.kind == .sleep)
+        #expect(sleep.event.startedAt == tap)
+        #expect(sleep.event.loggedBy == parentA)
+        #expect(sleep.uploadNotBefore == nil)
+        #expect(state(data).sleep == WatchSleep(id: "s", start: tap))
+    }
+
+    @Test func fellAsleepTwiceAddsOneSleep() {
+        var data = household()
+        #expect(apply(&data, .fellAsleep(sleepID: "s"), at: now))
+        #expect(!apply(&data, .fellAsleep(sleepID: "s"), at: now))
+        #expect(data.events.count == 1)
+    }
+
+    @Test func fellAsleepWhileASleepRunsChangesNothing() {
+        var data = household()
+        data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentB, timeZoneID: zone, now: now)
+        #expect(!apply(&data, .fellAsleep(sleepID: "s"), at: now))
+        #expect(data.events["s"] == nil)
+    }
+
+    /// A tap kept while the phone was out of reach, from before a sleep logged since.
+    @Test func aLateFellAsleepFromBeforeALaterSleepChangesNothing() {
+        var data = household()
+        data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-30 * 60), by: parentB, timeZoneID: zone, now: now)
+        data.endSleep(babyID: baby, at: now.addingTimeInterval(-10 * 60), by: parentB, now: now)
+        #expect(!apply(&data, .fellAsleep(sleepID: "s"), at: now.addingTimeInterval(-60 * 60)))
+        #expect(data.events["s"] == nil)
+    }
+
+    @Test func wokeUpEndsTheSleepAtTheTap() throws {
+        var data = household()
+        let id = data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentB, timeZoneID: zone, now: now)
+        data.events[id]?.uploadNotBefore = nil
+        let tap = now.addingTimeInterval(-2 * 60)
+        #expect(apply(&data, .wokeUp(sleepID: id), at: tap))
+        let sleep = try #require(data.events[id])
+        #expect(sleep.event.endedAt == tap)
+        #expect(sleep.snapshot.payload?.stamp(.endedAt)?.by == parentA)
+        #expect(data.eventsToUpload(now: now).contains { $0.event.id == id })
+        #expect(state(data).sleep?.asleep == false)
+    }
+
+    @Test func wokeUpWithNoSleepRunningChangesNothing() {
+        var data = household()
+        let id = data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentB, timeZoneID: zone, now: now)
+        data.endSleep(babyID: baby, at: now.addingTimeInterval(-600), by: parentB, now: now)
+        #expect(!apply(&data, .wokeUp(sleepID: id), at: now))
+        #expect(data.events[id]?.event.endedAt == now.addingTimeInterval(-600))
+        #expect(!apply(&data, .wokeUp(sleepID: "unknown"), at: now))
+    }
+
+    /// A late Woke up never ends a sleep that began after the tap.
+    @Test func aLateWokeUpLeavesALaterSleepAlone() {
+        var data = household()
+        let first = data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3 * 3600), by: parentB, timeZoneID: zone, now: now)
+        data.endSleep(babyID: baby, at: now.addingTimeInterval(-2 * 3600), by: parentB, now: now)
+        let second = data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentB, timeZoneID: zone, now: now)
+        #expect(!apply(&data, .wokeUp(sleepID: first), at: now.addingTimeInterval(-150 * 60)))
+        #expect(data.events[second]?.event.endedAt == nil)
+    }
+
+    @Test func aNappyIsSavedAtTheTapAndSentAtOnce() throws {
+        var data = household()
+        let tap = now.addingTimeInterval(-60)
+        #expect(apply(&data, .nappy(nappyID: "n", wee: true, poo: true), at: tap))
+        let nappy = try #require(data.events["n"])
+        #expect(nappy.event.kind == .nappy)
+        #expect(nappy.event.startedAt == tap)
+        #expect(nappy.snapshot.payload?.nappy == NappyDetails(wee: true, poo: true))
+        #expect(nappy.uploadNotBefore == nil)
+        #expect(!apply(&data, .nappy(nappyID: "n", wee: true, poo: true), at: tap))
+        #expect(data.events.count == 1)
+    }
+
+    /// The alarms count feeds only: a sleep or a nappy from the watch moves no feed time.
+    @Test func sleepAndNappyTapsLeaveTheFeedFactsAlone() {
+        var data = household()
+        let feed = now.addingTimeInterval(-2 * 3600)
+        data.add(kind: .feed, babyID: baby, startedAt: feed, endedAt: feed.addingTimeInterval(1200), payload: breast(.left),
+                 by: parentA, timeZoneID: zone, now: feed)
+        apply(&data, .fellAsleep(sleepID: "s"), at: now.addingTimeInterval(-3600))
+        apply(&data, .nappy(nappyID: "n", wee: true, poo: false), at: now.addingTimeInterval(-30 * 60))
+        apply(&data, .wokeUp(sleepID: "s"), at: now)
+        let state = state(data)
+        #expect(state.lastFeedStart == feed)
+        #expect(state.running == nil)
+    }
+
+    // MARK: On the watch, before the phone replies
+
+    @Test func theWatchShowsFellAsleepWokeUpAndANappyAtOnce() throws {
+        let base = state(household())
+        let asleep = base.applying(WatchRequest(command: .fellAsleep(sleepID: "s"), at: now))
+        #expect(asleep.sleep == WatchSleep(id: "s", start: now))
+        let awake = asleep.applying(WatchRequest(command: .wokeUp(sleepID: "s"), at: now.addingTimeInterval(600)))
+        #expect(awake.sleep == WatchSleep(id: "s", start: now, end: now.addingTimeInterval(600)))
+        let nappy = awake.applying(WatchRequest(command: .nappy(nappyID: "n", wee: false, poo: true), at: now.addingTimeInterval(700)))
+        #expect(nappy.lastNappy == WatchNappy(id: "n", at: now.addingTimeInterval(700), wee: false, poo: true))
+    }
+
+    @Test func theWatchIgnoresTapsThatChangeNothing() {
+        var base = state(household())
+        base.sleep = WatchSleep(id: "s", start: now)
+        #expect(base.applying(WatchRequest(command: .fellAsleep(sleepID: "t"), at: now.addingTimeInterval(60))) == base)
+        #expect(base.applying(WatchRequest(command: .wokeUp(sleepID: "other"), at: now.addingTimeInterval(60))) == base)
+        var notSetUp = WatchState(madeAt: now, setUp: false)
+        notSetUp.sleep = nil
+        #expect(notSetUp.applying(WatchRequest(command: .fellAsleep(sleepID: "t"), at: now)).sleep == nil)
+        // An older nappy arriving after a newer one leaves the newer one shown.
+        base.lastNappy = WatchNappy(id: "new", at: now, wee: true, poo: false)
+        #expect(base.applying(WatchRequest(command: .nappy(nappyID: "old", wee: false, poo: true), at: now.addingTimeInterval(-60)))
+            .lastNappy?.id == "new")
+    }
+
+    /// Start feed ends the sleep shown, and Stop · discard puts it back, as on the phone.
+    @Test func startFeedEndsTheShownSleepAndDiscardPutsItBack() throws {
+        var base = state(household())
+        base.sleep = WatchSleep(id: "s", start: now.addingTimeInterval(-3600))
+        let feeding = base.applying(WatchRequest(command: .start(feedID: "f", bottle: nil, bottleID: "b"), at: now))
+        #expect(feeding.sleep == WatchSleep(id: "s", start: now.addingTimeInterval(-3600), end: now))
+        let discarded = feeding.applying(WatchRequest(command: .discard(feedID: "f"), at: now.addingTimeInterval(20)))
+        #expect(discarded.sleep == WatchSleep(id: "s", start: now.addingTimeInterval(-3600)))
+        // Finish leaves the sleep ended.
+        let finished = feeding.applying(WatchRequest(command: .finish(feedID: "f"), at: now.addingTimeInterval(900)))
+        #expect(finished.sleep?.asleep == false)
+    }
+
+    /// The watch's guess matches what the phone then sends back, for the same taps.
+    @Test func theWatchsGuessMatchesThePhone() throws {
+        var data = household()
+        let sleep = data.startSleep(babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentB, timeZoneID: zone, now: now)
+        let taps = [
+            WatchRequest(command: .start(feedID: "f", bottle: nil, bottleID: "b"), at: now),
+            WatchRequest(command: .discard(feedID: "f"), at: now.addingTimeInterval(20)),
+            WatchRequest(command: .wokeUp(sleepID: sleep), at: now.addingTimeInterval(60)),
+            WatchRequest(command: .nappy(nappyID: "n", wee: true, poo: false), at: now.addingTimeInterval(120)),
+        ]
+        let guess = taps.reduce(state(data)) { $0.applying($1) }
+        for tap in taps { data.applyWatch(tap, babyID: baby, by: parentA, timeZoneID: zone) }
+        let phone = state(data, at: now.addingTimeInterval(180))
+        #expect(guess.sleep == phone.sleep)
+        #expect(guess.lastNappy == phone.lastNappy)
+    }
+
+    @Test func aTapOnTheSleepPieceSendsWokeUpOrFellAsleep() {
+        var state = state(household())
+        #expect(state.sleepTap(newID: "new") == .fellAsleep(sleepID: "new"))
+        state.sleep = WatchSleep(id: "s", start: now)
+        #expect(state.sleepTap(newID: "new") == .wokeUp(sleepID: "s"))
+        state.sleep?.end = now.addingTimeInterval(60)
+        #expect(state.sleepTap(newID: "new") == .fellAsleep(sleepID: "new"))
+        #expect(WatchState(madeAt: now, setUp: false).sleepTap() == nil)
+    }
+}

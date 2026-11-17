@@ -27,6 +27,19 @@ colors:
   chart: "#3A2A1E"
   # The strip behind Home's 24-hour chart (the users' choice, 17 Nov 2026)
   chart-strip: "#FCD5AE"
+  # Sleep and nappies (06-more-than-feeds.md, 17 Nov 2026)
+  sleep: "#8B8FE0"
+  sleep-mark: "#5A5EC4"
+  sleep-tint: "#E6E6FA"
+  sleep-soft: "#8B8FE0"
+  wee: "#F0C23B"
+  wee-mark: "#8F6D00"
+  poo: "#9C6B3E"
+  poo-mark: "#7E5128"
+  nappy-tint: "#FFF0C8"
+  poo-brown: "#8B5A2B"
+  poo-yellow: "#D9A521"
+  poo-green: "#6E8B3D"
   parent-1: "#F2B33D"
   on-parent-1: "#3A1A0E"
   parent-1-tint: "#FDEBC4"
@@ -66,6 +79,15 @@ colors:
   breast-soft-night: "#C27F8C"
   chart-night: "#978472"
   chart-strip-night: "#2A2119"
+  sleep-night: "#6A6DB0"
+  sleep-tint-night: "#15152A"
+  sleep-soft-night: "#9497D0"
+  wee-night: "#9C832F"
+  poo-night: "#9A6E48"
+  nappy-tint-night: "#1E190C"
+  poo-brown-night: "#7A5434"
+  poo-yellow-night: "#9C7E2A"
+  poo-green-night: "#5E7A3A"
   parent-1-night: "#9C7A30"
   on-parent-1-night: "#120A06"
   parent-1-tint-night: "#221B0E"
@@ -180,7 +202,8 @@ The approved mockup (day and 3am) is `chosen-look.html`, kept outside the repo i
 - Parent colours: each parent picks a colour in Settings ("Your colour") from six: `parent-1` (sunflower) and `parent-2` (teal), the defaults, then `lavender`, `plum`, `caramel` and `stone`. They are stored by name in the Member record ("sunflower", "teal", "lavender", "plum", "caramel", "stone"). They mark who logged a feed and who is on each night. Use `on-*` for the initial on an avatar. None is red or green, a feed colour or the coral button.
 - The window: `track` is the empty bar and ring; `primary` fills the time so far; `window` shades the feeding window.
 - `notice` is only for problems with the app (sync failed). It is a muted orange, never red, and never says anything about the baby.
-- No red or green verdicts, ever. Green means pumping and nothing else.
+- Sleep and nappies (17 Nov 2026) use the same three jobs: periwinkle is sleep (`sleep`, `sleep-mark`, `sleep-tint`); yellow is wee (`wee`, `wee-mark`) and brown is poo (`poo`, `poo-mark`), both on one `nappy-tint`. Medicine and growth have no colour of their own: their shapes use `text-muted`.
+- No red or green verdicts, ever. Green means pumping and nothing else. The one exception is a poo's colour: `poo-brown`, `poo-yellow` and `poo-green` show the colour a parent picked, as a small swatch, always beside its word ("Green"). They are facts, never a verdict, and never colour anything else.
 - Night colours are dimmed copies of the day colours, not new hues, so the screen feels the same.
 - Contrast, checked 15 Nov 2026: text on background 12.6:1 (day) and 14.1:1 (night); muted text 4.8:1 or better on every background and tile; coral button text 7.0:1 (day) and 5.2:1 (night); kind marks 3.5:1 or better against every tile. The initial on every parent colour is 4.5:1 or better in both looks. Check again after any colour change.
 
@@ -227,6 +250,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
   - Breast: a half-moon (`circle.lefthalf.filled` / `circle.righthalf.filled`). The filled half is the side.
   - Bottle: a tall baby bottle, drawn as a SwiftUI `Shape`.
   - Pumping: two drops, drawn as a SwiftUI `Shape`.
+  - Sleep: a crescent moon. Wee: one drop. Poo: a soft swirl. Both: the drop and the swirl side by side. Medicine: a spoon. Growth: a line going up. All are SwiftUI `Shape`s in `Shared/FeedShapes.swift`.
   - The shape appears on every chip, row, button and chart key for that kind. A chip shows the shape and the number ("◐ 12m", "bottle 30 ml"), so letters such as "L" and "R" are not needed.
 - The ring: 11 pt stroke, round caps, `track` behind, `primary` for the time so far (or the breast colour during a feed, with the current side's half-moon in the middle).
 
@@ -304,3 +328,4 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-17 | The app icon is the user's own picture, for now | The user supplied it after six rounds of icon ideas (`app-icon-20261116/feeding-icon-choices.html` in the gstack design folder). It shows more than feeding (sleep, growth), as the user wants the app to grow with the family. Feeding Dev adds a "DEV" band so the two apps are easy to tell apart. |
 | 2026-11-17 | The app icon is the baby's head on coral, for now | The user found that their own picture did not work as an icon once it was on the phone and watch. The user chose the head on its own on coral (N on G from round six) in its place. It is now an SVG in the repo, so it can be changed and made again. |
 | 2026-11-17 | The 24-hour chart's strip: a deeper peach, with no edge | The `track` strip was hard to tell from its card. Plain white by day was tried first, at Parent B's request (commit `89f444f`), but once both parents saw it on their phones they didn't like it. They then chose D (deeper, with a thin edge) from four on a day/3am page (`chart-strip-20261117/strip-options.html` in the gstack design folder), and after seeing it on the phones (commit `c20849b`) asked for the edge to go: option B on that page. New token `chart-strip`, as deep as the strip can go with the blocks still 3:1 or better. Don't add white or an edge again without asking. |
+| 2026-11-17 | Colours and shapes for sleep and nappies | Accepted by the users with round two of `more-than-feeds-20261117/round2.html` (gstack design folder). Two changes from the mockup, for contrast: `wee-mark` is #8F6D00 (the mockup's #A77F00 was 2.7:1 on the 24-hour strip), and night sleep is #6A6DB0 (#575A9A was 2.5:1). The poo colour swatches are the one place green appears outside pumping, always with their word. |

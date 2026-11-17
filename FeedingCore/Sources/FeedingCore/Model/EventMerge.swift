@@ -34,6 +34,33 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
             payload?.feed = feed
         case .pump: payload?.pump = other.payload?.pump
         case .note: payload?.note = other.payload?.note
+        case .nappy, .pooColour, .pooConsistency:
+            // Each part on its own, so a colour added on one phone and a consistency on the other
+            // are both kept. Only where either copy is a nappy, so nothing else gains nappy details.
+            guard payload?.nappy != nil || other.payload?.nappy != nil else { return }
+            let theirs = other.payload?.nappy
+            var nappy = payload?.nappy ?? NappyDetails(wee: false, poo: false)
+            switch field {
+            case .nappy:
+                nappy.wee = theirs?.wee ?? false
+                nappy.poo = theirs?.poo ?? false
+            case .pooColour: nappy.colour = theirs?.colour
+            default: nappy.consistency = theirs?.consistency
+            }
+            payload?.nappy = nappy
+        case .medicine: payload?.medicine = other.payload?.medicine
+        case .weight, .length, .head:
+            // Only where either copy has growth details, so a feed never gains an empty set of
+            // them (which would raise its version and hide it from an older build).
+            guard payload?.growth != nil || other.payload?.growth != nil else { return }
+            var growth = payload?.growth ?? GrowthDetails()
+            let theirs = other.payload?.growth
+            switch field {
+            case .weight: growth.weightGrams = theirs?.weightGrams
+            case .length: growth.lengthMM = theirs?.lengthMM
+            default: growth.headMM = theirs?.headMM
+            }
+            payload?.growth = growth
         }
     }
 
@@ -47,6 +74,15 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
         if before.payload?.feed?.bottles ?? [] != after.payload?.feed?.bottles ?? [] { changed.insert(.bottles) }
         if before.payload?.pump != after.payload?.pump { changed.insert(.pump) }
         if before.payload?.note != after.payload?.note { changed.insert(.note) }
+        let (was, now) = (before.payload?.nappy, after.payload?.nappy)
+        if was?.wee != now?.wee || was?.poo != now?.poo { changed.insert(.nappy) }
+        if was?.colour != now?.colour { changed.insert(.pooColour) }
+        if was?.consistency != now?.consistency { changed.insert(.pooConsistency) }
+        if before.payload?.medicine != after.payload?.medicine { changed.insert(.medicine) }
+        let (old, new) = (before.payload?.growth, after.payload?.growth)
+        if old?.weightGrams != new?.weightGrams { changed.insert(.weight) }
+        if old?.lengthMM != new?.lengthMM { changed.insert(.length) }
+        if old?.headMM != new?.headMM { changed.insert(.head) }
         return changed
     }
 

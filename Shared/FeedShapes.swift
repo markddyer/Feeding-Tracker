@@ -70,3 +70,82 @@ struct DropsShape: Shape {
         path.closeSubpath()
     }
 }
+
+// MARK: - Sleep, nappies, medicine and growth (06-more-than-feeds.md, 17 Nov 2026)
+
+extension Grid24 {
+    /// A point given on the round-two mockup's 20 by 20 grid.
+    func q(_ x: CGFloat, _ y: CGFloat) -> CGPoint { p(x * 1.2, y * 1.2) }
+}
+
+/// A crescent moon, for sleep.
+struct MoonShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        let disc = Path(ellipseIn: CGRect(x: g.p(2.4, 3.6).x, y: g.p(2.4, 3.6).y, width: g.r(18), height: g.r(18)))
+        let bite = Path(ellipseIn: CGRect(x: g.p(9.6, -0.6).x, y: g.p(9.6, -0.6).y, width: g.r(15), height: g.r(15)))
+        return disc.subtracting(bite)
+    }
+}
+
+/// One drop, for a wet nappy (wee).
+struct DropShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var path = Path()
+        let top = g.p(12, 2.6), radius: CGFloat = 6.7, cx: CGFloat = 12, cy: CGFloat = 15.2
+        path.move(to: top)
+        path.addCurve(to: g.p(cx + radius, cy), control1: top, control2: g.p(cx + radius, cy - (cy - 2.6) * 0.41))
+        path.addArc(center: g.p(cx, cy), radius: g.r(radius), startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false)
+        path.addCurve(to: top, control1: g.p(cx - radius, cy - (cy - 2.6) * 0.41), control2: top)
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A soft swirl, for a dirty nappy (poo).
+struct PooShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var path = Path()
+        path.move(to: g.q(3.4, 15.6))
+        path.addCurve(to: g.q(6.4, 11.4), control1: g.q(2.6, 12.4), control2: g.q(5, 11.4))
+        path.addCurve(to: g.q(10.4, 7.6), control1: g.q(6.2, 8.6), control2: g.q(8.4, 7.2))
+        path.addCurve(to: g.q(14, 5.2), control1: g.q(10.2, 5.4), control2: g.q(12.6, 3.6))
+        path.addCurve(to: g.q(14.2, 9.6), control1: g.q(15.8, 7.2), control2: g.q(14.6, 9))
+        path.addCurve(to: g.q(16.6, 15.6), control1: g.q(16.4, 10), control2: g.q(17.8, 12.4))
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// A spoon, for a medicine or vitamin: a solid bowl and a handle.
+struct SpoonShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var handle = Path()
+        handle.move(to: g.q(9.4, 9.4))
+        handle.addLine(to: g.q(16.8, 16.8))
+        var path = handle.strokedPath(StrokeStyle(lineWidth: g.r(2.8), lineCap: .round))
+        let bowl = Path(ellipseIn: CGRect(x: -g.r(5.2), y: -g.r(3.7), width: g.r(10.4), height: g.r(7.4)))
+        path.addPath(bowl, transform: CGAffineTransform(rotationAngle: .pi / 4)
+            .concatenating(CGAffineTransform(translationX: g.q(7, 7).x, y: g.q(7, 7).y)))
+        return path
+    }
+}
+
+/// A line going up, for growth.
+struct GrowthShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var line = Path()
+        line.move(to: g.q(3, 16.5))
+        line.addLine(to: g.q(8, 11))
+        line.addLine(to: g.q(11, 13.5))
+        line.addLine(to: g.q(17, 6))
+        line.move(to: g.q(13, 6))
+        line.addLine(to: g.q(17, 6))
+        line.addLine(to: g.q(17, 10))
+        return line.strokedPath(StrokeStyle(lineWidth: g.r(2.6), lineCap: .round, lineJoin: .round))
+    }
+}

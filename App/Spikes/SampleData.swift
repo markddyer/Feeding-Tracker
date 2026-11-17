@@ -9,6 +9,8 @@ import Foundation
 /// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
 /// Add `-sampleDuplicate YES` for the last feed logged on both phones, and `-sampleNightAsk` with
 /// `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for an ask to take tonight.
+/// Every sample day has sleeps, nappies and Vitamin D; the baby is asleep (1h 20m) unless
+/// `-sampleSleep awake`, and the last nappy (40m ago) is a poo with no details yet.
 enum SampleData {
     @MainActor
     static func loadIfAsked(into store: HouseholdStore) {
@@ -57,6 +59,51 @@ enum SampleData {
                 // This phone logged the last feed too, 2 minutes after the other phone did.
                 feed(hoursAgo: 1 + 38.0 / 60, by: me, FeedDetails(breast: [BreastSegment(side: .left, durationSeconds: 660)]), minutes: 20)
             }
+            // Sleeps, nappies, Vitamin D and weights (06-more-than-feeds.md), on every sample day.
+            // `-sampleSleep awake` ends the last sleep 25 minutes ago; otherwise the baby is asleep.
+            func care(dayBack: Int) {
+                let base = Double(dayBack) * 24
+                let sleeps: [(Double, Double)] = [(23.6, 21.5), (19.2, 17.0), (15.8, 14.6), (12.4, 11.0), (8.9, 7.1),
+                                                  (6.4, 4.9), (4.4, 2.9)]
+                for (from, to) in sleeps {
+                    let start = now.addingTimeInterval(-(base + from) * 3600)
+                    data.add(kind: .sleep, babyID: "sample-baby", startedAt: start, endedAt: now.addingTimeInterval(-(base + to) * 3600),
+                             payload: EventPayload(), by: dayBack.isMultiple(of: 2) ? me : other, timeZoneID: zone, now: start)
+                }
+                let nappies: [(Double, Bool, Bool, PooColour?, PooConsistency?)] = [
+                    (22.8, true, false, nil, nil), (18.9, true, true, .yellow, .loose), (15.1, true, false, nil, nil),
+                    (11.7, true, false, nil, nil), (8.2, true, true, .yellow, nil), (5.0, true, false, nil, nil),
+                    (2.2, true, Double(dayBack).truncatingRemainder(dividingBy: 2) == 0, nil, nil),
+                ]
+                for (hoursAgo, wee, poo, colour, consistency) in nappies {
+                    let at = now.addingTimeInterval(-(base + hoursAgo) * 3600)
+                    data.add(kind: .nappy, babyID: "sample-baby", startedAt: at,
+                             payload: EventPayload(nappy: NappyDetails(wee: wee, poo: poo, colour: colour, consistency: consistency)),
+                             by: dayBack.isMultiple(of: 2) ? other : me, timeZoneID: zone, now: at)
+                }
+                let vitamin = now.addingTimeInterval(-(base + 3.3) * 3600)
+                data.addMedicine(babyID: "sample-baby", MedicineDetails(name: "Vitamin D"), at: vitamin, by: me, timeZoneID: zone, now: vitamin)
+            }
+            care(dayBack: 0)
+            if defaults.string(forKey: "sampleSleep") != "awake" {
+                // Asleep for the last 1h 20m.
+                data.startSleep(babyID: "sample-baby", startedAt: now.addingTimeInterval(-80 * 60), by: other, timeZoneID: zone,
+                                now: now.addingTimeInterval(-80 * 60))
+            } else {
+                let start = now.addingTimeInterval(-100 * 60)
+                data.add(kind: .sleep, babyID: "sample-baby", startedAt: start, endedAt: now.addingTimeInterval(-25 * 60),
+                         payload: EventPayload(), by: other, timeZoneID: zone, now: start)
+            }
+            // A poo 40 minutes ago with no details yet: the Nappy tile offers "Add details".
+            let lastNappy = now.addingTimeInterval(-40 * 60)
+            data.add(kind: .nappy, babyID: "sample-baby", startedAt: lastNappy,
+                     payload: EventPayload(nappy: NappyDetails(wee: true, poo: true)), by: me, timeZoneID: zone, now: lastNappy)
+            for (daysAgo, grams, length, head) in [(26, 3400, 510, 350), (21, 3180, nil, nil), (16, 3350, nil, nil),
+                                                   (12, 3520, 525, 360), (5, 3850, nil, nil)] as [(Int, Int, Int?, Int?)] {
+                let at = now.addingTimeInterval(-Double(daysAgo) * 86400 + 3600)
+                data.addGrowth(babyID: "sample-baby", GrowthDetails(weightGrams: grams, lengthMM: length, headMM: head), at: at,
+                               by: other, timeZoneID: zone, now: at)
+            }
             let pumpStart = now.addingTimeInterval(-3 * 3600)
             data.add(kind: .pump, babyID: "sample-baby", startedAt: pumpStart, endedAt: pumpStart.addingTimeInterval(20 * 60),
                      payload: EventPayload(pump: PumpDetails(side: .both, leftML: 50, rightML: 40)), by: other, timeZoneID: zone, now: pumpStart)
@@ -82,6 +129,7 @@ enum SampleData {
                                                                           bottles: [Bottle(milk: .expressed, ml: 40 + 10 * (dayBack % 2))]))
                         }
                     }
+                    care(dayBack: dayBack)
                     let pump = now.addingTimeInterval(-(Double(dayBack) * 24 + 3) * 3600)
                     data.add(kind: .pump, babyID: "sample-baby", startedAt: pump, endedAt: pump.addingTimeInterval(20 * 60),
                              payload: EventPayload(pump: PumpDetails(side: .both, leftML: 40 + dayBack * 5, rightML: 45)),

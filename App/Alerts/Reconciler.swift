@@ -95,7 +95,12 @@ final class Reconciler {
             let roster = state.roster(for: me.id)
             let desired = reconcile(events: store.data.allEvents, settings: state.settings, roster: roster,
                                     pendingChanges: state.pendingChanges, me: me, now: now)
-            await scheduler.apply(desired, timeZone: state.settings.timeZone)
+            let events = store.data.allEvents
+            let babies = Set(events.filter(\.isLiveFeed).map(\.babyID))
+            let latest = Dictionary(uniqueKeysWithValues: babies.compactMap { baby in
+                events.latestFeedStart(babyID: baby, now: now).map { (baby, $0) }
+            })
+            await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone)
             alerts = desired
             lastRunAt = Date()
         } while runAgain

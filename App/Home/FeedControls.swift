@@ -6,22 +6,38 @@ struct UndoAction {
     let message: String
     let expiresAt: Date
     let perform: @MainActor () -> Void
+    /// A quick log (a sleep, a nappy, a medicine) also offers Change time, for a tap made late.
+    var changeTime: TimeChange?
 
-    init(message: String, perform: @escaping @MainActor () -> Void) {
+    init(message: String, changeTime: TimeChange? = nil, perform: @escaping @MainActor () -> Void) {
         self.message = message
         expiresAt = Date().addingTimeInterval(HouseholdData.undoWindow)
+        self.changeTime = changeTime
         self.perform = perform
     }
 }
 
 struct UndoBanner: View {
     let action: UndoAction
+    var onChangeTime: ((TimeChange) -> Void)?
     let dismiss: () -> Void
 
     var body: some View {
-        HStack {
-            Text(action.message).feedText(.subheadline)
-            Spacer()
+        HStack(spacing: 14) {
+            Text(action.message)
+                .feedText(.subheadline)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 4)
+            if let change = action.changeTime, let onChangeTime {
+                Button("Change time") {
+                    onChangeTime(change)
+                    dismiss()
+                }
+                .feedText(.smallButton)
+                .foregroundStyle(Theme.text)
+                .frame(minHeight: 44)
+            }
             Button("Undo") {
                 action.perform()
                 dismiss()
@@ -244,13 +260,12 @@ struct FeedControls: View {
         })
     }
 
-    /// Undo for a new feed: gone completely if it hasn't been sent yet, otherwise hidden.
+    /// Undo for a new feed: gone completely if it hasn't been sent yet, otherwise hidden. A sleep
+    /// that Start feed ended runs again (`discardFeed`).
     private func undoAdd(_ id: String) {
         let me = me
         store.change { data in
-            if !data.undoAdd(id, now: Date()) {
-                data.delete(id, by: me, now: Date())
-            }
+            data.discardFeed(id, by: me, now: Date())
         }
         if detailsFor == id { detailsFor = nil }
     }

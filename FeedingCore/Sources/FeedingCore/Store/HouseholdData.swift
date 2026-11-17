@@ -114,34 +114,38 @@ public struct HouseholdData: Hashable, Sendable, Codable {
 
     // MARK: Changes made on this phone
 
-    /// Adds a new event. Every field is stamped, so if the same record ever meets an older copy
-    /// in iCloud, this one wins. Returns the event's ID.
+    /// Adds a new event. Every field of its kind is stamped (`EventField.fields(for:)`), so if the
+    /// same record ever meets an older copy in iCloud, this one wins. Returns the event's ID.
     @discardableResult
     public mutating func add(
         id: String = UUID().uuidString, kind: EventKind, babyID: String, startedAt: Date, endedAt: Date? = nil,
         payload: EventPayload, by member: MemberID, timeZoneID: String, now: Date
     ) -> String {
         var payload = payload
-        for field in EventField.allCases { payload.setStamp(field, FieldStamp(at: now, by: member)) }
+        let fields = EventField.fields(for: kind)
+        for field in fields { payload.setStamp(field, FieldStamp(at: now, by: member)) }
         let event = Event(id: id, babyID: babyID, kind: kind, startedAt: startedAt, endedAt: endedAt,
                           timeZoneID: timeZoneID, loggedBy: member, createdAt: now, modifiedAt: now,
                           payload: try? PayloadCoder.encode(payload))
-        events[id] = StoredEvent(event: event, changedFields: Set(EventField.allCases), needsUpload: true,
+        events[id] = StoredEvent(event: event, changedFields: fields, needsUpload: true,
                                  uploadNotBefore: now.addingTimeInterval(Self.undoWindow), systemFields: nil, localRevision: 1)
         return id
     }
 
     /// Starts a feed now, timed live, optionally on a side or with a bottle (for a parent who
-    /// feeds by bottle only).
+    /// feeds by bottle only). A sleep running now ends (the users' choice O, 17 Nov 2026: the baby
+    /// woke to feed).
     @discardableResult
     public mutating func startFeed(id: String = UUID().uuidString, babyID: String, side: BreastSide?,
                                    bottle: MilkKind? = nil,
                                    by member: MemberID, timeZoneID: String, now: Date) -> String {
         let breast = side.map { [BreastSegment(side: $0, startedAt: now)] } ?? []
         let bottles = bottle.map { [Bottle(milk: $0)] } ?? []
-        return add(id: id, kind: .feed, babyID: babyID, startedAt: now,
-                   payload: EventPayload(feed: FeedDetails(breast: breast, bottles: bottles)),
-                   by: member, timeZoneID: timeZoneID, now: now)
+        let id = add(id: id, kind: .feed, babyID: babyID, startedAt: now,
+                     payload: EventPayload(feed: FeedDetails(breast: breast, bottles: bottles)),
+                     by: member, timeZoneID: timeZoneID, now: now)
+        endSleepForFeed(babyID: babyID, start: now, by: member, now: now)
+        return id
     }
 
     /// Changes an event. The changed fields are found by comparing before and after, then stamped.

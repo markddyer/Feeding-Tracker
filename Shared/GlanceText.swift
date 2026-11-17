@@ -60,5 +60,30 @@ enum GlanceText {
         }
     }
 
+    // MARK: What a quick sleep, nappy or medicine tap says
+
+    static func said(_ result: QuickCareResult, timeZoneID: String) -> String {
+        switch result {
+        case .fellAsleep(let at):
+            return "Fell asleep at \(clock(at, timeZoneID: timeZoneID))."
+        case .alreadyAsleep(let since):
+            return "Asleep since \(clock(since, timeZoneID: timeZoneID))."
+        case .wokeUp(let at, let asleepFor):
+            return "Woke up at \(clock(at, timeZoneID: timeZoneID)), after \(spokenElapsed(asleepFor)) asleep."
+        case .notAsleep:
+            return "No sleep is running."
+        case .nappy(let at, let wee, let poo):
+            let what = wee && poo ? "Wee and poo" : poo ? "Poo" : "Wee"
+            return "\(what) logged at \(clock(at, timeZoneID: timeZoneID))."
+        case .medicine(let at, let name):
+            return "\(name) logged at \(clock(at, timeZoneID: timeZoneID))."
+        }
+    }
+
+    /// The nappy's kind in a few letters, for the widget's line: "wee", "poo", "wee and poo".
+    static func nappyKind(wee: Bool, poo: Bool) -> String {
+        wee && poo ? "wee and poo" : poo ? "poo" : wee ? "wee" : "dry"
+    }
+
     static let notSetUp = "Open Feeding to set it up first."
 }

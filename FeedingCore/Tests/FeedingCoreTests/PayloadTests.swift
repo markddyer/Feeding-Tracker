@@ -45,7 +45,7 @@ struct PayloadTests {
     }
 
     @Test func aNewerVersionIsNotRead() {
-        #expect(PayloadCoder.decode(EventPayload.self, from: Data(#"{"v":2,"stamps":{}}"#.utf8)) == nil)
+        #expect(PayloadCoder.decode(EventPayload.self, from: Data(#"{"v":3,"stamps":{}}"#.utf8)) == nil)
     }
 
     @Test func unknownFieldsInTheSameVersionAreSkipped() {

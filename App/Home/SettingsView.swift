@@ -86,6 +86,27 @@ struct SettingsView: View {
             rotaSection
 
             Section {
+                NavigationLink {
+                    MedicineListEditor()
+                } label: {
+                    HStack(spacing: 10) {
+                        FeedMarkView(.medicine, size: 18, relativeTo: .body)
+                        Text("Medicines")
+                        Spacer(minLength: 8)
+                        Text(AppModel.shared.store.data.medicines.joined(separator: ", "))
+                            .foregroundStyle(Theme.textMuted)
+                            .lineLimit(1)
+                    }
+                }
+            } header: {
+                header("Both phones")
+            } footer: {
+                Text("Each medicine or vitamin on this list has a Given button on Home.")
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .listRowBackground(Theme.surface)
+
+            Section {
                 Text("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
                     .feedText(.subheadline)
             } header: {

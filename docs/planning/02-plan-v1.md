@@ -299,7 +299,7 @@ Everything above. **Done when:** a week of real use on TestFlight with no missed
 
 ### Phase 3: growing with her
 - Pumping statistics and a record of the expressed-milk stash.
-- Nappies, sleep, weight, and medicine or vitamin reminders.
+- Nappies, sleep, weight, and medicine or vitamin reminders. **Brought forward on 17 Nov 2026, ahead of TestFlight** (the users' choice): sleep, nappies, growth, and medicine as a log only. See `06-more-than-feeds.md`.
 - Solids from about 6 months.
 - Summaries for the health visitor.
 - An interface for more than one baby.

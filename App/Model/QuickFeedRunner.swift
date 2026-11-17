@@ -38,6 +38,50 @@ enum QuickFeedRunner {
         return said(result, me: me, now: now)
     }
 
+    // MARK: Sleep, nappies and medicine (`CareIntents.swift`)
+
+    static func fellAsleep(now: Date = Date()) async -> String {
+        await care { data, me, baby in
+            data.quickFellAsleep(babyID: baby, by: me, timeZoneID: TimeZone.current.identifier, now: now)
+        }
+    }
+
+    static func wokeUp(now: Date = Date()) async -> String {
+        let model = AppModel.shared
+        guard let me = model.me, let baby = model.baby else { return GlanceText.notSetUp }
+        var result = model.store.change { $0.quickWokeUp(babyID: baby.name, by: me, now: now) }
+        if result == .notAsleep {
+            // The other parent may have logged a sleep this phone hasn't heard about yet.
+            await waitAtMost(seconds: 3) { await model.sync.fetchNow() }
+            result = model.store.change { $0.quickWokeUp(babyID: baby.name, by: me, now: Date()) }
+        }
+        await settle()
+        return GlanceText.said(result, timeZoneID: model.store.data.householdSettings.timeZoneID)
+    }
+
+    static func nappy(wee: Bool, poo: Bool, now: Date = Date()) async -> String {
+        await care { data, me, baby in
+            data.quickNappy(babyID: baby, wee: wee, poo: poo, by: me, timeZoneID: TimeZone.current.identifier, now: now)
+        }
+    }
+
+    static func medicine(_ name: String, now: Date = Date()) async -> String {
+        await care { data, me, baby in
+            data.quickMedicine(babyID: baby, name: name, by: me, timeZoneID: TimeZone.current.identifier, now: now)
+        }
+    }
+
+    /// Makes a sleep, nappy or medicine change as a tap in the app does, then saves and sends it
+    /// the same way as a feed (`settle`). These never move a feed alarm: `reconcile` counts feeds
+    /// only.
+    private static func care(_ body: (inout HouseholdData, MemberID, String) -> QuickCareResult) async -> String {
+        let model = AppModel.shared
+        guard let me = model.me, let baby = model.baby else { return GlanceText.notSetUp }
+        let result = model.store.change { body(&$0, me, baby.name) }
+        await settle()
+        return GlanceText.said(result, timeZoneID: model.store.data.householdSettings.timeZoneID)
+    }
+
     private static func said(_ result: QuickFeedResult, me: MemberID, now: Date) -> String {
         let model = AppModel.shared
         return GlanceText.said(result, me: me, names: model.memberNames,

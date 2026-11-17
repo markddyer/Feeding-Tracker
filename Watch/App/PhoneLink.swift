@@ -165,9 +165,10 @@ final class PhoneLink {
     }
 
     /// What the watch face pieces draw: the wide one shows the side being fed, which the times
-    /// don't change with.
+    /// don't change with; the Sleep and Nappy pieces show the sleep and the last nappy.
     private static func faceFacts(_ state: WatchState?) -> FaceFacts {
-        FaceFacts(glance: state?.glance, feedID: state?.running?.id, mine: state?.running?.mine, side: state?.running?.side)
+        FaceFacts(glance: state?.glance, feedID: state?.running?.id, mine: state?.running?.mine, side: state?.running?.side,
+                  sleep: state?.sleep, nappy: state?.lastNappy)
     }
 
     private struct FaceFacts: Equatable {
@@ -175,6 +176,8 @@ final class PhoneLink {
         var feedID: String?
         var mine: Bool?
         var side: BreastSide?
+        var sleep: WatchSleep?
+        var nappy: WatchNappy?
     }
 
     /// Keeps the app awake in the background until the system has handed over the phone's news.

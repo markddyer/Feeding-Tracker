@@ -46,6 +46,7 @@ final class AppModel {
         let reconcile = store.onDataChange
         store.onDataChange = { [weak self] in
             self?.finishStrandedDuplicates()
+            self?.endInterruptedSleeps()
             reconcile?()
             Task { await self?.tellNightAskNews() }
             if let self {
@@ -67,6 +68,13 @@ final class AppModel {
     private func finishStrandedDuplicates() {
         guard let me, !store.data.strandedDuplicates(by: me).isEmpty else { return }
         store.change { $0.finishStrandedDuplicates(by: me, now: Date()) }
+    }
+
+    /// A sleep still running when a later feed began ends at that feed (the users' choice O), for
+    /// sleeps and feeds that reached this phone in a different order (`endSleepsInterruptedByFeeds`).
+    private func endInterruptedSleeps() {
+        guard let me else { return }
+        store.change { $0.endSleepsInterruptedByFeeds(by: me, now: Date()) }
     }
 
     /// This parent: their iCloud user record name. The simulator has no iCloud, so Feeding Dev

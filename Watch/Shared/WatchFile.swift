@@ -34,6 +34,10 @@ enum WatchLinks {
     static let finishFeedHost = "finish-feed"
     /// The watch face during the other parent's feed: only opens the app.
     static let showFeedHost = "show-feed"
+    /// The watch face's Sleep piece: Fell asleep, or Woke up for the sleep it names.
+    static let sleepHost = "sleep"
+    /// The watch face's Nappy piece: opens the app on page two, "Wee, poo or both?".
+    static let careHost = "care"
 
     static var startFeed: URL? {
         scheme.flatMap { URL(string: "\($0)://\(startFeedHost)") }
@@ -50,6 +54,26 @@ enum WatchLinks {
 
     static var showFeed: URL? {
         scheme.flatMap { URL(string: "\($0)://\(showFeedHost)") }
+    }
+
+    /// The Sleep piece's link. It names the sleep it showed running, so a face that is a little
+    /// behind can't end a different sleep, or start one while the baby is already asleep.
+    static func sleepTap(asleepID: String?) -> URL? {
+        guard let scheme else { return nil }
+        var parts = URLComponents()
+        parts.scheme = scheme
+        parts.host = sleepHost
+        if let asleepID { parts.queryItems = [URLQueryItem(name: "sleep", value: asleepID)] }
+        return parts.url
+    }
+
+    static var care: URL? {
+        scheme.flatMap { URL(string: "\($0)://\(careHost)") }
+    }
+
+    /// The sleep a Sleep link names: nil when the piece showed the baby awake.
+    static func sleepID(in url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "sleep" }?.value
     }
 
     /// The feed a Finish link names.

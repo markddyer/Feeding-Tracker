@@ -11,12 +11,15 @@ struct WatchHomeView: View {
     @State private var question: AmountAsk?
     /// The moment Start feed on the watch face was tapped, while "Formula or expressed?" waits.
     @State private var milkAsk: Date?
+    /// Feeds, or sleep and nappies (pick I, 17 Nov 2026).
+    @State private var page = WatchPage.feeds
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         #if FEEDING_DEV
         _question = State(initialValue: WatchSamples.question())
         _milkAsk = State(initialValue: WatchSamples.milkAsk())
+        _page = State(initialValue: WatchSamples.page())
         #endif
     }
 
@@ -41,6 +44,8 @@ struct WatchHomeView: View {
             switch url.host {
             case WatchLinks.startFeedHost: startFromFace(at: Date())
             case WatchLinks.finishFeedHost: WatchLinks.feedID(in: url).map(finishFromFace)
+            case WatchLinks.sleepHost: sleepFromFace(asleepID: WatchLinks.sleepID(in: url))
+            case WatchLinks.careHost: page = .care
             default: break
             }
         }
@@ -49,13 +54,16 @@ struct WatchHomeView: View {
         // after launch, as the simulator can't open the watch face's link by command.
         // `-watchFaceTapTest finish`: the watch face's Finish, on the feed running then.
         .task {
+            // `sleep`: the Sleep piece (Woke up while asleep, otherwise Fell asleep); `nappy`: the
+            // Nappy piece, which opens page two.
             let test = UserDefaults.standard.string(forKey: "watchFaceTapTest")
-            guard test == "YES" || test == "finish" else { return }
+            guard let test, ["YES", "finish", "sleep", "nappy"].contains(test) else { return }
             try? await Task.sleep(for: .seconds(4))
-            if test == "finish" {
-                link.shown?.running.map { finishFromFace($0.id) }
-            } else {
-                startFromFace(at: Date())
+            switch test {
+            case "finish": link.shown?.running.map { finishFromFace($0.id) }
+            case "sleep": sleepFromFace(asleepID: link.shown?.sleep.flatMap { $0.asleep ? $0.id : nil })
+            case "nappy": page = .care
+            default: startFromFace(at: Date())
             }
         }
         #endif
@@ -84,6 +92,19 @@ struct WatchHomeView: View {
         finish(feed)
     }
 
+    /// The Sleep piece on the watch face: Woke up for the sleep it showed running, or Fell asleep
+    /// if it showed the baby awake. The face can be a little behind, so a tap that no longer
+    /// matches what the watch knows logs nothing. Either way the app opens on page two.
+    private func sleepFromFace(asleepID: String?) {
+        page = .care
+        guard let command = link.shown?.sleepTap() else { return }
+        switch (command, asleepID) {
+        case (.wokeUp(let running), let shown?) where running == shown: link.send(command)
+        case (.fellAsleep, nil): link.send(command)
+        default: break
+        }
+    }
+
     private func finish(_ feed: WatchFeed) {
         link.send(.finish(feedID: feed.id))
         question = AmountAsk(feedID: feed.id, bottles: feed.bottles.filter { $0.ml == nil })
@@ -109,31 +130,50 @@ struct WatchHomeView: View {
                 milkAsk = nil
             }
         } else if let state, state.setUp {
-            ScrollView {
-                Group {
-                    if let running = state.running, running.mine {
-                        RunningScreen(state: state, feed: running, waiting: link.waitingForPhone) { command in
-                            if case .finish = command {
-                                finish(running)
-                            } else {
-                                link.send(command)
-                            }
-                        }
-                    } else if let running = state.running {
-                        OthersFeedScreen(state: state, feed: running, waiting: link.waitingForPhone) {
-                            link.send(.finish(feedID: running.id))
-                        }
-                    } else {
-                        IdleScreen(state: state, now: now, waiting: link.waitingForPhone) { bottle in
-                            link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
-                        }
-                    }
+            // Two pages, one above the other. The feed page is as it was; its double tap works
+            // only while it is in sight.
+            TabView(selection: $page) {
+                ScrollView {
+                    feedPage(state, now: now)
+                        .padding(.horizontal, 2)
                 }
-                .padding(.horizontal, 2)
+                .environment(\.watchDoubleTapAllowed, page == .feeds)
+                .tag(WatchPage.feeds)
+                ScrollView {
+                    CareScreen(state: state, now: now, waiting: link.waitingForPhone) { link.send($0) }
+                        .padding(.horizontal, 2)
+                }
+                .environment(\.watchDoubleTapAllowed, page == .care)
+                .tag(WatchPage.care)
             }
+            .tabViewStyle(.verticalPage)
         } else {
             MessageScreen(text: state == nil ? "Open Feeding on your iPhone, with this watch nearby."
                                              : "Set up Feeding on your iPhone first.")
+        }
+    }
+
+    /// Page one: the feed screen.
+    @ViewBuilder
+    private func feedPage(_ state: WatchState, now: Date) -> some View {
+        Group {
+            if let running = state.running, running.mine {
+                RunningScreen(state: state, feed: running, waiting: link.waitingForPhone) { command in
+                    if case .finish = command {
+                        finish(running)
+                    } else {
+                        link.send(command)
+                    }
+                }
+            } else if let running = state.running {
+                OthersFeedScreen(state: state, feed: running, waiting: link.waitingForPhone) {
+                    link.send(.finish(feedID: running.id))
+                }
+            } else {
+                IdleScreen(state: state, now: now, waiting: link.waitingForPhone) { bottle in
+                    link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
+                }
+            }
         }
     }
 }
@@ -499,7 +539,7 @@ private struct StepButton: View {
 
 /// A big button (`DESIGN.md`, "Big button"), at watch size: coral for the main action, the tile
 /// colour for the soft one. `doubleTap` makes it the one a double tap presses.
-private struct WatchBigButton: View {
+struct WatchBigButton: View {
     let title: String
     var systemImage: String?
     var bottle = false
@@ -509,6 +549,7 @@ private struct WatchBigButton: View {
     let action: () -> Void
     @State private var taps = 0
     @Environment(\.watchLook) private var look
+    @Environment(\.watchDoubleTapAllowed) private var doubleTapAllowed
 
     var body: some View {
         let palette = WatchPalette.of(look)
@@ -535,7 +576,7 @@ private struct WatchBigButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
-        .handGestureShortcut(.primaryAction, isEnabled: doubleTap)
+        .handGestureShortcut(.primaryAction, isEnabled: doubleTap && doubleTapAllowed)
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
     }
 }
@@ -578,7 +619,7 @@ private struct WatchSideButton: View {
 }
 
 /// Shown while a tap waits for the phone.
-private struct WaitingLine: View {
+struct WaitingLine: View {
     @Environment(\.watchLook) private var look
 
     var body: some View {

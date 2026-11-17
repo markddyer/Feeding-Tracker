@@ -9,7 +9,11 @@ import WidgetKit
 struct FeedingWidgets: WidgetBundle {
     var body: some Widget {
         LastFeedWidget()
+        CareWidget()
         FeedControl()
+        SleepControl()
+        NappyControl()
+        MedicineControl()
     }
 }
 
@@ -20,11 +24,11 @@ enum HouseholdReader {
     }
 
     static func glance(now: Date) -> FeedGlance? {
-        guard let group,
-              let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group),
-              let data = try? HouseholdFile.load(from: folder.appendingPathComponent("household.json"))
-        else { return nil }
-        return data.glance(now: now)
+        SharedHousehold.load()?.glance(now: now)
+    }
+
+    static func careGlance(now: Date) -> CareGlance? {
+        SharedHousehold.load()?.careGlance(now: now)
     }
 
     /// This phone's "How you feed", as the app last told the widget.
@@ -128,5 +132,125 @@ struct FeedControlProvider: AppIntentControlValueProvider {
 
     func currentValue(configuration: FeedControlConfiguration) async throws -> FeedControlState {
         FeedControlState(running: HouseholdReader.glance(now: Date())?.runningSince != nil, bottle: configuration.bottle)
+    }
+}
+
+// MARK: - The Sleep and nappy widget (the users' choice F, 17 Nov 2026)
+
+/// Beside Last feed on the Lock Screen: the time asleep or awake, the last nappy, and Woke up (or
+/// Fell asleep), Wee, Poo and Both. The buttons run in the app (`CareIntents.swift`).
+struct CareWidget: Widget {
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: "SleepAndNappy", provider: CareProvider()) { entry in
+            CareWidgetView(entry: entry)
+                .containerBackground(for: .widget) { Color.clear }
+        }
+        .configurationDisplayName("Sleep and nappy")
+        .description("How long the baby has slept or been awake, the last nappy, and buttons to log them.")
+        .supportedFamilies([.accessoryRectangular])
+    }
+}
+
+/// One moment: the times update by themselves, and the app asks for a new timeline whenever a
+/// sleep or nappy is logged (`WidgetRefresher`). One moment also keeps the saved file small, which
+/// matters for a widget with buttons (`LastFeedMoments`).
+struct CareProvider: TimelineProvider {
+    func placeholder(in context: Context) -> CareEntry {
+        let now = Date()
+        return CareEntry(date: now, glance: CareGlance(sleep: .asleep(id: "placeholder", since: now.addingTimeInterval(-4800)),
+                                                       lastNappyAt: now.addingTimeInterval(-2400), lastNappyWee: true))
+    }
+
+    func getSnapshot(in context: Context, completion: @escaping (CareEntry) -> Void) {
+        let now = Date()
+        completion(context.isPreview ? placeholder(in: context) : CareEntry(date: now, glance: HouseholdReader.careGlance(now: now)))
+    }
+
+    func getTimeline(in context: Context, completion: @escaping (Timeline<CareEntry>) -> Void) {
+        let now = Date()
+        let entry = CareEntry(date: now, glance: HouseholdReader.careGlance(now: now))
+        completion(Timeline(entries: [entry], policy: .after(now.addingTimeInterval(LastFeedMoments.oneMomentLifetime))))
+    }
+}
+
+// MARK: - The sleep, nappy and medicine controls (settled with round two, 17 Nov 2026)
+
+/// DESIGN.md's `sleep` (day): periwinkle.
+private let sleepTint = Color(red: 0x8B / 255, green: 0x8F / 255, blue: 0xE0 / 255)
+/// DESIGN.md's `wee` (day): yellow.
+private let nappyTint = Color(red: 0xF0 / 255, green: 0xC2 / 255, blue: 0x3B / 255)
+
+/// The Sleep switch: on while the baby sleeps. Turning it on logs Fell asleep; off logs Woke up.
+struct SleepControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "SleepControl", provider: SleepControlProvider()) { asleep in
+            ControlWidgetToggle(isOn: asleep, action: SleepToggleIntent()) {
+                Label("Sleep", systemImage: "moon.fill")
+            } valueLabel: { isOn in
+                Label(isOn ? "Asleep" : "Awake", systemImage: isOn ? "moon.zzz.fill" : "moon")
+            }
+            .tint(sleepTint)
+        }
+        .displayName("Sleep")
+        .description("On while the baby sleeps. Turn it on for Fell asleep, and off for Woke up.")
+    }
+}
+
+struct SleepControlProvider: ControlValueProvider {
+    var previewValue: Bool { false }
+
+    func currentValue() async throws -> Bool {
+        HouseholdReader.careGlance(now: Date())?.isAsleep ?? false
+    }
+}
+
+/// A nappy button, set up once as Wee, Poo or Both. It logs the nappy at once, with no details;
+/// the colour and consistency can be added in the app.
+struct NappyControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        AppIntentControlConfiguration(kind: "NappyControl", provider: NappyControlProvider()) { kind in
+            ControlWidgetButton(action: NappyIntent(kind: kind)) {
+                Label(kind.buttonTitle, systemImage: kind.symbol)
+            }
+            .tint(nappyTint)
+        }
+        .displayName("Log a nappy")
+        .description("Logs a wee, a poo or both, as you choose when you add the button.")
+        .promptsForUserConfiguration()
+    }
+}
+
+struct NappyControlProvider: AppIntentControlValueProvider {
+    func previewValue(configuration: NappyControlConfiguration) -> NappyChoice {
+        configuration.kind
+    }
+
+    func currentValue(configuration: NappyControlConfiguration) async throws -> NappyChoice {
+        configuration.kind
+    }
+}
+
+/// A medicine button, set up once with one medicine from the household's list. It logs that
+/// medicine at once. The app never shows a "next dose" time.
+struct MedicineControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        AppIntentControlConfiguration(kind: "MedicineControl", provider: MedicineControlProvider()) { medicine in
+            ControlWidgetButton(action: MedicineIntent(medicine: medicine)) {
+                Label(medicine, systemImage: "pills.fill")
+            }
+        }
+        .displayName("Log a medicine")
+        .description("Logs the medicine or vitamin you choose when you add the button.")
+        .promptsForUserConfiguration()
+    }
+}
+
+struct MedicineControlProvider: AppIntentControlValueProvider {
+    func previewValue(configuration: MedicineControlConfiguration) -> String {
+        configuration.medicine
+    }
+
+    func currentValue(configuration: MedicineControlConfiguration) async throws -> String {
+        configuration.medicine
     }
 }

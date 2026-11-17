@@ -10,6 +10,25 @@ enum FeedMark: Hashable {
     case bottle
     /// Two drops.
     case pump
+    /// A crescent moon.
+    case sleep
+    /// One drop, a soft swirl, or both side by side (a nappy).
+    case wee
+    case poo
+    case weeAndPoo
+    /// A spoon.
+    case medicine
+    /// A line going up.
+    case growth
+
+    /// The nappy's shape: wee, poo or both. A dry nappy shows the drop in muted colour.
+    static func nappy(wee: Bool, poo: Bool) -> FeedMark {
+        switch (wee, poo) {
+        case (true, true): .weeAndPoo
+        case (false, true): .poo
+        default: .wee
+        }
+    }
 
     /// The deep shade for small shapes, readable on the light tiles. At night it is the plain
     /// night colour.
@@ -18,6 +37,10 @@ enum FeedMark: Hashable {
         case .side: Theme.breastMark
         case .bottle: Theme.bottleMark
         case .pump: Theme.pumpMark
+        case .sleep: Theme.sleepMark
+        case .wee, .weeAndPoo: Theme.weeMark
+        case .poo: Theme.pooMark
+        case .medicine, .growth: Theme.textMuted
         }
     }
 
@@ -27,6 +50,9 @@ enum FeedMark: Hashable {
         case .side: Theme.breastTint
         case .bottle: Theme.bottleTint
         case .pump: Theme.pumpTint
+        case .sleep: Theme.sleepTint
+        case .wee, .poo, .weeAndPoo: Theme.nappyTint
+        case .medicine, .growth: Theme.surface
         }
     }
 
@@ -37,6 +63,12 @@ enum FeedMark: Hashable {
         case .side(.right): "Right side"
         case .bottle: "Bottle"
         case .pump: "Pumping"
+        case .sleep: "Sleep"
+        case .wee: "Wee"
+        case .poo: "Poo"
+        case .weeAndPoo: "Wee and poo"
+        case .medicine: "Medicine"
+        case .growth: "Growth"
         }
     }
 }
@@ -65,10 +97,26 @@ struct FeedMarkView: View {
                 BottleShape()
             case .pump:
                 DropsShape()
+            case .sleep:
+                MoonShape()
+            case .wee:
+                DropShape()
+            case .poo:
+                PooShape()
+            case .weeAndPoo:
+                // Two shapes in the space of one and a half, each in its own colour.
+                HStack(spacing: -size * 0.2) {
+                    DropShape().foregroundStyle(colour ?? Theme.weeMark)
+                    PooShape().foregroundStyle(colour ?? Theme.pooMark)
+                }
+            case .medicine:
+                SpoonShape()
+            case .growth:
+                GrowthShape()
             }
         }
         .foregroundStyle(colour ?? mark.colour)
-        .frame(width: size, height: size)
+        .frame(width: mark == .weeAndPoo ? size * 1.8 : size, height: size)
         .accessibilityElement()
         .accessibilityLabel(mark.spoken)
     }
