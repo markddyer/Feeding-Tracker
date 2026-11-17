@@ -149,3 +149,35 @@ struct GrowthShape: Shape {
         return line.strokedPath(StrokeStyle(lineWidth: g.r(2.6), lineCap: .round, lineJoin: .round))
     }
 }
+
+/// A closed eye: the lid as a curve, with three lashes. On the Sleep and nappy widget it is the
+/// Fell asleep button (the users' ask, 17 Nov 2026).
+struct ClosedEyeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var line = Path()
+        line.move(to: g.p(3, 10))
+        line.addQuadCurve(to: g.p(21, 10), control: g.p(12, 19.5))
+        for (from, to) in [((6.4, 13.4), (4.6, 16.4)), ((12, 14.8), (12, 18.6)), ((17.6, 13.4), (19.4, 16.4))] {
+            line.move(to: g.p(from.0, from.1))
+            line.addLine(to: g.p(to.0, to.1))
+        }
+        return line.strokedPath(StrokeStyle(lineWidth: g.r(2.4), lineCap: .round, lineJoin: .round))
+    }
+}
+
+/// An open eye: an almond outline with a round pupil. On the Sleep and nappy widget it is the
+/// Woke up button.
+struct OpenEyeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var outline = Path()
+        outline.move(to: g.p(2.5, 12))
+        outline.addQuadCurve(to: g.p(21.5, 12), control: g.p(12, 2.5))
+        outline.addQuadCurve(to: g.p(2.5, 12), control: g.p(12, 21.5))
+        outline.closeSubpath()
+        var path = outline.strokedPath(StrokeStyle(lineWidth: g.r(2.4), lineCap: .round, lineJoin: .round))
+        path.addEllipse(in: CGRect(x: g.p(8.6, 8.6).x, y: g.p(8.6, 8.6).y, width: g.r(6.8), height: g.r(6.8)))
+        return path
+    }
+}

@@ -14,7 +14,7 @@ struct CareEntry: TimelineEntry {
 
 /// The Sleep and nappy widget on the Lock Screen (the users' choice F, 17 Nov 2026), beside Last
 /// feed: how long the baby has slept or been awake, when the last nappy was, and four buttons:
-/// Woke up (or Fell asleep), Wee, Poo and Both. Facts only. The Lock Screen draws it in one tint,
+/// Fell asleep (a closed eye; an open eye for Woke up), Wee, Poo and Both. Facts only. The Lock Screen draws it in one tint,
 /// so it has no colours of its own. Its times update by themselves, so it needs one moment, as
 /// the Last feed widget's wide size does (`LastFeedMoments`).
 struct CareWidgetView: View {
@@ -103,13 +103,15 @@ struct CareWidgetView: View {
 
     // MARK: The buttons
 
-    /// Woke up (or Fell asleep) gets the room left over; the three nappy buttons are shapes only.
+    /// Four buttons, shapes only, sharing the width: a closed eye for Fell asleep (an open eye for
+    /// Woke up while asleep), then Wee, Poo and Both. The word "Fell asleep" didn't fit (the users'
+    /// ask, 17 Nov 2026). VoiceOver still says the words.
     private var buttons: some View {
         HStack(spacing: 4) {
             if glance?.isAsleep == true {
-                wordButton("Woke up", WokeUpIntent())
+                eyeButton("Woke up", WokeUpIntent()) { OpenEyeShape().frame(width: 17, height: 17) }
             } else {
-                wordButton("Fell asleep", FellAsleepIntent())
+                eyeButton("Fell asleep", FellAsleepIntent()) { ClosedEyeShape().frame(width: 17, height: 17) }
             }
             shapeButton(.wee) { DropShape().frame(width: 13, height: 13) }
             shapeButton(.poo) { PooShape().frame(width: 15, height: 15) }
@@ -122,25 +124,20 @@ struct CareWidgetView: View {
         }
     }
 
-    private func wordButton(_ title: String, _ intent: some AppIntent) -> some View {
+    private func eyeButton(_ title: String, _ intent: some AppIntent, @ViewBuilder _ shape: () -> some View) -> some View {
         Button(intent: intent) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity)
+            shape()
+                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
                 .background(.fill.secondary, in: Capsule())
         }
         .buttonStyle(.plain)
-        .layoutPriority(1)
         .accessibilityLabel(title)
     }
 
     private func shapeButton(_ kind: NappyChoice, @ViewBuilder _ shape: () -> some View) -> some View {
         Button(intent: NappyIntent(kind: kind)) {
             shape()
-                .frame(width: 30, height: 22)
+                .frame(maxWidth: .infinity, minHeight: 22, maxHeight: 22)
                 .background(.fill.secondary, in: Capsule())
         }
         .buttonStyle(.plain)

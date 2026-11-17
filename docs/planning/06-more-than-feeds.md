@@ -33,6 +33,7 @@ The parents asked on 17 Nov 2026 for the app to log more than feeds, so they can
 - **Settings:** Medicines, the shared list.
 
 Small changes from the mockups, found while building:
+- The widget's sleep button is an eye, not a word (the users' ask, 17 Nov 2026, after "Fell asleep" was cut short on the Duo): a closed eye logs Fell asleep, an open eye (shown while asleep) logs Woke up. All four buttons share the width. VoiceOver still says the words.
 - The widget's line gives the last nappy's clock time ("Asleep · nappy 10:45"), not "40m ago": iOS's own ticking words were too long for the line.
 - Control Center can show only Apple's symbols, and there is no poo symbol: Wee is a drop, Poo a circled P and Both a circled B (like the circled F and E on the milk buttons). Medicine uses the pills symbol. The Sleep switch says "Awake" when off.
 - Two colours were made deeper or brighter so they read (DESIGN.md, Decisions Log, 17 Nov 2026). Day sleep beside night sleep on the graph has its own lighter shade, `sleep-soft`.

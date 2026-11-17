@@ -250,7 +250,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
   - Breast: a half-moon (`circle.lefthalf.filled` / `circle.righthalf.filled`). The filled half is the side.
   - Bottle: a tall baby bottle, drawn as a SwiftUI `Shape`.
   - Pumping: two drops, drawn as a SwiftUI `Shape`.
-  - Sleep: a crescent moon. Wee: one drop. Poo: a soft swirl. Both: the drop and the swirl side by side. Medicine: a spoon. Growth: a line going up. All are SwiftUI `Shape`s in `Shared/FeedShapes.swift`.
+  - Sleep: a crescent moon. Wee: one drop. Poo: a soft swirl. Both: the drop and the swirl side by side. Medicine: a spoon. Growth: a line going up. On the Lock Screen's Sleep and nappy widget, Fell asleep is a closed eye and Woke up an open eye (the users' ask, 17 Nov 2026: the words didn't fit). All are SwiftUI `Shape`s in `Shared/FeedShapes.swift`.
   - The shape appears on every chip, row, button and chart key for that kind. A chip shows the shape and the number ("◐ 12m", "bottle 30 ml"), so letters such as "L" and "R" are not needed.
 - The ring: 11 pt stroke, round caps, `track` behind, `primary` for the time so far (or the breast colour during a feed, with the current side's half-moon in the middle).
 
