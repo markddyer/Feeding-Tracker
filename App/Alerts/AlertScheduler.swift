@@ -34,12 +34,15 @@ final class AlertScheduler {
 
     /// `latestFeedStarts` (each baby's latest feed start) keeps an alarm whose time has come until
     /// a newer feed is logged (`planAlertChanges`).
-    func apply(_ desired: [DesiredAlert], latestFeedStarts: [String: Date], now: Date, timeZone: TimeZone) async {
+    func apply(_ desired: [DesiredAlert], latestFeedStarts: [String: Date], now: Date, timeZone: TimeZone,
+               keepExisting: Bool = false) async {
         lastError = nil
         // The plan: reschedule everything after an iOS update, as alarms have gone missing then.
+        // Not while waiting for iCloud (`keepExisting`): what is known may be missing a feed. The
+        // marker stays unset, so the first plan after the wait does it.
         let os = ProcessInfo.processInfo.operatingSystemVersionString
         var remembered = scheduledAlarms
-        if defaults.string(forKey: "alarmsScheduledOnOS") != os {
+        if !keepExisting, defaults.string(forKey: "alarmsScheduledOnOS") != os {
             for alarm in remembered { try? AlarmManager.shared.cancel(id: alarm.alarmID) }
             remembered = []
             defaults.set(os, forKey: "alarmsScheduledOnOS")
@@ -59,7 +62,7 @@ final class AlertScheduler {
         }
 
         let changes = planAlertChanges(desired: wanted, scheduledAlarms: remembered, pendingNotifications: pending,
-                                       now: now, latestFeedStarts: latestFeedStarts)
+                                       now: now, latestFeedStarts: latestFeedStarts, keepExisting: keepExisting)
         var after = changes.alarmsAfter
 
         // New alarms first, then cancel the old ones: never a moment with neither.

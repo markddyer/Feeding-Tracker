@@ -100,7 +100,10 @@ final class Reconciler {
             let latest = Dictionary(uniqueKeysWithValues: babies.compactMap { baby in
                 events.latestFeedStart(babyID: baby, now: now).map { (baby, $0) }
             })
-            await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone)
+            // While the file is being filled again from iCloud, no alert already set is cancelled
+            // (CEO review D18).
+            await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone,
+                                  keepExisting: store.data.isWaitingForICloud(now: now))
             alerts = desired
             lastRunAt = Date()
         } while runAgain

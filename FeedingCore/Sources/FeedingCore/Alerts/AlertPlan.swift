@@ -59,12 +59,20 @@ public func notificationIdentifier(for alert: DesiredAlert) -> String { "alert.\
 /// (it may be ringing, or iOS may deliver it late) for as long as no newer feed has been logged:
 /// `latestFeedStarts` holds each baby's latest feed start. So a nappy, a sleep or any other change
 /// never stops it; a feed does (Codex review, 17 Nov 2026).
+///
+/// `keepExisting` is for a phone still filling its data again after its file couldn't be read
+/// (`HouseholdData.isWaitingForICloud`, CEO review D18). Its plan is made as usual: data missing a
+/// feed only ever gives earlier alerts, never later ones. But an alarm or notification it no
+/// longer wants isn't cancelled, as the feed it was set for may simply not be back yet; it goes
+/// once its time is `soundingAlarmKept` past, or when a wanted alarm rings in the same minute
+/// (two alarms in one minute may both stay silent, `separatingAlarmMinutes`).
 public func planAlertChanges(
     desired: [DesiredAlert],
     scheduledAlarms: [ScheduledAlarm],
     pendingNotifications: [String: Date],
     now: Date = .distantPast,
     latestFeedStarts: [String: Date] = [:],
+    keepExisting: Bool = false,
     newID: () -> UUID = UUID.init
 ) -> AlertChanges {
     var schedule: [AlertChanges.NewAlarm] = []
@@ -87,12 +95,16 @@ public func planAlertChanges(
     }
     let keptIDs = Set(after.map(\.alarmID))
     let replacedKeys = Set(desiredAlarms.map(\.key))
+    let wantedMinutes = Set(after.map { alarmMinute($0.fireDate) })
     for alarm in scheduledAlarms where !keptIDs.contains(alarm.alarmID) {
-        if !replacedKeys.contains(alarm.key), stillSounding(alarm, now: now, latestFeedStarts: latestFeedStarts) {
-            after.append(alarm)
+        let stays = if replacedKeys.contains(alarm.key) {
+            false // a new alarm for the same alert replaces it
+        } else if keepExisting {
+            now.timeIntervalSince(alarm.fireDate) < soundingAlarmKept && !wantedMinutes.contains(alarmMinute(alarm.fireDate))
         } else {
-            cancel.append(alarm.alarmID)
+            stillSounding(alarm, now: now, latestFeedStarts: latestFeedStarts)
         }
+        if stays { after.append(alarm) } else { cancel.append(alarm.alarmID) }
     }
 
     let notifications = desired.filter { $0.mechanism == .notification }
@@ -101,11 +113,15 @@ public func planAlertChanges(
         guard let pending = pendingNotifications[notificationIdentifier(for: alert)] else { return true }
         return abs(pending.timeIntervalSince(alert.fireDate)) >= 1
     }
-    let remove = pendingNotifications.keys.filter { $0.hasPrefix("alert.") && !wanted.contains($0) }.sorted()
+    let remove = keepExisting ? []
+        : pendingNotifications.keys.filter { $0.hasPrefix("alert.") && !wanted.contains($0) }.sorted()
 
     return AlertChanges(alarmsToSchedule: schedule, alarmsToCancel: cancel, notificationsToAdd: add,
                         notificationsToRemove: remove, alarmsAfter: after)
 }
+
+/// The minute an alarm goes off in, as `separatingAlarmMinutes` counts it.
+func alarmMinute(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 60).rounded(.down)) }
 
 /// An alarm whose time has come, set for the feed that is still the latest, within the last
 /// `soundingAlarmKept`: it may be ringing now, so it stays.

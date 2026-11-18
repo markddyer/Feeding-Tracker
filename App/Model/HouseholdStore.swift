@@ -30,16 +30,23 @@ final class HouseholdStore {
         do {
             if let loaded = try HouseholdFile.load(from: fileURL) {
                 data = loaded
+                // Step 0 (CEO review D18): what a newer build wrote and this one can't read is kept.
+                let kept = loaded.keptEvents.count + loaded.keptPlainRecords.count + loaded.keptParts.count
+                if kept > 0 { SyncLog.add("file: kept \(kept) entries this build can't read") }
             }
         } catch HouseholdFile.LoadError.newerFormat {
             problem = "A newer version of the app saved this phone's data. Update the app to use it."
             canSave = false
+            data.waitingForICloudSince = Date()
         } catch {
             // Keep the unreadable file for a look later, start empty, and let iCloud fill it again.
             let aside = fileURL.deletingLastPathComponent()
                 .appendingPathComponent("household-unreadable-\(Int(Date().timeIntervalSince1970)).json")
             try? FileManager.default.moveItem(at: fileURL, to: aside)
             problem = "This phone's saved data couldn't be read. It will come back from iCloud."
+            // Until it has (a day at most), no alert already set is cancelled (CEO review D18).
+            data.waitingForICloudSince = Date()
+            save()
         }
     }
 

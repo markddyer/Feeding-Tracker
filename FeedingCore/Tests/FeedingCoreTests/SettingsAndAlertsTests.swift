@@ -185,6 +185,70 @@ struct AlertPlanTests {
     }
 }
 
+/// While a phone fills its data again after its file couldn't be read, what it knows may be
+/// missing feeds: its plan is made as usual, but no alert it no longer wants is cancelled until its
+/// time is long past (CEO review D18; Codex review of step 0, 18 Nov 2026).
+@Suite("Alerts while waiting for iCloud")
+struct WaitingForICloudAlertTests {
+    let lastFeed = at(2026, 11, 14, 10, 0)
+    let now = at(2026, 11, 14, 12, 0)
+
+    func alert(_ purpose: DesiredAlert.Purpose, _ mechanism: DesiredAlert.Mechanism, at hour: Int, _ minute: Int = 0) -> DesiredAlert {
+        DesiredAlert(babyID: baby, purpose: purpose, mechanism: mechanism, fireDate: at(2026, 11, 14, hour, minute), lastFeedStart: lastFeed)
+    }
+
+    let set = ScheduledAlarm(key: "baby-1.windowCloses.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 14))
+
+    /// Only a nappy came back so far: no feed alerts are wanted yet, and none is cancelled.
+    @Test func nothingWantedYetCancelsNothing() {
+        let pending = ["alert.baby-1.backup.notification": at(2026, 11, 14, 14, 30)]
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [set], pendingNotifications: pending,
+                                       now: now, keepExisting: true)
+        #expect(changes.alarmsToCancel.isEmpty)
+        #expect(changes.notificationsToRemove.isEmpty)
+        #expect(changes.alarmsAfter == [set])
+    }
+
+    /// An old alarm for the same alert never stops the new one being set, even after it has rung.
+    @Test func aNewAlarmForTheSameAlertIsAlwaysSet() {
+        let rung = ScheduledAlarm(key: "baby-1.windowCloses.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 11))
+        let changes = planAlertChanges(desired: [alert(.windowCloses, .alarm, at: 16)], scheduledAlarms: [rung],
+                                       pendingNotifications: [:], now: now, keepExisting: true)
+        #expect(changes.alarmsToSchedule.map(\.alert.fireDate) == [at(2026, 11, 14, 16)])
+        #expect(changes.alarmsAfter.map(\.fireDate) == [at(2026, 11, 14, 16)])
+    }
+
+    @Test func anAlarmLongPastGoesEvenWhileWaiting() {
+        let old = ScheduledAlarm(key: "baby-1.backup.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 5))
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [old], pendingNotifications: [:],
+                                       now: now, keepExisting: true)
+        #expect(changes.alarmsToCancel == [old.alarmID])
+    }
+
+    /// Two alarms in one minute may both stay silent: a kept one goes when a wanted one rings then.
+    @Test func aKeptAlarmInTheSameMinuteAsAWantedOneGoes() {
+        let other = ScheduledAlarm(key: "baby-1.backup.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 14, 0))
+        let changes = planAlertChanges(desired: [alert(.windowCloses, .alarm, at: 14)], scheduledAlarms: [other],
+                                       pendingNotifications: [:], now: now, keepExisting: true)
+        #expect(changes.alarmsToCancel == [other.alarmID])
+        #expect(changes.alarmsAfter.map(\.key) == ["baby-1.windowCloses.alarm"])
+    }
+
+    /// Once iCloud has sent the household back, the next plan tidies up.
+    @Test func afterwardsAnUnwantedAlarmGoes() {
+        let waiting = planAlertChanges(desired: [], scheduledAlarms: [set], pendingNotifications: [:],
+                                       now: now, keepExisting: true)
+        let after = planAlertChanges(desired: [], scheduledAlarms: waiting.alarmsAfter, pendingNotifications: [:], now: now)
+        #expect(after.alarmsToCancel == [set.alarmID])
+    }
+
+    /// Undoing the only feed on a healthy phone (not waiting) still takes its alarm away.
+    @Test func aHealthyPhoneStillCancels() {
+        let changes = planAlertChanges(desired: [], scheduledAlarms: [set], pendingNotifications: [:], now: now)
+        #expect(changes.alarmsToCancel == [set.alarmID])
+    }
+}
+
 /// An alarm whose time has come may be ringing: only a newer feed stops it, never a nappy, a
 /// sleep or any other change (Codex review, 17 Nov 2026).
 @Suite("An alarm whose time has come")

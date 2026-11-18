@@ -55,6 +55,10 @@ final class HouseholdSync {
     @ObservationIgnored private var sendProblem: String?
     @ObservationIgnored private var undoWindowTask: Task<Void, Never>?
     @ObservationIgnored private var inviteDelegate: InviteSheetDelegate?
+    /// The owner's iCloud name from an invite being accepted, until the role is known.
+    @ObservationIgnored private var joiningOwner: String?
+    /// The owner names of every photos zone the databases have reported, kept on this phone.
+    @ObservationIgnored private var photosZoneOwners: Set<String> = []
 
     init(store: HouseholdStore) {
         self.store = store
@@ -66,6 +70,7 @@ final class HouseholdSync {
         if let owner = defaults.string(forKey: "householdOwner") {
             role = owner == CKCurrentUserDefaultName ? .owner : .member(ownerName: owner)
         }
+        photosZoneOwners = Set(defaults.stringArray(forKey: "photosZoneOwners") ?? [])
     }
 
     var isStarted: Bool { privateEngine != nil }
@@ -193,9 +198,12 @@ final class HouseholdSync {
     /// Parent B: accepts an invite, from the link or pasted in.
     func accept(_ metadata: CKShare.Metadata) async {
         guard isStarted, let sharedEngine else { return }
+        // The role is learnt from the join fetch, so the owner's name comes from the invite.
+        joiningOwner = metadata.share.recordID.zoneID.ownerName
         do {
             _ = try await container.accept(metadata)
-            try await Self.outsideCallbacks { try await sharedEngine.fetchChanges() }
+            let options = fetchOptions(for: .shared)
+            try await Self.outsideCallbacks { try await sharedEngine.fetchChanges(options) }
         } catch {
             errorDetail = Self.detail(error, doing: "join")
             problem = "Couldn't join the household: \(error.localizedDescription)"
@@ -320,12 +328,21 @@ final class HouseholdSync {
             return
         }
         blocked.removeAll()
-        let engines = [privateEngine, sharedEngine].compactMap { $0 }
+        let engines: [(CKSyncEngine, CKDatabase.Scope)] = [(privateEngine, .private), (sharedEngine, .shared)]
+            .compactMap { engine, scope in engine.map { ($0, scope) } }
         do {
-            for engine in engines {
-                try await Self.outsideCallbacks { try await engine.fetchChanges() }
+            for (engine, scope) in engines {
+                let options = fetchOptions(for: scope)
+                try await Self.outsideCallbacks { try await engine.fetchChanges(options) }
             }
             lastFetchAt = Date()
+            if store.data.waitingForICloudSince != nil, !store.data.events.isEmpty {
+                // Every engine has fetched, and the household's entries are back: the alerts are
+                // planned normally again (CEO review D18). An empty fetch (a share that has gone)
+                // leaves the phone waiting, for a day at most.
+                store.applySync { $0.waitingForICloudSince = nil }
+                SyncLog.add("file: filled again from iCloud")
+            }
             if problem == Self.notSignedIn || problem == Self.offline { problem = nil }
         } catch {
             SyncLog.add("fetch: threw \(String(reflecting: error))")
@@ -386,6 +403,11 @@ final class HouseholdSync {
             await refreshAccount()
 
         case .fetchedDatabaseChanges(let changes):
+            let photosOwners = changes.modifications.map(\.zoneID).filter { $0.zoneName == AppConfig.photosZoneName }.map(\.ownerName)
+            if !photosOwners.isEmpty, !photosZoneOwners.isSuperset(of: photosOwners) {
+                photosZoneOwners.formUnion(photosOwners)
+                defaults.set(photosZoneOwners.sorted(), forKey: "photosZoneOwners")
+            }
             for modification in changes.modifications where modification.zoneID.zoneName == Self.zoneName {
                 setRole(scope == .private ? .owner : .member(ownerName: modification.zoneID.ownerName))
             }
@@ -409,6 +431,9 @@ final class HouseholdSync {
                     } else if let type = PlainRecordType(rawValue: deletion.recordType) {
                         let name = RecordMapping.localName(cloudName: deletion.recordID.recordName, type: type)
                         data.removePlainRecord("\(type.rawValue)/\(name)")
+                    } else {
+                        // A kind of record a newer build wrote: its kept copy goes too (step 0).
+                        data.removePlainRecord("\(deletion.recordType)/\(deletion.recordID.recordName)")
                     }
                 }
             }
@@ -499,6 +524,59 @@ final class HouseholdSync {
         }
     }
 
+    // MARK: What a fetch leaves out
+
+    /// The options for the fetches this class starts: a push or coming to the foreground
+    /// (`fetchNow`) and joining (`accept`). The engines' own fetches go through
+    /// `fetchScope(restricting:for:)`. So no fetch, including one added later, includes the photos
+    /// zone (eng D8, OE1a, 18 Nov 2026).
+    func fetchOptions(for scope: CKDatabase.Scope) -> CKSyncEngine.FetchChangesOptions {
+        CKSyncEngine.FetchChangesOptions(scope: fetchScope(restricting: .all, for: scope))
+    }
+
+    /// `given` with the photos zones left out, for the engine of `scope`.
+    func fetchScope(restricting given: CKSyncEngine.FetchChangesOptions.Scope,
+                    for scope: CKDatabase.Scope) -> CKSyncEngine.FetchChangesOptions.Scope {
+        Self.restricted(given, leavingOut: Self.photosZoneIDs(for: scope, role: role, joiningOwner: joiningOwner,
+                                                              knownOwners: photosZoneOwners))
+    }
+
+    /// The photos zones a fetch by the engine of `scope` leaves out, by full ID: the owner's own
+    /// (private database), and the one under the household owner's name (shared database), as
+    /// `writeTarget` names the household zone. The owner's name comes from the role, from the
+    /// invite while joining, and from every photos zone this phone has been told about, so the
+    /// zone stays out even if the role is lost. It changes nothing until the journal makes a
+    /// photos zone.
+    static func photosZoneIDs(for scope: CKDatabase.Scope, role: Role, joiningOwner: String? = nil,
+                              knownOwners: Set<String> = []) -> [CKRecordZone.ID] {
+        var owners = knownOwners
+        switch scope {
+        case .private:
+            owners.insert(CKCurrentUserDefaultName)
+        case .shared:
+            if case .member(let name) = role { owners.insert(name) }
+            if let joiningOwner { owners.insert(joiningOwner) }
+        default:
+            break
+        }
+        return owners.sorted().map { CKRecordZone.ID(zoneName: AppConfig.photosZoneName, ownerName: $0) }
+    }
+
+    /// `scope` with `photos` left out. An explicit fetch's own exclusions are kept.
+    static func restricted(_ scope: CKSyncEngine.FetchChangesOptions.Scope,
+                           leavingOut photos: [CKRecordZone.ID]) -> CKSyncEngine.FetchChangesOptions.Scope {
+        switch scope {
+        case .all:
+            return .allExcluding(photos)
+        case .allExcluding(let excluded):
+            return .allExcluding(excluded + photos.filter { !excluded.contains($0) })
+        case .zoneIDs(let zones):
+            return .zoneIDs(zones.filter { !photos.contains($0) })
+        @unknown default:
+            return .allExcluding(photos)
+        }
+    }
+
     // MARK: Helpers
 
     private static func key(_ scope: CKDatabase.Scope) -> String { scope == .private ? "private" : "shared" }
@@ -526,6 +604,13 @@ final class SyncEngineDelegate: CKSyncEngineDelegate {
 
     func handleEvent(_ event: CKSyncEngine.Event, syncEngine: CKSyncEngine) async {
         await AppModel.shared.sync.handle(event, scope: scope)
+    }
+
+    /// Every fetch, the automatic ones too, leaves out the photos zone (eng D8).
+    func nextFetchChangesOptions(_ context: CKSyncEngine.FetchChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.FetchChangesOptions {
+        var options = context.options
+        options.scope = await AppModel.shared.sync.fetchScope(restricting: context.options.scope, for: scope)
+        return options
     }
 
     func nextRecordZoneChangeBatch(_ context: CKSyncEngine.SendChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.RecordZoneChangeBatch? {

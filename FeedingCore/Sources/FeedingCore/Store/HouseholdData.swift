@@ -19,8 +19,40 @@ public struct StoredEvent: Hashable, Sendable, Codable {
     /// Goes up with every change on this phone, so an upload that was sent before a later change
     /// doesn't mark that change as sent.
     public var localRevision: Int
+    /// Changed fields a newer build named that this build doesn't know (step 0, CEO review D18).
+    /// They are kept for the newer build and cleared when the change is sent or replaced.
+    public var keptChangedFields: Set<String> = []
 
     public var snapshot: EventSnapshot { EventSnapshot(event: event) }
+}
+
+extension StoredEvent {
+    private enum CodingKeys: String, CodingKey {
+        case event, changedFields, needsUpload, uploadNotBefore, systemFields, localRevision
+    }
+
+    /// Reads the changed fields by name, so one this build doesn't know is kept, not fatal.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        event = try container.decode(Event.self, forKey: .event)
+        let names = try container.decode([String].self, forKey: .changedFields)
+        changedFields = Set(names.compactMap(EventField.init(rawValue:)))
+        keptChangedFields = Set(names.filter { EventField(rawValue: $0) == nil })
+        needsUpload = try container.decode(Bool.self, forKey: .needsUpload)
+        uploadNotBefore = try container.decodeIfPresent(Date.self, forKey: .uploadNotBefore)
+        systemFields = try container.decodeIfPresent(Data.self, forKey: .systemFields)
+        localRevision = try container.decode(Int.self, forKey: .localRevision)
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(event, forKey: .event)
+        try container.encode((changedFields.map(\.rawValue) + keptChangedFields).sorted(), forKey: .changedFields)
+        try container.encode(needsUpload, forKey: .needsUpload)
+        try container.encodeIfPresent(uploadNotBefore, forKey: .uploadNotBefore)
+        try container.encodeIfPresent(systemFields, forKey: .systemFields)
+        try container.encode(localRevision, forKey: .localRevision)
+    }
 }
 
 /// Baby, Member and Setting records. They change as a whole: the later change wins.
@@ -77,6 +109,14 @@ public enum ReceiveOutcome: Hashable, Sendable {
     case keptNewerVersion(dropped: Set<EventField>)
 }
 
+/// Everything one phone holds about the household.
+///
+/// **Rule for later versions (step 0, CEO review D18):** an older build skips and keeps what it
+/// doesn't know: a new part of the file, a new kind of record, an entry it can't read, and a new
+/// `EventField` name. So add new things that way. Raise `currentFormat` only for a change an older
+/// build must not read at all; such a file is never written over, and the older build waits for
+/// iCloud before it cancels any alert (`isWaitingForICloud`). Never change the type of a field an
+/// older build already reads: its whole entry would be skipped.
 public struct HouseholdData: Hashable, Sendable, Codable {
     public static let currentFormat = 1
     /// How long a new event waits before it is sent, so Undo can take it back quietly.
@@ -87,15 +127,39 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     public var plainRecords: [String: StoredPlainRecord]
     /// The sync engines' saved state, by database ("private", "shared"). Opaque here.
     public var syncState: [String: Data]
+    /// Events, plain records and parts of the file that a newer build wrote and this build can't
+    /// read, by their key in the file. Kept as they were and written back (step 0, CEO review D18).
+    public private(set) var keptEvents: [String: KeptJSON]
+    public private(set) var keptPlainRecords: [String: KeptJSON]
+    public private(set) var keptParts: [String: KeptJSON]
+    /// When this phone's file couldn't be read (moved aside, or written by a newer build). Until
+    /// iCloud has sent the household back, or for a day at most, what the phone knows may be
+    /// missing feeds, so no alert already set is cancelled (CEO review D18, `planAlertChanges`).
+    public var waitingForICloudSince: Date?
 
     public init() {
         format = Self.currentFormat
         events = [:]
         plainRecords = [:]
         syncState = [:]
+        keptEvents = [:]
+        keptPlainRecords = [:]
+        keptParts = [:]
+        waitingForICloudSince = nil
     }
 
+    /// The longest a phone waits for iCloud before planning alerts from what it holds: every alert
+    /// set from the lost data belongs to a feed window, which is long past by then. It also ends the
+    /// wait on a phone with no iCloud, or with sync off.
+    public static let longestWaitForICloud: TimeInterval = 24 * 3600
+
     // MARK: Reading
+
+    /// See `waitingForICloudSince`. A clock set back keeps the phone waiting, never the reverse.
+    public func isWaitingForICloud(now: Date) -> Bool {
+        guard let since = waitingForICloudSince else { return false }
+        return now.timeIntervalSince(since) < Self.longestWaitForICloud
+    }
 
     public var snapshots: [EventSnapshot] { events.values.map(\.snapshot) }
 
@@ -259,6 +323,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         stored.event.serverCreatedAt = stored.event.serverCreatedAt ?? serverCreatedAt
         if stored.localRevision == sentRevision {
             stored.changedFields = []
+            stored.keptChangedFields = []
             stored.needsUpload = false
         }
         events[id] = stored
@@ -278,6 +343,10 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// by field, and sent again on top of iCloud's version.
     @discardableResult
     public mutating func receiveEvent(_ server: Event, systemFields: Data) -> ReceiveOutcome {
+        // This build can read iCloud's copy, so a kept, unreadable entry for it is no longer needed.
+        // A newer build's change in it that was never sent is lost: this build can't send or merge
+        // it, and iCloud's copy (with any feed in it, for the alerts) is the one it can use.
+        keptEvents[server.id] = nil
         guard var stored = events[server.id], stored.needsUpload, !stored.changedFields.isEmpty else {
             let revision = events[server.id]?.localRevision ?? 0
             events[server.id] = StoredEvent(event: server, changedFields: [], needsUpload: false, uploadNotBefore: nil,
@@ -287,6 +356,8 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         let result = merge(local: stored.snapshot, server: EventSnapshot(event: server), changedLocally: stored.changedFields)
         stored.systemFields = systemFields
         stored.localRevision += 1
+        // Fields this build can't name can't be merged: iCloud's copy decides them.
+        stored.keptChangedFields = []
         if result.keptServerCopyUnread {
             stored.event = server
             stored.changedFields = []
@@ -306,6 +377,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// A copy of a plain record came from iCloud. A waiting local change that is newer stays and is
     /// sent again on top of iCloud's version; otherwise iCloud's copy is taken.
     public mutating func receivePlainRecord(_ server: PlainRecord, systemFields: Data) {
+        keptPlainRecords[server.key] = nil
         if var stored = plainRecords[server.key], stored.needsUpload, stored.record.modifiedAt > server.modifiedAt {
             stored.systemFields = systemFields
             stored.localRevision += 1
@@ -318,9 +390,15 @@ public struct HouseholdData: Hashable, Sendable, Codable {
 
     /// iCloud no longer has the record. Deletes are soft, so this happens only when the record is
     /// really gone; the local copy goes too.
-    public mutating func removeEvent(_ id: String) { events[id] = nil }
+    public mutating func removeEvent(_ id: String) {
+        events[id] = nil
+        keptEvents[id] = nil
+    }
 
-    public mutating func removePlainRecord(_ key: String) { plainRecords[key] = nil }
+    public mutating func removePlainRecord(_ key: String) {
+        plainRecords[key] = nil
+        keptPlainRecords[key] = nil
+    }
 
     // MARK: Helpers
 
@@ -333,6 +411,61 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         guard let last = feed.breast.indices.last, feed.breast[last].durationSeconds == nil,
               let started = feed.breast[last].startedAt else { return }
         feed.breast[last].durationSeconds = max(0, Int(now.timeIntervalSince(started).rounded()))
+    }
+}
+
+// MARK: Reading a file a newer build wrote
+
+extension HouseholdData {
+    private static let knownParts: Set<String> = ["format", "events", "plainRecords", "syncState", "waitingForICloudSince"]
+
+    /// Reads every entry it can. An entry it can't read, and a part of the file it doesn't know, is
+    /// kept as it was (step 0, CEO review D18). A file that isn't JSON at all still throws.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: AnyCodingKey.self)
+        format = try container.decode(Int.self, forKey: AnyCodingKey("format"))
+        syncState = try container.decode([String: Data].self, forKey: AnyCodingKey("syncState"))
+        waitingForICloudSince = try container.decodeIfPresent(Date.self, forKey: AnyCodingKey("waitingForICloudSince"))
+        (events, keptEvents) = Self.split(try container.decode([String: Lenient<StoredEvent>].self,
+                                                               forKey: AnyCodingKey("events")))
+        (plainRecords, keptPlainRecords) = Self.split(try container.decode([String: Lenient<StoredPlainRecord>].self,
+                                                                           forKey: AnyCodingKey("plainRecords")))
+        var parts: [String: KeptJSON] = [:]
+        for key in container.allKeys where !Self.knownParts.contains(key.stringValue) {
+            parts[key.stringValue] = try container.decode(KeptJSON.self, forKey: key)
+        }
+        keptParts = parts
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.container(keyedBy: AnyCodingKey.self)
+        for (name, part) in keptParts where !Self.knownParts.contains(name) {
+            try container.encode(part, forKey: AnyCodingKey(name))
+        }
+        try container.encode(format, forKey: AnyCodingKey("format"))
+        try container.encode(syncState, forKey: AnyCodingKey("syncState"))
+        try container.encodeIfPresent(waitingForICloudSince, forKey: AnyCodingKey("waitingForICloudSince"))
+        try container.encode(Self.joined(events, keptEvents), forKey: AnyCodingKey("events"))
+        try container.encode(Self.joined(plainRecords, keptPlainRecords), forKey: AnyCodingKey("plainRecords"))
+    }
+
+    private static func split<Value>(_ entries: [String: Lenient<Value>]) -> ([String: Value], [String: KeptJSON]) {
+        var read: [String: Value] = [:]
+        var kept: [String: KeptJSON] = [:]
+        for (key, entry) in entries {
+            switch entry {
+            case .read(let value): read[key] = value
+            case .kept(let json): kept[key] = json
+            }
+        }
+        return (read, kept)
+    }
+
+    /// The entries to write: every one this build reads, and every kept one it doesn't also hold.
+    private static func joined<Value>(_ read: [String: Value], _ kept: [String: KeptJSON]) -> [String: Lenient<Value>] {
+        var all = kept.filter { read[$0.key] == nil }.mapValues { Lenient<Value>.kept($0) }
+        for (key, value) in read { all[key] = .read(value) }
+        return all
     }
 }
 

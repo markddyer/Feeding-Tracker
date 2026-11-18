@@ -256,6 +256,187 @@ struct HouseholdFileTests {
     }
 }
 
+/// Step 0 of the milestones journal (CEO review D18): a phone put back on an older build reads the
+/// file a newer build wrote, skips what it doesn't know, keeps it for the newer build, and keeps its
+/// feeds, so its alarms are planned as before.
+@Suite("A file from a newer build")
+struct NewerBuildFileTests {
+    let t0 = at(2026, 11, 18, 10, 0)
+
+    /// A file as a newer build might write it: an unknown field name on a feed's waiting change, an
+    /// event of an unknown kind, an entry in a shape this build can't read, a record type it
+    /// doesn't know, and a new part of the file.
+    func newerFile() throws -> Data {
+        var data = HouseholdData()
+        data.startFeed(id: "f1", babyID: baby, side: .left, by: parentA, timeZoneID: "Europe/London", now: t0)
+        data.add(id: "m1", kind: "milestone", babyID: baby, startedAt: t0, payload: EventPayload(),
+                 by: parentA, timeZoneID: "Europe/London", now: t0)
+        data.put(PlainRecord(type: .baby, name: baby, modifiedAt: t0, payload: try PayloadCoder.encode(BabyPayload(name: "Baby"))))
+        var file = try #require(try JSONSerialization.jsonObject(with: Self.encode(data)) as? [String: Any])
+        var events = try #require(file["events"] as? [String: Any])
+        var feed = try #require(events["f1"] as? [String: Any])
+        feed["changedFields"] = ((feed["changedFields"] as? [String]) ?? []) + ["milestoneTitle"]
+        events["f1"] = feed
+        var milestone = try #require(events["m1"] as? [String: Any])
+        milestone["changedFields"] = ["title", "startedAt"]
+        events["m1"] = milestone
+        events["x1"] = ["event": ["id": "x1", "startedAt": "soon"], "localRevision": 2, "at": 1_794_650_000_123.5]
+        file["events"] = events
+        var records = try #require(file["plainRecords"] as? [String: Any])
+        records["Tally/photos"] = ["record": ["type": "Tally", "name": "photos", "modifiedAt": 1_794_650_000_000],
+                                   "needsUpload": true, "localRevision": 1]
+        file["plainRecords"] = records
+        file["mediaQueue"] = ["items": ["a", "b"], "paused": false, "count": 2]
+        return try JSONSerialization.data(withJSONObject: file)
+    }
+
+    static func encode(_ data: HouseholdData) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        return try encoder.encode(data)
+    }
+
+    func load(_ bytes: Data) throws -> HouseholdData {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("household-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try bytes.write(to: url)
+        return try #require(try HouseholdFile.load(from: url))
+    }
+
+    @Test func itReadsWhatItKnowsAndKeepsTheRest() throws {
+        let data = try load(try newerFile())
+        let feed = try #require(data.events["f1"])
+        #expect(feed.event.isLiveFeed)
+        #expect(feed.changedFields == EventField.fields(for: .feed))
+        #expect(feed.keptChangedFields == ["milestoneTitle"])
+        let milestone = try #require(data.events["m1"])
+        #expect(milestone.event.kind == "milestone")
+        #expect(milestone.changedFields == [.startedAt])
+        #expect(milestone.keptChangedFields == ["title"])
+        #expect(Set(data.keptEvents.keys) == ["x1"])
+        #expect(data.plainRecord(.baby, baby) != nil)
+        #expect(Set(data.keptPlainRecords.keys) == ["Tally/photos"])
+        #expect(Set(data.keptParts.keys) == ["mediaQueue"])
+    }
+
+    @Test func itsFeedsStillPlanTheAlarms() throws {
+        let data = try load(try newerFile())
+        #expect(!data.isWaitingForICloud(now: t0))
+        #expect(data.allEvents.latestFeedStart(babyID: baby, now: t0.addingTimeInterval(60)) == t0)
+    }
+
+    @Test func savingWritesTheKeptPartsBackUnchanged() throws {
+        let original = try newerFile()
+        let data = try load(original)
+        let again = try load(try Self.encode(data))
+        #expect(again == data)
+        let before = try #require(try JSONSerialization.jsonObject(with: original) as? NSDictionary)
+        let after = try #require(try JSONSerialization.jsonObject(with: Self.encode(data)) as? NSDictionary)
+        #expect(after["mediaQueue"] as? NSDictionary == before["mediaQueue"] as? NSDictionary)
+        let keptBefore = (before["events"] as? NSDictionary)?["x1"] as? NSDictionary
+        #expect(keptBefore != nil)
+        #expect((after["events"] as? NSDictionary)?["x1"] as? NSDictionary == keptBefore)
+        #expect((after["plainRecords"] as? NSDictionary)?["Tally/photos"] as? NSDictionary
+            == (before["plainRecords"] as? NSDictionary)?["Tally/photos"] as? NSDictionary)
+        let names = ((after["events"] as? NSDictionary)?["f1"] as? NSDictionary)?["changedFields"] as? [String]
+        #expect(names?.contains("milestoneTitle") == true)
+    }
+
+    @Test func unknownChangedFieldsGoOnceTheChangeIsSent() throws {
+        var data = try load(try newerFile())
+        let revision = try #require(data.events["f1"]?.localRevision)
+        data.didUploadEvent("f1", sentRevision: revision, systemFields: Data([1]), serverCreatedAt: t0)
+        #expect(data.events["f1"]?.keptChangedFields == [])
+        #expect(data.events["f1"]?.needsUpload == false)
+    }
+
+    @Test func aReadableCopyFromICloudReplacesAKeptEntry() throws {
+        var data = try load(try newerFile())
+        let server = Event(id: "x1", babyID: baby, kind: .feed, startedAt: t0, timeZoneID: "Europe/London",
+                           loggedBy: parentB, createdAt: t0, modifiedAt: t0)
+        data.receiveEvent(server, systemFields: Data([2]))
+        #expect(data.keptEvents["x1"] == nil)
+        #expect(data.events["x1"]?.event == server)
+    }
+
+    @Test func iCloudRemovingARecordRemovesItsKeptEntry() throws {
+        var data = try load(try newerFile())
+        data.removeEvent("x1")
+        data.removePlainRecord("Tally/photos")
+        #expect(data.keptEvents.isEmpty)
+        #expect(data.keptPlainRecords.isEmpty)
+    }
+
+    /// A phone whose file couldn't be read waits for iCloud before it cancels any alert, for a day
+    /// at most; the time is saved, so a restart before iCloud answers still waits. A file that isn't
+    /// waiting doesn't mention it, so it reads exactly as before.
+    @Test func waitingForICloudIsSavedOnlyWhenSet() throws {
+        var data = HouseholdData()
+        #expect(!data.isWaitingForICloud(now: t0))
+        let plain = try #require(try JSONSerialization.jsonObject(with: Self.encode(data)) as? [String: Any])
+        #expect(plain["waitingForICloudSince"] == nil)
+        data.waitingForICloudSince = t0
+        let again = try load(try Self.encode(data))
+        #expect(again.waitingForICloudSince == t0)
+        #expect(again.keptParts.isEmpty)
+    }
+
+    @Test func theWaitLastsADayAtMost() {
+        var data = HouseholdData()
+        data.waitingForICloudSince = t0
+        #expect(data.isWaitingForICloud(now: t0.addingTimeInterval(.minutes(10))))
+        #expect(data.isWaitingForICloud(now: t0.addingTimeInterval(23.9 * 3600)))
+        #expect(!data.isWaitingForICloud(now: t0.addingTimeInterval(24 * 3600)))
+        // A clock set back keeps the phone waiting.
+        #expect(data.isWaitingForICloud(now: t0.addingTimeInterval(-3 * 3600)))
+    }
+
+    @Test func aPreciseFractionIsKeptExactly() throws {
+        let text = #"{"format":1,"syncState":{},"events":{},"plainRecords":{},"rate":0.1,"precise":1.2345678901234567890123}"#
+        let data = try load(Data(text.utf8))
+        let written = String(decoding: try Self.encode(data), as: UTF8.self)
+        #expect(written.contains(#""precise":1.2345678901234567890123"#))
+        #expect(written.contains(#""rate":0.1"#))
+    }
+
+    @Test func aHugeWholeNumberIsKeptExactly() throws {
+        var file = try #require(try JSONSerialization.jsonObject(with: try newerFile()) as? [String: Any])
+        file["counter"] = UInt64.max
+        let data = try load(try JSONSerialization.data(withJSONObject: file))
+        #expect(data.keptParts["counter"] == .unsigned(.max))
+    }
+
+    @Test func aFileFromThisBuildHasNothingKept() throws {
+        var data = HouseholdData()
+        data.startFeed(id: "f1", babyID: baby, side: .right, by: parentA, timeZoneID: "Europe/London", now: t0)
+        let again = try load(try Self.encode(data))
+        #expect(again == data)
+        #expect(again.keptEvents.isEmpty && again.keptPlainRecords.isEmpty && again.keptParts.isEmpty)
+        #expect(again.events["f1"]?.keptChangedFields == [])
+    }
+}
+
+/// eng D6, part 2 (18 Nov 2026): today's deletes are sent at once. The journal holds only a
+/// milestone delete for its Undo window; this keeps every other kind as it is.
+@Suite("Deletes are sent at once")
+struct DeleteUploadTests {
+    let t0 = at(2026, 11, 18, 10, 0)
+
+    @Test(arguments: [EventKind.feed, .sleep, .nappy, .growth, .medicine])
+    func aDeleteIsReadyToSendAtOnce(kind: EventKind) throws {
+        var data = HouseholdData()
+        data.add(id: "e1", kind: kind, babyID: baby, startedAt: t0, payload: EventPayload(),
+                 by: parentA, timeZoneID: "Europe/London", now: t0)
+        let revision = try #require(data.events["e1"]?.localRevision)
+        data.didUploadEvent("e1", sentRevision: revision, systemFields: Data([1]), serverCreatedAt: t0)
+        let later = t0.addingTimeInterval(.minutes(5))
+        #expect(data.eventsToUpload(now: later).isEmpty)
+        data.delete("e1", by: parentA, now: later)
+        #expect(data.eventsToUpload(now: later).map(\.event.id) == ["e1"])
+    }
+}
+
 @Suite("A parent's colour")
 struct MemberColourTests {
     let now = at(2026, 11, 15, 12, 0)

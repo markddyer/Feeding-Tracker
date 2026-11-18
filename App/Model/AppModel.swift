@@ -11,6 +11,11 @@ enum AppConfig {
         Bundle.main.object(forInfoDictionaryKey: "FeedingAppGroup") as? String ?? ""
     }
 
+    /// The iCloud zone the milestones journal keeps its photos and videos in, apart from the
+    /// household zone. No sync engine fetch ever includes it (`HouseholdSync.fetchScope`), so a
+    /// push-woken fetch, which the alarms wait on, never downloads a photo (eng D8, 18 Nov 2026).
+    static let photosZoneName = "Photos"
+
     /// Syncing runs only in Feeding Dev for now. Feeding (the real app) starts syncing once the
     /// CloudKit Production schema is deployed, which needs the user's go-ahead.
     static var syncEnabled: Bool {
