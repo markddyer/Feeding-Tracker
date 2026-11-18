@@ -10,6 +10,7 @@ A personal iOS app (plus a watchOS app later) for two parents to log their newbo
 5. `~/.claude/reference/iphone-duo.md` (on the Mac, shared by every project): Apple's iPhone Duo facts, our advice, and simulator measurements. Read it before any layout work, and add new Duo measurements to it.
 6. `DESIGN.md` and `docs/planning/05-visual-redesign.md`: the look of the app (day and night looks, colours, letters, shapes) and the screen-by-screen redesign, agreed 15 Nov 2026.
 7. `docs/planning/06-more-than-feeds.md`: sleep, nappies, growth and medicine (17 Nov 2026), what is decided and what is still open.
+8. `docs/planning/07-milestones-journal.md`: the milestones journal ("firsts", with photos and videos), reviewed 17 and 18 Nov 2026 (CEO, engineering, design, engineering again). Its build order and the engineering review's "Implementation Tasks" (T1 to T14) are the order of work; the later T15 to T21 add to them. Step 0 (T1) is built. `TODOS.md` holds what was put off.
 
 ## Design System
 Read DESIGN.md before visual or UI work: it defines the fonts, colours, spacing and look. Ask the user before departing from it. When reviewing or testing UI, flag code that doesn't match DESIGN.md.
