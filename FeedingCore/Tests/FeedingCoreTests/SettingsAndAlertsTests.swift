@@ -218,6 +218,32 @@ struct WaitingForICloudAlertTests {
         #expect(changes.alarmsAfter.map(\.fireDate) == [at(2026, 11, 14, 16)])
     }
 
+    /// The plan may come from settings not back yet (a longer feed window): an alarm already set
+    /// earlier for the same alert stays, and is never moved later; so does its notification.
+    @Test func anAlarmSetEarlierIsNeverMovedLater() {
+        let earlier = ScheduledAlarm(key: "baby-1.windowCloses.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 13))
+        let pending = ["alert.baby-1.windowCloses.notification": at(2026, 11, 14, 13)]
+        let changes = planAlertChanges(desired: [alert(.windowCloses, .alarm, at: 14), alert(.windowCloses, .notification, at: 14)],
+                                       scheduledAlarms: [earlier], pendingNotifications: pending, now: now, keepExisting: true)
+        #expect(changes.alarmsToSchedule.isEmpty)
+        #expect(changes.alarmsToCancel.isEmpty)
+        #expect(changes.alarmsAfter == [earlier])
+        #expect(changes.notificationsToAdd.isEmpty)
+        // Not waiting: the alarm moves as planned.
+        let normal = planAlertChanges(desired: [alert(.windowCloses, .alarm, at: 14)], scheduledAlarms: [earlier],
+                                      pendingNotifications: [:], now: now)
+        #expect(normal.alarmsToCancel == [earlier.alarmID])
+    }
+
+    /// An earlier alarm for the same alert is moved, even while waiting, only once it has rung.
+    @Test func aWantedEarlierAlarmStillReplacesALaterOne() {
+        let later = ScheduledAlarm(key: "baby-1.windowCloses.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 15))
+        let changes = planAlertChanges(desired: [alert(.windowCloses, .alarm, at: 14)], scheduledAlarms: [later],
+                                       pendingNotifications: [:], now: now, keepExisting: true)
+        #expect(changes.alarmsToSchedule.map(\.alert.fireDate) == [at(2026, 11, 14, 14)])
+        #expect(changes.alarmsToCancel == [later.alarmID])
+    }
+
     @Test func anAlarmLongPastGoesEvenWhileWaiting() {
         let old = ScheduledAlarm(key: "baby-1.backup.alarm", alarmID: UUID(), fireDate: at(2026, 11, 14, 5))
         let changes = planAlertChanges(desired: [], scheduledAlarms: [old], pendingNotifications: [:],

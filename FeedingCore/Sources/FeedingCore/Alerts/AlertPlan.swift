@@ -61,11 +61,13 @@ public func notificationIdentifier(for alert: DesiredAlert) -> String { "alert.\
 /// never stops it; a feed does (Codex review, 17 Nov 2026).
 ///
 /// `keepExisting` is for a phone still filling its data again after its file couldn't be read
-/// (`HouseholdData.isWaitingForICloud`, CEO review D18). Its plan is made as usual: data missing a
-/// feed only ever gives earlier alerts, never later ones. But an alarm or notification it no
-/// longer wants isn't cancelled, as the feed it was set for may simply not be back yet; it goes
-/// once its time is `soundingAlarmKept` past, or when a wanted alarm rings in the same minute
-/// (two alarms in one minute may both stay silent, `separatingAlarmMinutes`).
+/// (`HouseholdData.isWaitingForICloud`, CEO review D18). Its plan is made as usual, but from data
+/// that may lack a feed or the household's settings (a shorter feed window), so:
+/// - an alarm or notification already set for the same alert and still to come is never moved
+///   later (Codex review of T3 and T4);
+/// - one it no longer wants isn't cancelled, as the feed it was set for may simply not be back
+///   yet; it goes once its time is `soundingAlarmKept` past, or when a wanted alarm rings in the
+///   same minute (two alarms in one minute may both stay silent, `separatingAlarmMinutes`).
 public func planAlertChanges(
     desired: [DesiredAlert],
     scheduledAlarms: [ScheduledAlarm],
@@ -85,6 +87,10 @@ public func planAlertChanges(
         if var existing = scheduledByKey[alert.key], existing.fireDate == alert.fireDate {
             existing.babyID = alert.babyID
             existing.lastFeedStart = alert.lastFeedStart
+            after.append(existing)
+            continue
+        }
+        if keepExisting, let existing = scheduledByKey[alert.key], existing.fireDate < alert.fireDate, existing.fireDate > now {
             after.append(existing)
             continue
         }
@@ -111,6 +117,7 @@ public func planAlertChanges(
     let wanted = Set(notifications.map(notificationIdentifier(for:)))
     let add = notifications.filter { alert in
         guard let pending = pendingNotifications[notificationIdentifier(for: alert)] else { return true }
+        if keepExisting, pending < alert.fireDate, pending > now { return false }
         return abs(pending.timeIntervalSince(alert.fireDate)) >= 1
     }
     let remove = keepExisting ? []

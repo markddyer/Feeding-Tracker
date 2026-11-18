@@ -33,6 +33,12 @@ final class HouseholdStore {
                 // Step 0 (CEO review D18): what a newer build wrote and this one can't read is kept.
                 let kept = loaded.keptEvents.count + loaded.keptPlainRecords.count + loaded.keptParts.count
                 if kept > 0 { SyncLog.add("file: kept \(kept) entries this build can't read") }
+            } else if Self.alarmsWereSet() {
+                // No file, yet alarms were set from one: it went missing. Wait for iCloud as for
+                // an unreadable file, so no alert already set is cancelled (Codex review of T3 and T4).
+                SyncLog.add("file: missing, with alarms set; waiting for iCloud")
+                data.waitingForICloudSince = Date()
+                save()
             }
         } catch HouseholdFile.LoadError.newerFormat {
             problem = "A newer version of the app saved this phone's data. Update the app to use it."
@@ -48,6 +54,13 @@ final class HouseholdStore {
             data.waitingForICloudSince = Date()
             save()
         }
+    }
+
+    /// True when the alert scheduler remembers alarms it set (`AlertScheduler.scheduledAlarms`).
+    private static func alarmsWereSet() -> Bool {
+        guard let saved = UserDefaults(suiteName: AppConfig.appGroupID)?.data(forKey: "scheduledAlarms"),
+              let alarms = try? JSONDecoder().decode([ScheduledAlarm].self, from: saved) else { return false }
+        return !alarms.isEmpty
     }
 
     /// A change made on this phone. It is saved and handed to sync. A change that changes nothing

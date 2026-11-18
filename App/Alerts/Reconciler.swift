@@ -101,11 +101,24 @@ final class Reconciler {
                 events.latestFeedStart(babyID: baby, now: now).map { (baby, $0) }
             })
             // While the file is being filled again from iCloud, no alert already set is cancelled
-            // (CEO review D18).
+            // (CEO review D18). Otherwise the feeds the alerts come from are noted outside the
+            // file, so after a lost file the wait ends only once those feeds are back.
+            let waiting = store.data.isWaitingForICloud(now: now)
+            if !waiting { defaults.plannedFeedStarts = latest }
             await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone,
-                                  keepExisting: store.data.isWaitingForICloud(now: now))
+                                  keepExisting: waiting)
             alerts = desired
             lastRunAt = Date()
         } while runAgain
+    }
+}
+
+extension UserDefaults {
+    /// Each baby's latest feed start that the alerts were last planned from. Kept here, outside
+    /// the household file, so it outlives a file that is lost (`HouseholdData.hasFeedsBack`).
+    /// Nil when never noted (a build from before 18 Nov 2026).
+    var plannedFeedStarts: [String: Date]? {
+        get { data(forKey: "plannedFeedStarts").flatMap { try? JSONDecoder().decode([String: Date].self, from: $0) } }
+        set { set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "plannedFeedStarts") }
     }
 }

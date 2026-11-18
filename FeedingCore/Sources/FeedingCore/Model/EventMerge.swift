@@ -61,6 +61,20 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
             default: growth.headMM = theirs?.headMM
             }
             payload?.growth = growth
+        case .title, .media, .removedMedia:
+            // Only where either copy is a first, so nothing else gains a first's details (which
+            // would raise its version and hide it from an older build).
+            guard payload?.milestone != nil || other.payload?.milestone != nil else { return }
+            let theirs = other.payload?.milestone
+            var milestone = payload?.milestone ?? MilestoneDetails(title: "")
+            switch field {
+            case .title: milestone.title = theirs?.title ?? ""
+            case .media: milestone.media = theirs?.media ?? []
+            // Removed items only add up: copying joins the two lists (eng D10).
+            default: milestone.removedMedia = milestone.removedMedia + (theirs?.removedMedia ?? [])
+            }
+            milestone.normalize()
+            payload?.milestone = milestone
         }
     }
 
@@ -83,6 +97,10 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
         if old?.weightGrams != new?.weightGrams { changed.insert(.weight) }
         if old?.lengthMM != new?.lengthMM { changed.insert(.length) }
         if old?.headMM != new?.headMM { changed.insert(.head) }
+        let (first, last) = (before.payload?.milestone, after.payload?.milestone)
+        if first?.title != last?.title { changed.insert(.title) }
+        if first?.media != last?.media { changed.insert(.media) }
+        if first?.removedMedia != last?.removedMedia { changed.insert(.removedMedia) }
         return changed
     }
 
@@ -112,6 +130,14 @@ public struct MergeResult: Hashable, Sendable {
 /// Only the fields this phone changed are considered. For each, this phone's edit wins when its
 /// stamp is later than the stamp on iCloud's copy. Everything else keeps iCloud's value, so a
 /// correction made on the other phone is never overwritten by an old copy.
+///
+/// A first's photo lists are the exception, whether or not they changed here (an older copy can
+/// also arrive late):
+/// - the removed lists join (eng D10);
+/// - the media lists join (the parents' choice A, 18 Nov 2026): the order of the later change,
+///   then any item only the other list has, up to the limit. So a photo added on each phone at
+///   the same time is kept on both, and a photo leaves a first only when a parent takes it out:
+///   no removed item is ever named again.
 public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: Set<EventField>) -> MergeResult {
     guard server.payload != nil else {
         return MergeResult(snapshot: server, applied: [], overruled: changedLocally, keptServerCopyUnread: true)
@@ -120,7 +146,7 @@ public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: S
     var applied: Set<EventField> = []
     var overruled: Set<EventField> = []
 
-    for field in EventField.allCases where changedLocally.contains(field) {
+    for field in EventField.allCases where changedLocally.contains(field) && field != .media && field != .removedMedia {
         guard let mine = local.payload?.stamp(field) else {
             overruled.insert(field)
             continue
@@ -132,6 +158,36 @@ public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: S
         result.copy(field, from: local)
         result.payload?.setStamp(field, mine)
         applied.insert(field)
+    }
+    if var joined = result.payload?.milestone, let mineDetails = local.payload?.milestone {
+        let theirs = joined
+        let theirsStamp = result.payload?.stamp(.media)
+        joined.removedMedia += mineDetails.removedMedia
+        let mine = local.payload?.stamp(.media)
+        let mineIsLater: Bool = {
+            guard changedLocally.contains(.media), let mine else { return false }
+            guard let serverStamp = theirsStamp else { return true }
+            return mine > serverStamp
+        }()
+        joined.media = mineIsLater ? mineDetails.media + theirs.media : theirs.media + mineDetails.media
+        joined.normalize()
+        result.payload?.milestone = joined
+        if joined.removedMedia != theirs.removedMedia {
+            // iCloud's copy lacked one of this phone's removals. The stamp moves only then, so both
+            // phones keep the same one.
+            applied.insert(.removedMedia)
+            if let stamp = local.payload?.stamp(.removedMedia), stamp > result.payload?.stamp(.removedMedia) ?? stamp {
+                result.payload?.setStamp(.removedMedia, stamp)
+            }
+        }
+        if mineIsLater, let mine {
+            result.payload?.setStamp(.media, mine)
+            applied.insert(.media)
+        } else if joined.media != theirs.media {
+            applied.insert(.media)
+        } else if changedLocally.contains(.media) {
+            overruled.insert(.media)
+        }
     }
     result.event.modifiedAt = max(local.event.modifiedAt, server.event.modifiedAt)
     return MergeResult(snapshot: result, applied: applied, overruled: overruled, keptServerCopyUnread: false)

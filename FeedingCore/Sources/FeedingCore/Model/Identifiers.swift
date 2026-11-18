@@ -27,4 +27,7 @@ public struct EventKind: RawRepresentable, Hashable, Sendable, Codable, Expressi
     public static let growth: EventKind = "growth"
     /// A medicine or vitamin given, at `startedAt` (`MedicineDetails`).
     public static let medicine: EventKind = "medicine"
+    /// One of the baby's firsts, at `startedAt` (`MilestoneDetails`). Parents read "first"; the
+    /// code says "milestone" (`docs/planning/07-milestones-journal.md`). Never in the alerts.
+    public static let milestone: EventKind = "milestone"
 }

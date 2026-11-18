@@ -336,10 +336,12 @@ final class HouseholdSync {
                 try await Self.outsideCallbacks { try await engine.fetchChanges(options) }
             }
             lastFetchAt = Date()
-            if store.data.waitingForICloudSince != nil, !store.data.events.isEmpty {
-                // Every engine has fetched, and the household's entries are back: the alerts are
-                // planned normally again (CEO review D18). An empty fetch (a share that has gone)
-                // leaves the phone waiting, for a day at most.
+            if store.data.waitingForICloudSince != nil, !store.data.events.isEmpty,
+               store.data.hasFeedsBack(plannedFrom: defaults.plannedFeedStarts, now: Date()) {
+                // Every engine has fetched, and the feeds the alerts were planned from are back:
+                // the alerts are planned normally again (CEO review D18). An empty fetch (a share
+                // that has gone), or one without those feeds, leaves the phone waiting, for a day
+                // at most.
                 store.applySync { $0.waitingForICloudSince = nil }
                 SyncLog.add("file: filled again from iCloud")
             }

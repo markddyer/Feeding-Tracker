@@ -269,7 +269,7 @@ struct NewerBuildFileTests {
     func newerFile() throws -> Data {
         var data = HouseholdData()
         data.startFeed(id: "f1", babyID: baby, side: .left, by: parentA, timeZoneID: "Europe/London", now: t0)
-        data.add(id: "m1", kind: "milestone", babyID: baby, startedAt: t0, payload: EventPayload(),
+        data.add(id: "m1", kind: "monthlyPhoto", babyID: baby, startedAt: t0, payload: EventPayload(),
                  by: parentA, timeZoneID: "Europe/London", now: t0)
         data.put(PlainRecord(type: .baby, name: baby, modifiedAt: t0, payload: try PayloadCoder.encode(BabyPayload(name: "Baby"))))
         var file = try #require(try JSONSerialization.jsonObject(with: Self.encode(data)) as? [String: Any])
@@ -278,7 +278,7 @@ struct NewerBuildFileTests {
         feed["changedFields"] = ((feed["changedFields"] as? [String]) ?? []) + ["milestoneTitle"]
         events["f1"] = feed
         var milestone = try #require(events["m1"] as? [String: Any])
-        milestone["changedFields"] = ["title", "startedAt"]
+        milestone["changedFields"] = ["caption", "startedAt"]
         events["m1"] = milestone
         events["x1"] = ["event": ["id": "x1", "startedAt": "soon"], "localRevision": 2, "at": 1_794_650_000_123.5]
         file["events"] = events
@@ -311,9 +311,9 @@ struct NewerBuildFileTests {
         #expect(feed.changedFields == EventField.fields(for: .feed))
         #expect(feed.keptChangedFields == ["milestoneTitle"])
         let milestone = try #require(data.events["m1"])
-        #expect(milestone.event.kind == "milestone")
+        #expect(milestone.event.kind == "monthlyPhoto")
         #expect(milestone.changedFields == [.startedAt])
-        #expect(milestone.keptChangedFields == ["title"])
+        #expect(milestone.keptChangedFields == ["caption"])
         #expect(Set(data.keptEvents.keys) == ["x1"])
         #expect(data.plainRecord(.baby, baby) != nil)
         #expect(Set(data.keptPlainRecords.keys) == ["Tally/photos"])
@@ -485,5 +485,46 @@ struct MemberColourTests {
         let changed = data.setColour("plum", of: parentA, now: now.addingTimeInterval(60))
         #expect(!changed)
         #expect(data == before)
+    }
+}
+
+/// After a lost file, the wait for iCloud ends only once the feeds the alerts were planned from
+/// are back: entries of other kinds coming back are not enough (Codex review of T3 and T4).
+@Suite("The wait for iCloud ends with the feeds")
+struct FeedsBackTests {
+    let feedStart = at(2026, 11, 18, 9, 30, 15).addingTimeInterval(0.4567)
+
+    func refilled(_ events: [Event]) -> HouseholdData {
+        var data = HouseholdData()
+        for event in events { data.receiveEvent(event, systemFields: Data([1])) }
+        return data
+    }
+
+    /// A first at the very time of the feed, or later, still isn't a feed.
+    @Test func aFirstAloneDoesNotEndTheWait() {
+        for start in [feedStart, feedStart + 60] {
+            #expect(!refilled([feed(start, kind: .milestone)]).hasFeedsBack(plannedFrom: [baby: feedStart], now: feedStart + 600))
+        }
+    }
+
+    /// Nothing noted (a build from before this rule): only a feed coming back ends the wait.
+    @Test func withNothingNotedOnlyAFeedEndsTheWait() {
+        #expect(!refilled([feed(feedStart, kind: .milestone)]).hasFeedsBack(plannedFrom: nil, now: feedStart + 600))
+        #expect(refilled([feed(feedStart - 3600)]).hasFeedsBack(plannedFrom: nil, now: feedStart + 600))
+    }
+
+    @Test func anOlderFeedAloneDoesNotEndTheWait() {
+        let older = feed(feedStart.addingTimeInterval(-3 * 3600))
+        #expect(!refilled([older]).hasFeedsBack(plannedFrom: [baby: feedStart], now: feedStart + 600))
+    }
+
+    /// iCloud keeps milliseconds, so the feed comes back a fraction of a second earlier.
+    @Test func theSameFeedBackFromICloudEndsTheWait() {
+        let back = feed(Date(timeIntervalSince1970: (feedStart.timeIntervalSince1970 * 1000).rounded(.down) / 1000))
+        #expect(refilled([back]).hasFeedsBack(plannedFrom: [baby: feedStart], now: feedStart + 600))
+    }
+
+    @Test func withNothingPlannedTheEntriesComingBackAreEnough() {
+        #expect(refilled([feed(feedStart)]).hasFeedsBack(plannedFrom: [:], now: feedStart + 600))
     }
 }

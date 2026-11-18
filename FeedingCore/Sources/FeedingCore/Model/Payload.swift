@@ -39,6 +39,13 @@ public enum EventField: String, Hashable, Sendable, Codable, CaseIterable {
     case head
     /// A medicine's name and amount, as one.
     case medicine
+    /// A first's title.
+    case title
+    /// A first's ordered list of photos and videos, as one: the later change wins.
+    case media
+    /// A first's removed photos and videos. Merged by joining both phones' lists, never by the
+    /// later change (eng D10), so a removed item can't come back.
+    case removedMedia
 
     /// The fields an event of `kind` has: the top-level ones, the note, and its own details. A new
     /// event is stamped with these only, so a feed's record holds no field an older app version
@@ -52,6 +59,7 @@ public enum EventField: String, Hashable, Sendable, Codable, CaseIterable {
         case .nappy: return shared.union([.nappy, .pooColour, .pooConsistency])
         case .growth: return shared.union([.weight, .length, .head])
         case .medicine: return shared.union([.medicine])
+        case .milestone: return shared.union([.title, .media, .removedMedia])
         default: return Set(allCases)
         }
     }
@@ -72,10 +80,12 @@ public protocol VersionedPayload: Codable, Sendable {
 /// A payload is written with the lowest version that holds its fields (`neededVersion`), not
 /// always with `currentVersion`. So a feed saved by this app is still version 1, and a phone on an
 /// older build still reads its sides and bottles; only a nappy, growth or medicine entry is
-/// version 2, which an older build leaves unread and so can never save back without its details.
+/// version 2, and a first version 3, which an older build leaves unread and so can never save back
+/// without its details.
 public struct EventPayload: VersionedPayload, Hashable {
-    /// 1: feeds and pumping. 2 (17 Nov 2026): adds `nappy`, `growth` and `medicine`.
-    public static let currentVersion = 2
+    /// 1: feeds and pumping. 2 (17 Nov 2026): adds `nappy`, `growth` and `medicine`. 3 (18 Nov
+    /// 2026): adds `milestone`.
+    public static let currentVersion = 3
 
     public var v: Int
     /// Set for feeds.
@@ -88,28 +98,34 @@ public struct EventPayload: VersionedPayload, Hashable {
     public var growth: GrowthDetails? { didSet { raiseVersion() } }
     /// Set for medicines. Version 2.
     public var medicine: MedicineDetails? { didSet { raiseVersion() } }
+    /// Set for firsts. Version 3.
+    public var milestone: MilestoneDetails? { didSet { raiseVersion() } }
     public var note: String?
     /// The stamp of each field's last change, keyed by `EventField` raw value. String keys, so a
     /// field added by a newer app doesn't stop an older one from decoding the rest.
     public var stamps: [String: FieldStamp]
 
     public init(feed: FeedDetails? = nil, pump: PumpDetails? = nil, nappy: NappyDetails? = nil,
-                growth: GrowthDetails? = nil, medicine: MedicineDetails? = nil, note: String? = nil,
-                stamps: [String: FieldStamp] = [:]) {
+                growth: GrowthDetails? = nil, medicine: MedicineDetails? = nil, milestone: MilestoneDetails? = nil,
+                note: String? = nil, stamps: [String: FieldStamp] = [:]) {
         v = 1
         self.feed = feed
         self.pump = pump
         self.nappy = nappy
         self.growth = growth
         self.medicine = medicine
+        self.milestone = milestone
         self.note = note
         self.stamps = stamps
         v = neededVersion
     }
 
-    /// The lowest version that knows every detail set here: 2 with a nappy, growth or medicine,
-    /// otherwise 1.
-    public var neededVersion: Int { nappy == nil && growth == nil && medicine == nil ? 1 : 2 }
+    /// The lowest version that knows every detail set here: 3 with a first, 2 with a nappy,
+    /// growth or medicine, otherwise 1.
+    public var neededVersion: Int {
+        if milestone != nil { return 3 }
+        return nappy == nil && growth == nil && medicine == nil ? 1 : 2
+    }
 
     /// Setting a version 2 detail on a version 1 payload raises it. It never goes down.
     private mutating func raiseVersion() { v = max(v, neededVersion) }

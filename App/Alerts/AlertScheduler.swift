@@ -65,16 +65,23 @@ final class AlertScheduler {
                                        now: now, latestFeedStarts: latestFeedStarts, keepExisting: keepExisting)
         var after = changes.alarmsAfter
 
-        // New alarms first, then cancel the old ones: never a moment with neither.
+        // New alarms first, then cancel the old ones: never a moment with neither. An old alarm
+        // whose replacement couldn't be set stays (Codex review of T3 and T4).
+        var failedKeys = Set<String>()
         for new in changes.alarmsToSchedule {
             do {
                 try await schedule(new.alert, id: new.alarmID, timeZone: timeZone)
             } catch {
                 lastError = "Couldn't set an alarm: \(error.localizedDescription)"
                 after.removeAll { $0.alarmID == new.alarmID }
+                failedKeys.insert(new.alert.key)
             }
         }
         for id in changes.alarmsToCancel {
+            if let old = remembered.first(where: { $0.alarmID == id }), failedKeys.contains(old.key) {
+                after.append(old)
+                continue
+            }
             try? AlarmManager.shared.cancel(id: id)
         }
         scheduledAlarms = after

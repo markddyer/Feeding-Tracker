@@ -161,6 +161,20 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         return now.timeIntervalSince(since) < Self.longestWaitForICloud
     }
 
+    /// True when each baby's latest feed that the alerts were planned from before the file was
+    /// lost (`latest`, kept outside the file) is back, within a second, as iCloud keeps
+    /// milliseconds. Entries of other kinds coming back are not enough: until the feeds are, or
+    /// for a day at most, the phone keeps waiting and cancels no alert (CEO review D18). A feed
+    /// that never reached iCloud never comes back, so its alert is kept for that day. With nothing
+    /// noted (`nil`: a build from before this rule), any feed coming back is enough.
+    public func hasFeedsBack(plannedFrom latest: [String: Date]?, now: Date) -> Bool {
+        let events = allEvents
+        guard let latest else { return events.contains(where: \.isLiveFeed) }
+        return latest.allSatisfy { baby, start in
+            (events.latestFeedStart(babyID: baby, now: now) ?? .distantPast) >= start.addingTimeInterval(-1)
+        }
+    }
+
     public var snapshots: [EventSnapshot] { events.values.map(\.snapshot) }
 
     public var allEvents: [Event] { events.values.map(\.event) }
@@ -348,9 +362,26 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         // it, and iCloud's copy (with any feed in it, for the alerts) is the one it can use.
         keptEvents[server.id] = nil
         guard var stored = events[server.id], stored.needsUpload, !stored.changedFields.isEmpty else {
-            let revision = events[server.id]?.localRevision ?? 0
-            events[server.id] = StoredEvent(event: server, changedFields: [], needsUpload: false, uploadNotBefore: nil,
-                                            systemFields: systemFields, localRevision: revision)
+            let previous = events[server.id]
+            let revision = previous?.localRevision ?? 0
+            var incoming = StoredEvent(event: server, changedFields: [], needsUpload: false, uploadNotBefore: nil,
+                                       systemFields: systemFields, localRevision: revision)
+            // A first's photos and removals this phone holds and iCloud's copy lacks (an older copy
+            // arriving late) are kept and sent again, so a removed photo never comes back and a
+            // kept one never goes (eng D10, the parents' choice A).
+            if let previous, previous.event.kind == .milestone {
+                let healed = merge(local: previous.snapshot, server: EventSnapshot(event: server), changedLocally: [])
+                if !healed.applied.isEmpty, var event = try? healed.snapshot.encoded() {
+                    event.serverCreatedAt = server.serverCreatedAt ?? previous.event.serverCreatedAt
+                    incoming.event = event
+                    incoming.changedFields = healed.applied
+                    incoming.needsUpload = true
+                    incoming.localRevision = revision + 1
+                    events[server.id] = incoming
+                    return .merged(applied: healed.applied, overruled: [])
+                }
+            }
+            events[server.id] = incoming
             return .replaced
         }
         let result = merge(local: stored.snapshot, server: EventSnapshot(event: server), changedLocally: stored.changedFields)
