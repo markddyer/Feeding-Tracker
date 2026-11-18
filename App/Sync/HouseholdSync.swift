@@ -327,23 +327,55 @@ final class HouseholdSync {
     /// back (Codex review of T5 and T6). The Undo bar asks this with `undoHeld`'s own deadline.
     func mayUndo(_ id: String) -> Bool { inFlight[id] == nil }
 
-    func recordToSend(_ recordID: CKRecord.ID) -> CKRecord? {
+    /// What to do with an entry on a sync engine's list of records to send.
+    enum SendDecision: Equatable {
+        /// Send the record now.
+        case send
+        /// Not yet (held for Undo): the entry stays on the list, and is queued again when the
+        /// hold ends.
+        case hold
+        /// Nothing to send (already sent, or replaced by the other phone's copy, or gone): the
+        /// entry comes off the list, as Apple asks. Left on, it stayed there for good, and every
+        /// send asked about it again (found on the owner's phone, 18 Nov 2026).
+        case drop
+    }
+
+    nonisolated static func sendDecision(needsUpload: Bool, uploadNotBefore: Date?, now: Date) -> SendDecision {
+        guard needsUpload else { return .drop }
+        if let until = uploadNotBefore, until > now { return .hold }
+        return .send
+    }
+
+    /// The record to send for an entry on the engine's list, and whether the entry stays on it.
+    func recordToSend(_ recordID: CKRecord.ID) -> (record: CKRecord?, keepOnList: Bool) {
+        let answer = recordOrDecision(recordID)
+        if !answer.keepOnList { SyncLog.add("send: nothing to send for \(recordID.recordName); taken off the list") }
+        return answer
+    }
+
+    private func recordOrDecision(_ recordID: CKRecord.ID) -> (record: CKRecord?, keepOnList: Bool) {
         let name = recordID.recordName
         if let stored = store.data.events[name] {
-            // The same rule as `eventsToUpload`: a change queued earlier never carries a held
-            // delete out before its Undo window ends (outside voice OE4). It is queued again then.
-            guard HouseholdData.mayUpload(stored, now: Date()) else { return nil }
+            // The same rule as `eventsToUpload` (`HouseholdData.mayUpload`): a change queued earlier
+            // never carries a held delete out before its Undo window ends (outside voice OE4).
+            switch Self.sendDecision(needsUpload: stored.needsUpload, uploadNotBefore: stored.uploadNotBefore, now: Date()) {
+            case .drop: return (nil, false)
+            case .hold: return (nil, true)
+            case .send: break
+            }
             // From here until iCloud answers, its Undo is closed (`mayUndo`), whatever the clock
             // does next; iCloud's answer ends it for good (`didUploadEvent`).
             inFlight[name] = stored.localRevision
-            return RecordMapping.record(for: stored, zoneID: recordID.zoneID)
+            return (RecordMapping.record(for: stored, zoneID: recordID.zoneID), true)
         }
         if let key = plainKey(cloudName: name, in: store.data), let stored = store.data.plainRecords[key] {
-            guard stored.needsUpload else { return nil }
+            guard Self.sendDecision(needsUpload: stored.needsUpload, uploadNotBefore: nil, now: Date()) == .send else {
+                return (nil, false)
+            }
             inFlight[name] = stored.localRevision
-            return RecordMapping.record(for: stored, zoneID: recordID.zoneID)
+            return (RecordMapping.record(for: stored, zoneID: recordID.zoneID), true)
         }
-        return nil
+        return (nil, false)
     }
 
     // MARK: Receiving
@@ -689,7 +721,11 @@ final class SyncEngineDelegate: CKSyncEngineDelegate {
         let changes = syncEngine.state.pendingRecordZoneChanges.filter { context.options.scope.contains($0) }
         guard !changes.isEmpty else { return nil }
         return await CKSyncEngine.RecordZoneChangeBatch(pendingChanges: changes) { recordID in
-            await AppModel.shared.sync.recordToSend(recordID)
+            let answer = await AppModel.shared.sync.recordToSend(recordID)
+            if !answer.keepOnList {
+                syncEngine.state.remove(pendingRecordZoneChanges: [.saveRecord(recordID)])
+            }
+            return answer.record
         }
     }
 }
