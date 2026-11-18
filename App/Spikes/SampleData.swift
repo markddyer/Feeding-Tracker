@@ -1,6 +1,8 @@
 #if FEEDING_DEV && targetEnvironment(simulator)
 import FeedingCore
 import Foundation
+import ImageIO
+import UIKit
 
 /// Simulator only: fills an empty store with a made-up day, to look at the screens. The names are
 /// made up (the mockup's), with different first letters so the avatars differ.
@@ -174,6 +176,81 @@ enum SampleData {
                 data.claimNight(tonight, by: other, now: now.addingTimeInterval(-120))
             }
         }
+        if defaults.bool(forKey: "sampleFirsts") {
+            addFirsts(into: store, me: me, other: other, now: now)
+        }
+    }
+
+    /// `-sampleFirsts YES`: the baby born nine weeks ago, and four made-up firsts for the Journal:
+    /// one with a drawn picture and +0, one with a picture, one whose photo is still coming, and
+    /// one on the day of birth with no photo. Drawings only, never a real photo (`DESIGN.md`).
+    @MainActor
+    private static func addFirsts(into store: HouseholdStore, me: MemberID, other: MemberID, now: Date) {
+        let zone = TimeZone.current
+        let born = PlainDate(now, in: zone).adding(days: -63)
+        let day = { (offset: Int, hour: Int) -> Date in
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = zone
+            let date = born.adding(days: offset)
+            return calendar.date(from: DateComponents(year: date.year, month: date.month, day: date.day, hour: hour))!
+        }
+        let files = MediaFiles.appGroup()
+        let laugh = "sample-photo-laugh", smile = "sample-photo-smile"
+        if let files {
+            drawPicture(face: true, into: files, id: laugh)
+            drawPicture(face: false, into: files, id: smile)
+        }
+        store.change { data in
+            data.put(PlainRecord(type: .baby, name: "sample-baby", modifiedAt: now,
+                                 payload: try? PayloadCoder.encode(BabyPayload(name: "Baby", birthDate: born))))
+            data.addMilestone(id: "sample-first-cuddle", babyID: "sample-baby", title: "First cuddle", at: day(0, 15),
+                              by: me, timeZoneID: zone.identifier, now: now)
+            data.addMilestone(id: "sample-first-trip", babyID: "sample-baby", title: "First trip out", media: ["sample-photo-coming"],
+                              at: day(16, 11), by: other, timeZoneID: zone.identifier, now: now)
+            data.addMilestone(id: "sample-first-smile", babyID: "sample-baby", title: "First smile",
+                              note: "At the morning feed, after the left side. Then three more!", media: [smile],
+                              at: day(44, 7), by: me, timeZoneID: zone.identifier, now: now)
+            data.addMilestone(id: "sample-first-laugh", babyID: "sample-baby", title: "First laugh", media: [laugh],
+                              at: day(60, 18), by: other, timeZoneID: zone.identifier, now: now)
+            data.endUndoWindows()
+        }
+    }
+
+    /// A simple drawn picture (a face, or a sky and a hill), as the mockups' drawings.
+    private static func drawPicture(face: Bool, into files: MediaFiles, id: String) {
+        let size = 900
+        guard let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        else { return }
+        let s = CGFloat(size) / 120
+        func colour(_ hex: Int) -> CGColor {
+            CGColor(red: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
+        }
+        if face {
+            context.setFillColor(colour(0xF6C9A8)); context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            context.setFillColor(colour(0x9CC3E6)); context.fill(CGRect(x: 0, y: 0, width: 120 * s, height: 28 * s))
+            context.setFillColor(colour(0xFBE3CF)); context.fillEllipse(in: CGRect(x: 30 * s, y: 32 * s, width: 60 * s, height: 60 * s))
+            context.setFillColor(colour(0x5A3A2A))
+            context.fillEllipse(in: CGRect(x: 47 * s, y: 63 * s, width: 6 * s, height: 6 * s))
+            context.fillEllipse(in: CGRect(x: 67 * s, y: 63 * s, width: 6 * s, height: 6 * s))
+            context.setStrokeColor(colour(0x5A3A2A)); context.setLineWidth(3 * s); context.setLineCap(.round)
+            context.move(to: CGPoint(x: 48 * s, y: 54 * s))
+            context.addQuadCurve(to: CGPoint(x: 72 * s, y: 54 * s), control: CGPoint(x: 60 * s, y: 42 * s))
+            context.strokePath()
+        } else {
+            context.setFillColor(colour(0xCFE6F7)); context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            context.setFillColor(colour(0xF7D774)); context.fillEllipse(in: CGRect(x: 80 * s, y: 82 * s, width: 24 * s, height: 24 * s))
+            context.setFillColor(colour(0x9BC98A)); context.fill(CGRect(x: 0, y: 0, width: 120 * s, height: 34 * s))
+            context.setFillColor(colour(0xE79A7E)); context.fill(CGRect(x: 34 * s, y: 28 * s, width: 40 * s, height: 22 * s))
+        }
+        guard let image = context.makeImage() else { return }
+        let folder = FileManager.default.temporaryDirectory
+        let file = folder.appendingPathComponent("\(id)-file.jpg"), thumbnail = folder.appendingPathComponent("\(id)-thumb.jpg")
+        let small = MediaStore.upright(CGImageSourceCreateWithData(UIImage(cgImage: image).jpegData(compressionQuality: 0.9)! as CFData, nil)!,
+                                       longSide: MediaSizes.thumbnailLongSide)
+        guard MediaStore.writeJPEG(image, to: file, quality: 0.85), let small, MediaStore.writeJPEG(small, to: thumbnail, quality: 0.8) else { return }
+        try? files.keepFile(from: file, for: id)
+        try? files.keepThumbnail(from: thumbnail, for: id)
     }
 }
 #endif

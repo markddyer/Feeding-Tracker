@@ -76,6 +76,19 @@ public enum MilestoneLimits {
     }
 }
 
+/// The first's "When" from its photos (design review D17; engineering re-review eng2 D2): the time
+/// the earliest picked item was taken, if that is more than 5 minutes before now, on any day; a
+/// photo taken just now (or in the app) keeps "now", with no note.
+public enum MilestoneWhen {
+    public static let justNow: TimeInterval = 5 * 60
+
+    /// The time to use, or nil to keep "now".
+    public static func fromPhotos(takenAt: [Date], now: Date) -> Date? {
+        guard let earliest = takenAt.min(), now.timeIntervalSince(earliest) > justNow else { return nil }
+        return earliest
+    }
+}
+
 /// Why a first can't have a date (journal plan, "The baby's age").
 public enum MilestoneDateProblem: Hashable, Sendable {
     /// The date is before the birth date.
@@ -252,7 +265,7 @@ extension HouseholdData {
     }
 
     /// A title as it is saved: on one line, trimmed, cut to the limits.
-    static func cleanTitle(_ title: String) -> String {
+    public static func cleanTitle(_ title: String) -> String {
         let oneLine = String(title.map { $0.isNewline ? " " : $0 })
         return trimmed(MilestoneLimits.title(trimmed(oneLine)))
     }

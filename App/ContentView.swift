@@ -1,8 +1,8 @@
 import FeedingCore
 import SwiftUI
 
-/// The app's root: once there is a household, three tabs (Home, History and Graphs; the user's
-/// choice of 16 Nov 2026), with Settings in Home's top bar. Both are system bars, so the iPhone
+/// The app's root: once there is a household, four tabs (Home, History and Graphs, the user's
+/// choice of 16 Nov 2026, and the Journal, design review D27), with Settings in Home's top bar. Both are system bars, so the iPhone
 /// Duo moves them into its side bar by itself.
 struct ContentView: View {
     private let model = AppModel.shared
@@ -21,7 +21,7 @@ struct ContentView: View {
     @State private var path = NavigationPath()
     @State private var tab: MainTab = Self.firstTab
 
-    private enum MainTab: Hashable { case home, history, graphs }
+    private enum MainTab: Hashable { case home, history, graphs, journal }
 
     private enum Screen: Hashable {
         case settings
@@ -36,6 +36,7 @@ struct ContentView: View {
         switch UserDefaults.standard.string(forKey: "startTab") {
         case "history": return .history
         case "graphs": return .graphs
+        case "journal": return .journal
         default: return .home
         }
         #else
@@ -109,6 +110,10 @@ struct ContentView: View {
                 }
                 Tab("Graphs", systemImage: "chart.bar", value: MainTab.graphs) {
                     NavigationStack { GraphsView() }
+                        .tint(Theme.accent)
+                }
+                Tab("Journal", systemImage: "book.closed", value: MainTab.journal) {
+                    NavigationStack { JournalView(me: me, babyID: baby.name) }
                         .tint(Theme.accent)
                 }
             }
@@ -202,7 +207,9 @@ struct AlarmSpikeHooks: ViewModifier {
 }
 
 /// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
-/// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping` or `editLastFeed`.
+/// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping`, `editLastFeed`,
+/// `addFirst` (with `-firstTitle "First smile"` to fill What happened) or `firstPage` (with
+/// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`).
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -220,6 +227,13 @@ struct DevScreen: View {
             DuoPreview(me: me, babyID: babyID)
         case "pumping":
             EventEditor(mode: .newPump, me: me, babyID: babyID)
+        case "addFirst":
+            FirstEditor(mode: .new(title: UserDefaults.standard.string(forKey: "firstTitle")), me: me, babyID: babyID) { _ in }
+        case "firstPage":
+            NavigationStack {
+                FirstPage(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", me: me, babyID: babyID,
+                          onUndo: { _ in })
+            }
         case "editLastFeed":
             let last = AppModel.shared.store.data.visibleSnapshots(babyID: babyID)
                 .filter { $0.event.isLiveFeed && $0.event.babyID == babyID }

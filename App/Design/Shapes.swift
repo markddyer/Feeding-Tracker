@@ -20,6 +20,8 @@ enum FeedMark: Hashable {
     case medicine
     /// A line going up.
     case growth
+    /// A four-point sparkle: one of the baby's firsts (design review D26).
+    case first
 
     /// The nappy's shape: wee, poo or both. A dry nappy shows the drop in muted colour.
     static func nappy(wee: Bool, poo: Bool) -> FeedMark {
@@ -40,7 +42,7 @@ enum FeedMark: Hashable {
         case .sleep: Theme.sleepMark
         case .wee, .weeAndPoo: Theme.weeMark
         case .poo: Theme.pooMark
-        case .medicine, .growth: Theme.textMuted
+        case .medicine, .growth, .first: Theme.textMuted
         }
     }
 
@@ -52,7 +54,7 @@ enum FeedMark: Hashable {
         case .pump: Theme.pumpTint
         case .sleep: Theme.sleepTint
         case .wee, .poo, .weeAndPoo: Theme.nappyTint
-        case .medicine, .growth: Theme.surface
+        case .medicine, .growth, .first: Theme.surface
         }
     }
 
@@ -69,6 +71,7 @@ enum FeedMark: Hashable {
         case .weeAndPoo: "Wee and poo"
         case .medicine: "Medicine"
         case .growth: "Growth"
+        case .first: "First"
         }
     }
 }
@@ -113,6 +116,8 @@ struct FeedMarkView: View {
                 SpoonShape()
             case .growth:
                 GrowthShape()
+            case .first:
+                SparkleShape()
             }
         }
         .foregroundStyle(colour ?? mark.colour)

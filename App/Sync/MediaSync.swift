@@ -150,6 +150,9 @@ final class MediaSync {
     /// photos still go; the other phone can't get them until it is added ("Photos sharing:
     /// waiting", task T8; the fallback is the link in Messages).
     private(set) var otherParentWaiting = false
+    /// Goes up whenever a photo's file or thumbnail arrives on this phone or goes, so the screens
+    /// show it.
+    private(set) var filesChanged = 0
 
     private let store: HouseholdStore
     private let household: HouseholdSync
@@ -189,6 +192,18 @@ final class MediaSync {
         saveUploads()
         kick()
     }
+
+    /// Forgets an item that was never sent (its first's add was undone): off the queue, and its
+    /// files gone from this phone.
+    func forget(_ id: String) {
+        uploads.removeAll { $0.id == id }
+        saveUploads()
+        files?.remove(id)
+        filesChanged += 1
+    }
+
+    /// The editor put a new item's files on this phone.
+    func noteNewFiles() { filesChanged += 1 }
 
     /// Starts a run unless one is going; a call during a run starts one more after it. Only while
     /// the app is open (a push that wakes it in the background is for the feeds alone), and not
@@ -537,6 +552,7 @@ final class MediaSync {
                 let id = media.id
                 do {
                     try await Task.detached { try files.keepThumbnail(from: thumbnail, for: id) }.value
+                    filesChanged += 1
                     try Task.checkCancellation()
                 } catch {
                     SyncLog.add("media: couldn't keep the thumbnail of \(id): \(String(reflecting: error))")
@@ -722,6 +738,7 @@ final class MediaSync {
                     continue
                 }
                 try await Task.detached { try files.keepFile(from: file, for: id) }.value
+                filesChanged += 1
                 try Task.checkCancellation()
                 SyncLog.add("media: fetched \(id)")
             case .failure(let error):

@@ -152,6 +152,24 @@ struct GrowthShape: Shape {
 
 /// A closed eye: the lid as a curve, with three lashes. On the Sleep and nappy widget it is the
 /// Fell asleep button (the users' ask, 17 Nov 2026).
+/// A first in the journal: a rounded four-point sparkle (design review D26), never a star.
+struct SparkleShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let s = min(rect.width, rect.height) / 24
+        let x = rect.midX - 12 * s
+        let y = rect.midY - 12 * s
+        func p(_ px: CGFloat, _ py: CGFloat) -> CGPoint { CGPoint(x: x + px * s, y: y + py * s) }
+        var path = Path()
+        path.move(to: p(12, 2))
+        path.addCurve(to: p(20, 10), control1: p(12.9, 6.6), control2: p(15.4, 9.1))
+        path.addCurve(to: p(12, 18), control1: p(15.4, 10.9), control2: p(12.9, 13.4))
+        path.addCurve(to: p(4, 10), control1: p(11.1, 13.4), control2: p(8.6, 10.9))
+        path.addCurve(to: p(12, 2), control1: p(8.6, 9.1), control2: p(11.1, 6.6))
+        path.closeSubpath()
+        return path
+    }
+}
+
 struct ClosedEyeShape: Shape {
     func path(in rect: CGRect) -> Path {
         let g = Grid24(rect)

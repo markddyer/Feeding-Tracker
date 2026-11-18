@@ -645,6 +645,20 @@ struct BabyAgeTests {
     }
 }
 
+@Suite("Firsts: the date from the photo")
+struct MilestoneWhenTests {
+    @Test func theEarliestPhotosTimeIsUsedWhenItIsMoreThanFiveMinutesAgo() {
+        let now = at(2026, 11, 18, 10, 0)
+        // Another day: the photo's time.
+        #expect(MilestoneWhen.fromPhotos(takenAt: [at(2026, 10, 30, 7, 40), at(2026, 10, 31, 9, 0)], now: now) == at(2026, 10, 30, 7, 40))
+        // Earlier today, two hours ago: the photo's time too (eng2 D2).
+        #expect(MilestoneWhen.fromPhotos(takenAt: [now - 7200], now: now) == now - 7200)
+        // Two minutes ago, or with no time in the photo: now.
+        #expect(MilestoneWhen.fromPhotos(takenAt: [now - 120], now: now) == nil)
+        #expect(MilestoneWhen.fromPhotos(takenAt: [], now: now) == nil)
+    }
+}
+
 @Suite("Firsts: dates refused")
 struct MilestoneDateTests {
     @Test func aDateBeforeTheBirthOrInTheFutureIsRefused() throws {
