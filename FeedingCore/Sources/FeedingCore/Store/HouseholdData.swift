@@ -37,13 +37,29 @@ public struct HeldUndo: Hashable, Sendable, Codable {
     public var undeletes: Bool
     /// The photo list before, for Undo to put back.
     public var media: [String]
-    /// The IDs the held change put on the removed list, for Undo to take off again.
+    /// Photos the held saves added (a replaced photo's new one): Undo takes them out again, onto
+    /// the removed list, so they are never sent.
+    public var addedLocally: [String]
+    /// The IDs the held change put on the removed list, for Undo to take off again. An ID iCloud
+    /// already has as removed (the other phone removed it too) is taken off this list, as Undo
+    /// can't bring that one back.
     public var addedRemovals: [String]
 
-    public init(undeletes: Bool, media: [String], addedRemovals: [String]) {
+    public init(undeletes: Bool, media: [String], addedLocally: [String] = [], addedRemovals: [String]) {
         self.undeletes = undeletes
         self.media = media
+        self.addedLocally = addedLocally
         self.addedRemovals = addedRemovals
+    }
+
+    /// What Undo can still do once iCloud's copy says `removed` are removed, and whether the
+    /// first is deleted there (Codex review of T5 and T6).
+    func trimmed(byICloud removed: Set<String>, deleted: Bool) -> HeldUndo {
+        var held = self
+        held.addedRemovals.removeAll { removed.contains($0) }
+        held.media.removeAll { removed.contains($0) }
+        if deleted { held.undeletes = false }
+        return held
     }
 }
 
@@ -421,9 +437,29 @@ public struct HouseholdData: Hashable, Sendable, Codable {
             events[server.id] = incoming
             return .replaced
         }
-        let result = merge(local: stored.snapshot, server: EventSnapshot(event: server), changedLocally: stored.changedFields)
+        let serverSnapshot = EventSnapshot(event: server)
+        let result = merge(local: stored.snapshot, server: serverSnapshot, changedLocally: stored.changedFields)
         stored.systemFields = systemFields
         stored.localRevision += 1
+        // A held change's Undo can't take back what iCloud already has from the other phone. A
+        // photo the other phone added to a first this phone holds deleted is moved onto the
+        // removed list by the merge; Undo must bring that one back too.
+        if let held = stored.heldUndo {
+            if result.keptServerCopyUnread {
+                stored.heldUndo = nil
+            } else {
+                let serverRemoved = Set(serverSnapshot.payload?.milestone?.removedMedia ?? [])
+                let localRemoved = Set(stored.snapshot.payload?.milestone?.removedMedia ?? [])
+                let mergedRemoved = Set(result.snapshot.payload?.milestone?.removedMedia ?? [])
+                let movedByMerge = (serverSnapshot.payload?.milestone?.media ?? []).filter {
+                    mergedRemoved.contains($0) && !serverRemoved.contains($0) && !localRemoved.contains($0)
+                }
+                var adjusted = held.trimmed(byICloud: serverRemoved, deleted: server.deletedAt != nil)
+                adjusted.media += movedByMerge.filter { !adjusted.media.contains($0) }
+                adjusted.addedRemovals += movedByMerge.filter { !adjusted.addedRemovals.contains($0) }
+                stored.heldUndo = adjusted
+            }
+        }
         // Fields this build can't name can't be merged: iCloud's copy decides them.
         stored.keptChangedFields = []
         if result.keptServerCopyUnread {

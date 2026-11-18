@@ -484,6 +484,84 @@ struct HeldChangeTests {
         #expect(details(a, id) == MilestoneDetails(title: "First smile!", media: ["p1", "p2"]))
     }
 
+    /// Step 1's "replace the photo": Undo gives the old photo back, and the new one is never sent.
+    @Test func undoAfterAReplaceGivesTheOldPhotoBack() throws {
+        var (data, id) = try synced()
+        let original = try #require(data.events[id]?.snapshot)
+        data.editMilestone(id, from: original, title: "First smile", note: "In the bath", media: ["p1", "new"],
+                           at: t0, by: parentA, now: t0 + 300)
+        let undone = data.undoHeld(id, by: parentA, now: t0 + 305)
+        #expect(undone)
+        #expect(details(data, id) == MilestoneDetails(title: "First smile", media: ["p1", "p2"], removedMedia: ["new"]))
+    }
+
+    /// Parent B removed a photo, and it is in iCloud. Parent A removed it too, from an older copy,
+    /// and Undoes: B's removal stands.
+    @Test func undoNeverBringsBackAPhotoTheOtherPhoneRemoved() throws {
+        var (a, id) = try synced()
+        var b = HouseholdData()
+        b.receiveEvent(a.events[id]!.event, systemFields: Data([1]))
+        b.saveEditor(id, title: "First smile", note: "In the bath", media: ["p1"], at: t0, by: parentB, now: t0 + 200)
+        let fromB = sent(&b, id, tag: 2)
+        let original = try #require(a.events[id]?.snapshot)
+        a.editMilestone(id, from: original, title: "First smile", note: "In the bath", media: ["p1"], at: t0, by: parentA, now: t0 + 300)
+        a.receiveEvent(fromB, systemFields: Data([2]))
+        #expect(a.events[id]?.heldUndo?.addedRemovals == [])
+        let undone = a.undoHeld(id, by: parentA, now: t0 + 305)
+        #expect(undone)
+        #expect(details(a, id) == MilestoneDetails(title: "First smile", media: ["p1"], removedMedia: ["p2"]))
+    }
+
+    /// Two saves inside one Undo window, with a photo from the other phone arriving between them:
+    /// Undo brings that photo back too.
+    @Test func undoKeepsAPhotoThatArrivedBetweenTwoHeldSaves() throws {
+        var (a, id) = try synced()
+        var b = HouseholdData()
+        b.receiveEvent(a.events[id]!.event, systemFields: Data([1]))
+        let first = try #require(a.events[id]?.snapshot)
+        a.editMilestone(id, from: first, title: "First smile", note: "In the bath", media: ["p2"], at: t0, by: parentA, now: t0 + 300)
+        b.saveEditor(id, title: "First smile", note: "In the bath", media: ["p1", "p2", "fromB"], at: t0, by: parentB, now: t0 + 301)
+        a.receiveEvent(sent(&b, id, tag: 2), systemFields: Data([2]))
+        #expect(details(a, id)?.media == ["p2", "fromB"])
+        let second = try #require(a.events[id]?.snapshot)
+        a.editMilestone(id, from: second, title: "First smile", note: "In the bath", media: ["p2"], at: t0, by: parentA, now: t0 + 303)
+        let undone = a.undoHeld(id, by: parentA, now: t0 + 305)
+        #expect(undone)
+        #expect(details(a, id)?.media == ["p1", "p2", "fromB"])
+        #expect(details(a, id)?.removedMedia == [])
+    }
+
+    /// Parent B adds a photo while Parent A deletes the first: the deleted first keeps no photo,
+    /// and B's goes onto the removed list, so it is cleaned up.
+    @Test func aPhotoAddedWhileTheFirstWasDeletedIsRemovedToo() throws {
+        var (a, id) = try synced()
+        var b = HouseholdData()
+        b.receiveEvent(a.events[id]!.event, systemFields: Data([1]))
+        a.delete(id, by: parentA, now: t0 + 300)
+        a.endUndoWindows()
+        let fromA = sent(&a, id, tag: 2)
+        b.saveEditor(id, title: "First smile", note: "In the bath", media: ["p1", "p2", "fromB"], at: t0, by: parentB, now: t0 + 299)
+        b.receiveEvent(fromA, systemFields: Data([2]))
+        #expect(b.events[id]?.event.deletedAt != nil)
+        #expect(details(b, id) == MilestoneDetails(title: "First smile", media: [], removedMedia: ["fromB", "p1", "p2"]))
+    }
+
+    /// Parent A deletes the first; during the hold, Parent B's new photo arrives. Undo brings the
+    /// first back with B's photo too, not removed.
+    @Test func undoOfADeleteKeepsAPhotoTheOtherPhoneAddedMeanwhile() throws {
+        var (a, id) = try synced()
+        var b = HouseholdData()
+        b.receiveEvent(a.events[id]!.event, systemFields: Data([1]))
+        a.delete(id, by: parentA, now: t0 + 300)
+        b.saveEditor(id, title: "First smile", note: "In the bath", media: ["p1", "p2", "fromB"], at: t0, by: parentB, now: t0 + 302)
+        a.receiveEvent(sent(&b, id, tag: 2), systemFields: Data([2]))
+        #expect(details(a, id)?.media == [])
+        let undone = a.undoHeld(id, by: parentA, now: t0 + 305)
+        #expect(undone)
+        #expect(a.events[id]?.event.deletedAt == nil)
+        #expect(details(a, id) == MilestoneDetails(title: "First smile", media: ["p1", "p2", "fromB"]))
+    }
+
     /// The hold is kept in the household file.
     @Test func theHoldIsSavedInTheFile() throws {
         var (data, id) = try synced()

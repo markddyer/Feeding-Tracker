@@ -13,6 +13,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Start at launch, also when a push wakes the app in the background.
         AppModel.shared.sync.start()
         AppModel.shared.reconciler.runSoon()
+        // Photos move only while the app is open (journal plan: they may wait for it).
+        if application.applicationState != .background { AppModel.shared.media.kick() }
         // The watch can wake the app in the background with a tap.
         AppModel.shared.watch.activate()
         if AppConfig.syncEnabled {
@@ -50,10 +52,14 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
 
     func sceneWillEnterForeground(_ scene: UIScene) {
         AppModel.shared.reconciler.appCameToForeground()
-        Task { await AppModel.shared.sync.fetchNow() }
+        Task {
+            await AppModel.shared.sync.fetchNow()
+            AppModel.shared.media.kick()
+        }
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
         AppModel.shared.sync.appDidEnterBackground()
+        AppModel.shared.media.stop()
     }
 }

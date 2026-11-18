@@ -23,6 +23,20 @@ import Foundation
 extension SettingKey {
     /// The household photo allowance, in bytes. One shared setting; either parent can raise it.
     public static let photoAllowance = "photoAllowance"
+    /// The link to the photos zone's share. The owner's phone writes it; the other parent's phone
+    /// accepts it by itself, with no second invite to tap (journal plan, "Who creates it").
+    public static let photosShare = "photosShare"
+}
+
+extension HouseholdData {
+    /// The photos share's link, once the owner's phone has made it.
+    public var photosShareURL: String? { setting(String.self, SettingKey.photosShare) }
+
+    /// Saves the photos share's link, if it changed.
+    public mutating func setPhotosShareURL(_ url: String, now: Date) {
+        guard url != photosShareURL else { return }
+        putSetting(url, key: SettingKey.photosShare, now: now)
+    }
 }
 
 extension HouseholdData {

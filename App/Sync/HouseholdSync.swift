@@ -59,6 +59,13 @@ final class HouseholdSync {
     @ObservationIgnored private var joiningOwner: String?
     /// The owner names of every photos zone the databases have reported, kept on this phone.
     @ObservationIgnored private var photosZoneOwners: Set<String> = []
+    /// Called when an engine fetch starts (true) and ends (false), so photo transfers make way.
+    @ObservationIgnored var onEngineFetch: (@MainActor (Bool) -> Void)?
+    /// Called when the engines have sent changes, or the shares changed, so photos may go on.
+    @ObservationIgnored var onSent: (@MainActor () -> Void)?
+    /// True once this launch has listed the shared database's zones (`learnSharedPhotosZones`).
+    @ObservationIgnored private var sharedZonesListed = false
+    @ObservationIgnored private var sharedZonesTask: Task<Void, Never>?
 
     init(store: HouseholdStore) {
         self.store = store
@@ -185,7 +192,8 @@ final class HouseholdSync {
     private func presentInviteSheet(_ share: CKShare) {
         let controller = UICloudSharingController(share: share, container: container)
         controller.availablePermissions = [.allowPrivate, .allowReadWrite]
-        let delegate = InviteSheetDelegate { [weak self] message in self?.problem = message }
+        let delegate = InviteSheetDelegate(report: { [weak self] message in self?.problem = message },
+                                           sharesChanged: { [weak self] in self?.onSent?() })
         inviteDelegate = delegate
         controller.delegate = delegate
         let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
@@ -226,9 +234,19 @@ final class HouseholdSync {
 
     // MARK: Sending
 
-    /// Queues everything that is waiting and past its undo window, then sends it.
-    func scheduleUploads() {
-        guard let target = writeTarget else { return }
+    /// True while an entry is ready to send and not blocked: photo transfers wait behind it
+    /// (journal plan, "Photos never get in the way of feeds").
+    var hasEntriesWaitingToSend: Bool {
+        let now = Date()
+        return store.data.eventsToUpload(now: now).contains { !blocked.contains($0.event.id) }
+            || store.data.plainRecordsToUpload().contains { !blocked.contains(RecordMapping.cloudName(of: $0.record)) }
+    }
+
+    /// Queues everything that is waiting and past its undo window, then sends it. True when it
+    /// started a send.
+    @discardableResult
+    func scheduleUploads() -> Bool {
+        guard let target = writeTarget else { return false }
         let now = Date()
         var changes: [CKSyncEngine.PendingRecordZoneChange] = []
         for stored in store.data.eventsToUpload(now: now) where !blocked.contains(stored.event.id) {
@@ -255,9 +273,12 @@ final class HouseholdSync {
             undoWindowTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(nextWindowEnd.timeIntervalSinceNow + 0.2))
                 guard !Task.isCancelled else { return }
-                self?.scheduleUploads()
+                // A record queued before its hold was skipped while held: send it now, even
+                // though it is already queued, unless this already started a send (Codex review).
+                if self?.scheduleUploads() == false { await self?.sendNow() }
             }
         }
+        return !new.isEmpty
     }
 
     func sendNow() async {
@@ -302,12 +323,18 @@ final class HouseholdSync {
         }
     }
 
+    /// False while a held first's change is on its way to iCloud: Undo can no longer take it
+    /// back (Codex review of T5 and T6). The Undo bar asks this with `undoHeld`'s own deadline.
+    func mayUndo(_ id: String) -> Bool { inFlight[id] == nil }
+
     func recordToSend(_ recordID: CKRecord.ID) -> CKRecord? {
         let name = recordID.recordName
         if let stored = store.data.events[name] {
             // The same rule as `eventsToUpload`: a change queued earlier never carries a held
             // delete out before its Undo window ends (outside voice OE4). It is queued again then.
             guard HouseholdData.mayUpload(stored, now: Date()) else { return nil }
+            // From here until iCloud answers, its Undo is closed (`mayUndo`), whatever the clock
+            // does next; iCloud's answer ends it for good (`didUploadEvent`).
             inFlight[name] = stored.localRevision
             return RecordMapping.record(for: stored, zoneID: recordID.zoneID)
         }
@@ -332,8 +359,14 @@ final class HouseholdSync {
         blocked.removeAll()
         let engines: [(CKSyncEngine, CKDatabase.Scope)] = [(privateEngine, .private), (sharedEngine, .shared)]
             .compactMap { engine, scope in engine.map { ($0, scope) } }
+        // Photos wait from the first engine's fetch to the last one's end, not just during each.
+        onEngineFetch?(true)
+        defer { onEngineFetch?(false) }
         do {
             for (engine, scope) in engines {
+                // The private engine (the owner's feeds) never waits for this; the shared one
+                // lists its zones first only while no owner is known (after a reinstall).
+                if scope == .shared { await learnSharedPhotosZones() }
                 let options = fetchOptions(for: scope)
                 try await Self.outsideCallbacks { try await engine.fetchChanges(options) }
             }
@@ -389,6 +422,12 @@ final class HouseholdSync {
 
     func handle(_ event: CKSyncEngine.Event, scope: CKDatabase.Scope) async {
         switch event {
+        case .willFetchChanges:
+            onEngineFetch?(true)
+
+        case .didFetchChanges:
+            onEngineFetch?(false)
+
         case .stateUpdate(let update):
             let state = try? JSONEncoder().encode(update.stateSerialization)
             store.applySync { $0.syncState[Self.key(scope)] = state }
@@ -474,6 +513,7 @@ final class HouseholdSync {
             if sent.failedRecordSaves.isEmpty, !sent.savedRecords.isEmpty { clearSendProblem() }
             lastSendAt = Date()
             scheduleUploads()
+            onSent?()
 
         default:
             break
@@ -536,6 +576,33 @@ final class HouseholdSync {
     /// zone (eng D8, OE1a, 18 Nov 2026).
     func fetchOptions(for scope: CKDatabase.Scope) -> CKSyncEngine.FetchChangesOptions {
         CKSyncEngine.FetchChangesOptions(scope: fetchScope(restricting: .all, for: scope))
+    }
+
+    /// After a reinstall, before the role is known, the shared database's photos zones aren't
+    /// known either, so a first fetch could include one. The zone list (no records) names them;
+    /// asked once a launch, only while no owner is known (Codex review of T5 and T6).
+    func learnSharedPhotosZones() async {
+        guard !sharedZonesListed, joiningOwner == nil, photosZoneOwners.isEmpty else { return }
+        if case .member = role { return }
+        // One listing at a time: a second fetch waits for the one already asking.
+        if let sharedZonesTask {
+            await sharedZonesTask.value
+            return
+        }
+        let database = container.sharedCloudDatabase
+        let task = Task { [weak self] in
+            let zones = try? await database.allRecordZones()
+            guard let self else { return }
+            sharedZonesTask = nil
+            guard let zones else { return }
+            sharedZonesListed = true
+            let owners = zones.map(\.zoneID).filter { $0.zoneName == AppConfig.photosZoneName }.map(\.ownerName)
+            guard !owners.isEmpty else { return }
+            photosZoneOwners.formUnion(owners)
+            defaults.set(photosZoneOwners.sorted(), forKey: "photosZoneOwners")
+        }
+        sharedZonesTask = task
+        await task.value
     }
 
     /// `given` with the photos zones left out, for the engine of `scope`.
@@ -612,6 +679,7 @@ final class SyncEngineDelegate: CKSyncEngineDelegate {
 
     /// Every fetch, the automatic ones too, leaves out the photos zone (eng D8).
     func nextFetchChangesOptions(_ context: CKSyncEngine.FetchChangesContext, syncEngine: CKSyncEngine) async -> CKSyncEngine.FetchChangesOptions {
+        if scope == .shared { await AppModel.shared.sync.learnSharedPhotosZones() }
         var options = context.options
         options.scope = await AppModel.shared.sync.fetchScope(restricting: context.options.scope, for: scope)
         return options
@@ -630,14 +698,22 @@ final class SyncEngineDelegate: CKSyncEngineDelegate {
 @MainActor
 final class InviteSheetDelegate: NSObject, UICloudSharingControllerDelegate {
     private let report: @MainActor (String) -> Void
+    /// The sheet changed who is in the household: the photos share follows at once (outside voice
+    /// OE7), as the sheet can remove a parent without telling the app otherwise.
+    private let sharesChanged: @MainActor () -> Void
 
-    init(report: @escaping @MainActor (String) -> Void) {
+    init(report: @escaping @MainActor (String) -> Void, sharesChanged: @escaping @MainActor () -> Void) {
         self.report = report
+        self.sharesChanged = sharesChanged
     }
 
     func cloudSharingController(_ csc: UICloudSharingController, failedToSaveShareWithError error: any Error) {
         report("The invite couldn't be saved: \(error.localizedDescription)")
     }
+
+    func cloudSharingControllerDidSaveShare(_ csc: UICloudSharingController) { sharesChanged() }
+
+    func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) { sharesChanged() }
 
     func itemTitle(for csc: UICloudSharingController) -> String? { "Feeding household" }
 }

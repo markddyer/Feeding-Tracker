@@ -170,6 +170,12 @@ public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: S
             return mine > serverStamp
         }()
         joined.media = mineIsLater ? mineDetails.media + theirs.media : theirs.media + mineDetails.media
+        if result.event.deletedAt != nil {
+            // A deleted first holds no photos: one the other phone added meanwhile is removed too,
+            // so it is cleaned up and never kept for a later restore (Codex review of T5 and T6).
+            joined.removedMedia += joined.media
+            joined.media = []
+        }
         joined.normalize()
         result.payload?.milestone = joined
         if joined.removedMedia != theirs.removedMedia {

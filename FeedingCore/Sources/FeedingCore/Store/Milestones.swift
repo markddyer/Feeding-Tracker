@@ -178,7 +178,9 @@ extension HouseholdData {
         }
         let newlyRemoved = takenOut.filter { !removedBefore.contains($0) }
         if saved, !newlyRemoved.isEmpty {
-            hold(id, HeldUndo(undeletes: false, media: mediaBefore, addedRemovals: newlyRemoved), now: now)
+            let addedHere = milestone.media.filter { !mediaBefore.contains($0) && !before.media.contains($0) }
+            hold(id, HeldUndo(undeletes: false, media: mediaBefore, addedLocally: addedHere.filter { media.contains($0) },
+                              addedRemovals: newlyRemoved), now: now)
         }
         return saved
     }
@@ -205,8 +207,9 @@ extension HouseholdData {
     }
 
     /// Undo for a first's delete or photos taken out, while it is still held on this phone: the
-    /// first shows again with its photos, in their order. False once the change has been sent or
-    /// its Undo window has passed.
+    /// first shows again with its photos, in their order; a photo the same save added (a replaced
+    /// photo's new one) goes onto the removed list, never sent; one the other phone added meanwhile
+    /// stays, after them. False once the change has been sent or its Undo window has passed.
     @discardableResult
     public mutating func undoHeld(_ id: String, by member: MemberID, now: Date) -> Bool {
         guard let stored = events[id], let held = stored.heldUndo,
@@ -214,8 +217,10 @@ extension HouseholdData {
         let undone = edit(id, by: member, now: now) { snapshot in
             if held.undeletes { snapshot.event.deletedAt = nil }
             guard var milestone = snapshot.payload?.milestone else { return }
+            let addedElsewhere = milestone.media.filter { !held.media.contains($0) && !held.addedLocally.contains($0) }
             milestone.removedMedia.removeAll { held.addedRemovals.contains($0) }
-            milestone.media = held.media + milestone.media.filter { !held.media.contains($0) }
+            milestone.removedMedia += held.addedLocally
+            milestone.media = held.media + addedElsewhere
             milestone.normalize()
             snapshot.payload?.milestone = milestone
         }
@@ -226,11 +231,13 @@ extension HouseholdData {
     }
 
     /// Holds a change on this phone for the Undo window. A second change inside the window keeps
-    /// the first one's "before".
+    /// the first one's "before", with any photo that arrived from the other phone in between.
     private mutating func hold(_ id: String, _ undo: HeldUndo, now: Date) {
         guard var stored = events[id] else { return }
         if let earlier = stored.heldUndo, let deadline = stored.uploadNotBefore, now < deadline {
-            stored.heldUndo = HeldUndo(undeletes: earlier.undeletes || undo.undeletes, media: earlier.media,
+            let arrivedBetween = undo.media.filter { !earlier.media.contains($0) && !earlier.addedLocally.contains($0) }
+            stored.heldUndo = HeldUndo(undeletes: earlier.undeletes || undo.undeletes, media: earlier.media + arrivedBetween,
+                                       addedLocally: earlier.addedLocally + undo.addedLocally,
                                        addedRemovals: earlier.addedRemovals + undo.addedRemovals)
         } else {
             stored.heldUndo = undo

@@ -25,6 +25,10 @@ enum AppConfig {
         false
         #endif
     }
+
+    /// The journal's photos in iCloud (`MediaSync`) run only in Feeding Dev: the `Media` and
+    /// `MediaTally` record types are in the Dev schema only, until the parents' go-ahead.
+    static var photosEnabled: Bool { syncEnabled }
 }
 
 /// The app's long-lived parts.
@@ -34,6 +38,7 @@ final class AppModel {
 
     let store: HouseholdStore
     let sync: HouseholdSync
+    let media: MediaSync
     let reconciler: Reconciler
     let nightAskNotifier: NightAskNotifier
     let widgets = WidgetRefresher()
@@ -43,7 +48,12 @@ final class AppModel {
         store = HouseholdStore()
         sync = HouseholdSync(store: store)
         let defaults = UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
+        media = MediaSync(store: store, household: sync, files: MediaFiles.appGroup(), defaults: defaults)
         reconciler = Reconciler(store: store, sync: sync, defaults: defaults)
+        // Photos move only when the household's own sync lets them: a fetch running stops a
+        // download, and a send or fetch ending lets them go on (eng D3, D9).
+        sync.onEngineFetch = { [weak media] started in media?.engineFetch(started: started) }
+        sync.onSent = { [weak media] in media?.kick() }
         nightAskNotifier = NightAskNotifier(defaults: defaults)
         // After any change, from this phone or the other: if both parents tapped Start feed at
         // once, this phone's copy (hidden on the screens) finishes when the first feed does. An
