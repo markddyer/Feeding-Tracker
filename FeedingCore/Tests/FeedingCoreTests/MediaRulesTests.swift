@@ -102,6 +102,17 @@ struct PhotoAllowanceTests {
     }
 }
 
+@Suite("Photos: an item's details")
+struct MediaDetailsTests {
+    @Test func detailsRoundTripAndAnUnknownKindIsKept() throws {
+        let video = MediaDetails(kind: .video, width: 1280, height: 720, durationSeconds: 12.5)
+        #expect(PayloadCoder.decode(MediaDetails.self, from: try PayloadCoder.encode(video)) == video)
+        let newer = Data(#"{"v":1,"kind":"audio","width":0,"height":0}"#.utf8)
+        #expect(PayloadCoder.decode(MediaDetails.self, from: newer)?.kind == "audio")
+        #expect(PayloadCoder.decode(MediaDetails.self, from: Data(#"{"v":2,"kind":"photo","width":1,"height":1}"#.utf8)) == nil)
+    }
+}
+
 @Suite("Photos: space kept free for feeds")
 struct SpaceRuleTests {
     @Test func theReserveIsAlwaysKept() {

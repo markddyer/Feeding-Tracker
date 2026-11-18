@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         #if FEEDING_DEV && targetEnvironment(simulator)
         SampleData.loadIfAsked(into: AppModel.shared.store)
         #endif
+        // Work and half-made exports left by an app that was stopped (journal, outside voice OE8).
+        MediaStore.removeLeftovers()
         // Start at launch, also when a push wakes the app in the background.
         AppModel.shared.sync.start()
         AppModel.shared.reconciler.runSoon()

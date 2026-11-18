@@ -63,6 +63,53 @@ extension HouseholdData {
     }
 }
 
+// MARK: - An item's details (the `Media` record's encrypted payload)
+
+/// Photo or video. Open, like `EventKind`: a kind from a newer app version is kept, and shown as
+/// the plain drawn tile.
+public struct MediaKind: RawRepresentable, Hashable, Sendable, Codable, ExpressibleByStringLiteral {
+    public let rawValue: String
+    public init(rawValue: String) { self.rawValue = rawValue }
+    public init(stringLiteral value: String) { rawValue = value }
+
+    public static let photo: MediaKind = "photo"
+    public static let video: MediaKind = "video"
+}
+
+/// What a photo or video is, kept in its `Media` record's encrypted payload. No place, and no
+/// time it was taken: the first holds its own date (D17).
+public struct MediaDetails: VersionedPayload, Hashable {
+    public static let currentVersion = 1
+
+    public var v: Int
+    public var kind: MediaKind
+    /// The stored file's size in pixels, upright.
+    public var width: Int
+    public var height: Int
+    /// A video's length in seconds; nil for a photo.
+    public var durationSeconds: Double?
+
+    public init(kind: MediaKind, width: Int, height: Int, durationSeconds: Double? = nil) {
+        v = Self.currentVersion
+        self.kind = kind
+        self.width = width
+        self.height = height
+        self.durationSeconds = durationSeconds
+    }
+}
+
+/// How the journal's copies are made (journal plan, "Photos never fill iCloud by surprise").
+public enum MediaSizes {
+    /// A photo's long side, in pixels.
+    public static let photoLongSide = 2_048
+    /// A thumbnail's long side, in pixels.
+    public static let thumbnailLongSide = 400
+    /// The longest video, in seconds (D13).
+    public static let longestVideo: Double = 15
+    /// The size a video aims to stay under, in bytes.
+    public static let videoAim: Int64 = 8_000_000
+}
+
 /// How full the allowance is. The words come from the app.
 public enum AllowanceLevel: Hashable, Sendable {
     case fine

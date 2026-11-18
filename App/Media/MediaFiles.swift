@@ -1,3 +1,4 @@
+import AVFoundation
 import FeedingCore
 import Foundation
 
@@ -21,6 +22,12 @@ struct MediaFiles: Sendable {
 
     func hasFile(_ id: String) -> Bool { FileManager.default.fileExists(atPath: fileURL(id).path) }
     func hasThumbnail(_ id: String) -> Bool { FileManager.default.fileExists(atPath: thumbnailURL(id).path) }
+
+    /// A stored video, for playing or reading. Its file name has no ".mp4", so the type is given:
+    /// the journal's videos are always MP4 (`MediaStore.addVideo`).
+    func videoAsset(_ id: String) -> AVURLAsset {
+        AVURLAsset(url: fileURL(id), options: [AVURLAssetOverrideMIMETypeKey: "video/mp4"])
+    }
 
     /// Copies a file CloudKit downloaded into this folder. CloudKit may remove its copy once the
     /// fetch ends, so this is called at once.
