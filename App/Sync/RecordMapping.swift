@@ -117,4 +117,80 @@ enum RecordMapping {
             archivedAt: type == .baby ? record["archivedAt"] as? Date : nil,
             payload: record.encryptedValues["payload"] as? Data)
     }
+
+    // MARK: Photos and videos (the photos zone; journal plan, "Record shape")
+
+    /// One photo or video of a first, as its `Media` record holds it. The file and its thumbnail
+    /// go as CloudKit assets, which CloudKit encrypts by default; the details go in the encrypted
+    /// payload. A `Media` record is never changed: removing or replacing an item deletes it.
+    struct MediaFields: Equatable, Sendable {
+        /// The record name: the item's ID, as the first's media list names it.
+        var id: String
+        /// The event the item belongs to (a first, today). A plain string, as a CloudKit
+        /// reference can't point into another zone, and the event is in the household zone.
+        var eventID: String
+        /// The file and the thumbnail together, in bytes, for the household photo allowance.
+        /// CloudKit doesn't report a record's size.
+        var byteSize: Int64
+        /// The item's details (photo or video, its length and size), written by FeedingCore.
+        var payload: Data?
+    }
+
+    static let mediaType = "Media"
+
+    /// What a tile needs: every field but the full file, so a fetch of the timeline never
+    /// downloads a whole photo or video (journal plan, "thumbnails only").
+    static let mediaThumbnailKeys: [CKRecord.FieldKey] = ["byteSize", "eventID", "payload", "thumbnail"]
+
+    static func record(for media: MediaFields, file: URL, thumbnail: URL, zoneID: CKRecordZone.ID) -> CKRecord {
+        let record = CKRecord(recordType: mediaType, recordID: CKRecord.ID(recordName: media.id, zoneID: zoneID))
+        record["eventID"] = media.eventID
+        record["byteSize"] = media.byteSize
+        record["file"] = CKAsset(fileURL: file)
+        record["thumbnail"] = CKAsset(fileURL: thumbnail)
+        record.encryptedValues["payload"] = media.payload
+        return record
+    }
+
+    /// Nil when a required field is missing.
+    static func media(from record: CKRecord) -> MediaFields? {
+        guard record.recordType == mediaType,
+              let eventID = record["eventID"] as? String,
+              let byteSize = record["byteSize"] as? Int64
+        else { return nil }
+        return MediaFields(id: record.recordID.recordName, eventID: eventID, byteSize: byteSize,
+                           payload: record.encryptedValues["payload"] as? Data)
+    }
+
+    /// Where CloudKit put a fetched item's file on this phone; nil if the fetch left it out.
+    /// CloudKit may remove it once the fetch ends, so the caller moves it at once.
+    static func fileURL(of record: CKRecord) -> URL? {
+        (record["file"] as? CKAsset)?.fileURL
+    }
+
+    /// Where CloudKit put a fetched item's thumbnail on this phone, as `fileURL(of:)`.
+    static func thumbnailURL(of record: CKRecord) -> URL? {
+        (record["thumbnail"] as? CKAsset)?.fileURL
+    }
+
+    // MARK: The photo allowance's tally (CEO review D20, eng D2 and D11)
+
+    /// One record in the photos zone. Its encrypted payload lists each item's ID and size; the
+    /// bytes used are their sum. It is saved in the same all-or-nothing save as each `Media`
+    /// record, and only if nobody changed it since it was read, so its version tag goes with it.
+    static let mediaTallyType = "MediaTally"
+    static let mediaTallyName = "mediaTally"
+
+    static func tallyRecord(payload: Data, systemFields: Data?, zoneID: CKRecordZone.ID) -> CKRecord {
+        let record = record(fromSystemFields: systemFields)
+            ?? CKRecord(recordType: mediaTallyType, recordID: CKRecord.ID(recordName: mediaTallyName, zoneID: zoneID))
+        record.encryptedValues["payload"] = payload
+        return record
+    }
+
+    /// Nil for any other record, or a tally with no payload.
+    static func tallyPayload(from record: CKRecord) -> Data? {
+        guard record.recordType == mediaTallyType else { return nil }
+        return record.encryptedValues["payload"] as? Data
+    }
 }

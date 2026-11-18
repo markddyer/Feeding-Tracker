@@ -2209,7 +2209,7 @@ This list supersedes the CEO review's list above where they overlap (CEO T1 → 
   - Surfaced by: D18; eng D8; OE1a; Section 1 finding 1; eng D6 parts 1 and 2
   - Files: FeedingCore/Sources/FeedingCore/Store/HouseholdData.swift, FeedingCore/Sources/FeedingCore/Model/Payload.swift, App/Model/HouseholdStore.swift, App/Alerts/Reconciler.swift, App/Sync/HouseholdSync.swift, App/Model/AppModel.swift (`AppConfig`)
   - Verify: `swift test --package-path FeedingCore`; `xcodebuild test -project Feeding.xcodeproj -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'` (fetch helper, both roles)
-- [ ] **T2 (P1, human: ~3h / CC: ~20min)** — schema and RecordMapping — Add `Media` and tally record types; build them in RecordMapping
+- [x] **T2 (P1, human: ~3h / CC: ~20min)** — schema and RecordMapping — Add `Media` and tally record types; build them in RecordMapping (done 18 Nov 2026: `Media` has `eventID` (a string, as a reference can't cross zones; "event", not "milestone", so later growth photos can use it), `byteSize`, the `file` and `thumbnail` assets and an encrypted `payload` for the details; `MediaTally` has only an encrypted `payload`, the list of items and sizes, in one record named `mediaTally`. `RecordMapping.mediaThumbnailKeys` is every field but the file. Imported into Dev; the export matched the file)
   - Surfaced by: Section 1 finding 2; D20
   - Files: schema.ckdb, App/Sync/RecordMapping.swift, AppTests/RecordMappingTests.swift
   - Verify: `xcrun cktool` validate and Dev import; `everyFieldWrittenIsInTheSchema` covers both types

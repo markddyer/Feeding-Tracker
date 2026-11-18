@@ -114,6 +114,9 @@ struct RecordMappingTests {
             let stored = StoredPlainRecord(record: plain, needsUpload: true, systemFields: nil, localRevision: 1)
             written.append((type.rawValue, RecordMapping.record(for: stored, zoneID: zone)))
         }
+        written.append((RecordMapping.mediaType, mediaRecord()))
+        written.append((RecordMapping.mediaTallyType,
+                        RecordMapping.tallyRecord(payload: Data([1]), systemFields: nil, zoneID: photosZone)))
         for (type, record) in written {
             let fields = try #require(schema.fields[type], "\(type) is not in schema.ckdb")
             for key in record.allKeys() {
@@ -123,6 +126,72 @@ struct RecordMappingTests {
                 #expect(fields[key] == "ENCRYPTED BYTES", "\(type).\(key) must be ENCRYPTED BYTES in schema.ckdb")
             }
         }
+    }
+
+    // MARK: Photos and videos (journal plan, "Record shape")
+
+    let photosZone = CKRecordZone.ID(zoneName: AppConfig.photosZoneName, ownerName: CKCurrentUserDefaultName)
+
+    func mediaRecord(payload: Data? = Data([7])) -> CKRecord {
+        let folder = URL(fileURLWithPath: NSTemporaryDirectory())
+        let media = RecordMapping.MediaFields(id: "media-1", eventID: "event-1", byteSize: 2_345_678, payload: payload)
+        return RecordMapping.record(for: media, file: folder.appendingPathComponent("media-1.jpg"),
+                                    thumbnail: folder.appendingPathComponent("media-1-thumb.jpg"), zoneID: photosZone)
+    }
+
+    @Test func aMediaRecordRoundTrips() throws {
+        let record = mediaRecord()
+        #expect(record.recordType == "Media")
+        #expect(record.recordID == CKRecord.ID(recordName: "media-1", zoneID: photosZone))
+        let back = try #require(RecordMapping.media(from: record))
+        #expect(back == RecordMapping.MediaFields(id: "media-1", eventID: "event-1", byteSize: 2_345_678, payload: Data([7])))
+        #expect(RecordMapping.fileURL(of: record)?.lastPathComponent == "media-1.jpg")
+        #expect(RecordMapping.thumbnailURL(of: record)?.lastPathComponent == "media-1-thumb.jpg")
+    }
+
+    /// The photo and its thumbnail are assets, which CloudKit encrypts by default; only the
+    /// details are in `encryptedValues`, as CloudKit doesn't allow assets there.
+    @Test func aMediaRecordsDetailsAreEncrypted() {
+        let record = mediaRecord()
+        #expect(record.encryptedValues.allKeys() == ["payload"])
+        #expect(record["payload"] == nil)
+        #expect(record["file"] is CKAsset)
+        #expect(record["thumbnail"] is CKAsset)
+    }
+
+    /// A tile's fetch names every field but the full file, so the timeline never downloads one.
+    @Test func theThumbnailFetchLeavesOutOnlyTheFile() throws {
+        let fields = try #require(try Schema.load().fields["Media"])
+        let own = Set(fields.keys.filter { !$0.hasPrefix("___") })
+        #expect(Set(RecordMapping.mediaThumbnailKeys) == own.subtracting(["file"]))
+    }
+
+    @Test func otherRecordsAreNotMediaOrTheTally() {
+        let incomplete = CKRecord(recordType: "Media", recordID: CKRecord.ID(recordName: "m", zoneID: photosZone))
+        #expect(RecordMapping.media(from: incomplete) == nil)
+        let event = RecordMapping.record(for: storedEvent(), zoneID: zone)
+        #expect(RecordMapping.media(from: event) == nil)
+        #expect(RecordMapping.tallyPayload(from: event) == nil)
+        #expect(RecordMapping.tallyPayload(from: mediaRecord()) == nil)
+        // A household's own record types stay apart from the photos zone's.
+        #expect(RecordMapping.event(from: mediaRecord()) == nil)
+        #expect(RecordMapping.plainRecord(from: mediaRecord()) == nil)
+    }
+
+    /// The tally is saved only if nobody changed it since it was read, so a saved tally keeps its
+    /// version tag when it is written again.
+    @Test func theTallyRoundTripsAndKeepsItsVersionTag() throws {
+        let first = RecordMapping.tallyRecord(payload: Data([1, 2]), systemFields: nil, zoneID: photosZone)
+        #expect(first.recordType == "MediaTally")
+        #expect(first.recordID == CKRecord.ID(recordName: "mediaTally", zoneID: photosZone))
+        #expect(first.encryptedValues.allKeys() == ["payload"])
+        #expect(first["payload"] == nil)
+        #expect(RecordMapping.tallyPayload(from: first) == Data([1, 2]))
+        let again = RecordMapping.tallyRecord(payload: Data([3]), systemFields: RecordMapping.systemFields(of: first),
+                                              zoneID: photosZone)
+        #expect(again.recordID == first.recordID)
+        #expect(again.recordType == "MediaTally")
+        #expect(RecordMapping.tallyPayload(from: again) == Data([3]))
     }
 }
 
