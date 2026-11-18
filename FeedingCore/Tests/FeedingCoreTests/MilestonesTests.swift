@@ -382,6 +382,122 @@ struct RemovedMediaTests {
     }
 }
 
+/// Outside review O6 and outside voice OE4: a first's delete and a photo taken out wait on this
+/// phone for the Undo window, so Undo brings the photos back and nothing ever left the phone.
+@Suite("Firsts: deletes held for Undo")
+struct HeldChangeTests {
+    /// A first with two photos, already in iCloud.
+    func synced() throws -> (data: HouseholdData, id: String) {
+        var data = HouseholdData()
+        let added = data.addMilestone(babyID: baby, title: "First smile", note: "In the bath", media: ["p1", "p2"], at: t0,
+                                      by: parentA, timeZoneID: londonID, now: t0)
+        let id = try #require(added)
+        _ = sent(&data, id)
+        return (data, id)
+    }
+
+    @Test func aDeletePutsItsPhotosOnTheRemovedListAndWaits() throws {
+        var (data, id) = try synced()
+        let deleteAt = t0 + 300
+        let deleted = data.deleteMilestone(id, by: parentA, now: deleteAt)
+        #expect(deleted)
+        #expect(data.events[id]?.event.deletedAt == deleteAt)
+        #expect(details(data, id) == MilestoneDetails(title: "First smile", media: [], removedMedia: ["p1", "p2"]))
+        #expect(data.eventsToUpload(now: deleteAt + 9.9).isEmpty)
+        #expect(!HouseholdData.mayUpload(data.events[id]!, now: deleteAt + 9.9))
+        #expect(HouseholdData.mayUpload(data.events[id]!, now: deleteAt + 10))
+        // Undo can still bring the photos back, so they stay on the phone until then.
+        #expect(data.mediaInUse == ["p1", "p2"])
+    }
+
+    @Test func undoWithinTheWindowBringsEverythingBack() throws {
+        var (data, id) = try synced()
+        data.delete(id, by: parentA, now: t0 + 300)
+        let undone = data.undoHeld(id, by: parentA, now: t0 + 305)
+        #expect(undone)
+        #expect(data.events[id]?.event.deletedAt == nil)
+        #expect(details(data, id) == MilestoneDetails(title: "First smile", media: ["p1", "p2"]))
+        #expect(data.events[id]?.snapshot.payload?.note == "In the bath")
+        #expect(data.events[id]?.heldUndo == nil)
+    }
+
+    @Test func noUndoOnceTheWindowHasPassedOrTheChangeWasSent() throws {
+        var (data, id) = try synced()
+        data.delete(id, by: parentA, now: t0 + 300)
+        let late = data.undoHeld(id, by: parentA, now: t0 + 310)
+        #expect(!late)
+        _ = sent(&data, id)
+        #expect(data.events[id]?.heldUndo == nil)
+        // Brought back later: the words only; the photos are gone for good.
+        data.restore(id, by: parentA, now: t0 + 400)
+        #expect(details(data, id) == MilestoneDetails(title: "First smile", media: [], removedMedia: ["p1", "p2"]))
+        #expect(data.mediaInUse.isEmpty)
+    }
+
+    /// Going to the background ends the hold and Undo together (OE4).
+    @Test func goingToTheBackgroundEndsTheHoldAndUndo() throws {
+        var (data, id) = try synced()
+        data.delete(id, by: parentA, now: t0 + 300)
+        data.endUndoWindows()
+        #expect(data.eventsToUpload(now: t0 + 301).map(\.event.id) == [id])
+        let afterBackground = data.undoHeld(id, by: parentA, now: t0 + 302)
+        #expect(!afterBackground)
+    }
+
+    /// A photo taken out in the editor: held, and Undo puts it back in its place.
+    @Test func aPhotoTakenOutIsHeldAndUndoPutsItBack() throws {
+        var (data, id) = try synced()
+        let original = try #require(data.events[id]?.snapshot)
+        let saved = data.editMilestone(id, from: original, title: "First smile", note: "In the bath", media: ["p2"],
+                                       at: t0, by: parentA, now: t0 + 300)
+        #expect(saved)
+        #expect(data.events[id]?.heldUndo == HeldUndo(undeletes: false, media: ["p1", "p2"], addedRemovals: ["p1"]))
+        #expect(data.eventsToUpload(now: t0 + 305).isEmpty)
+        let undone = data.undoHeld(id, by: parentA, now: t0 + 305)
+        #expect(undone)
+        #expect(details(data, id) == MilestoneDetails(title: "First smile", media: ["p1", "p2"]))
+    }
+
+    /// An edit that takes nothing out isn't held.
+    @Test func anEditThatTakesNothingOutGoesAtOnce() throws {
+        var (data, id) = try synced()
+        let original = try #require(data.events[id]?.snapshot)
+        data.editMilestone(id, from: original, title: "First big smile", note: "In the bath", media: ["p2", "p1"],
+                           at: t0, by: parentA, now: t0 + 300)
+        #expect(data.events[id]?.heldUndo == nil)
+        #expect(data.eventsToUpload(now: t0 + 300).map(\.event.id) == [id])
+    }
+
+    /// The other phone's copy arriving during the hold keeps the hold, and Undo still works.
+    @Test func aCopyArrivingDuringTheHoldKeepsIt() throws {
+        var (a, id) = try synced()
+        var b = HouseholdData()
+        b.receiveEvent(a.events[id]!.event, systemFields: Data([1]))
+        b.saveEditor(id, title: "First smile!", note: "In the bath", media: ["p1", "p2"], at: t0, by: parentB, now: t0 + 290)
+        let fromB = sent(&b, id, tag: 2)
+        a.delete(id, by: parentA, now: t0 + 300)
+        a.receiveEvent(fromB, systemFields: Data([2]))
+        #expect(a.eventsToUpload(now: t0 + 305).isEmpty)
+        let undone = a.undoHeld(id, by: parentA, now: t0 + 306)
+        #expect(undone)
+        #expect(a.events[id]?.event.deletedAt == nil)
+        #expect(details(a, id) == MilestoneDetails(title: "First smile!", media: ["p1", "p2"]))
+    }
+
+    /// The hold is kept in the household file.
+    @Test func theHoldIsSavedInTheFile() throws {
+        var (data, id) = try synced()
+        data.delete(id, by: parentA, now: t0 + 300)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        let back = try decoder.decode(HouseholdData.self, from: try encoder.encode(data))
+        #expect(back.events[id]?.heldUndo == data.events[id]?.heldUndo)
+        #expect(back.events[id]?.heldUndo != nil)
+    }
+}
+
 @Suite("Firsts: the baby's age")
 struct BabyAgeTests {
     @Test(arguments: [

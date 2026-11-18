@@ -39,11 +39,13 @@ extension HouseholdData {
         putSetting(bytes, key: SettingKey.photoAllowance, now: now)
     }
 
-    /// The photos and videos the live firsts name: the ones to keep, download and export. A
-    /// removed item, or one of a deleted first, is not among them.
+    /// The photos and videos the live firsts name, and those an Undo can still bring back: the
+    /// ones to keep on this phone. A removed item, or one of a deleted first, is not among them
+    /// once its Undo has ended.
     public var mediaInUse: Set<String> {
-        Set(snapshots.lazy.filter { $0.event.kind == .milestone && $0.event.deletedAt == nil }
-            .flatMap { $0.payload?.milestone?.media ?? [] })
+        let live = snapshots.lazy.filter { $0.event.kind == .milestone && $0.event.deletedAt == nil }
+            .flatMap { $0.payload?.milestone?.media ?? [] }
+        return Set(live).union(events.values.flatMap { $0.heldUndo?.media ?? [] })
     }
 }
 

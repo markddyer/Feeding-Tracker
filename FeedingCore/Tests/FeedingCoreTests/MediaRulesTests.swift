@@ -86,7 +86,7 @@ struct PhotoAllowanceTests {
         #expect(PayloadCoder.decode(MediaTally.self, from: one) == MediaTally(items: ["a": 1, "b": 2, "c": 3]))
     }
 
-    /// Only the live firsts' photos are kept, downloaded and exported.
+    /// Only the live firsts' photos are kept, and those Undo can still bring back.
     @Test func theItemsInUseAreTheLiveFirstsOnes() {
         var data = HouseholdData()
         data.addMilestone(id: "smile", babyID: baby, title: "First smile", media: ["m1", "m2"], at: start, by: parentA,
@@ -95,6 +95,9 @@ struct PhotoAllowanceTests {
                           timeZoneID: "Europe/London", now: start)
         data.saveEditor("smile", title: "First smile", media: ["m2"], at: start, by: parentA, now: start + 60)
         data.delete("laugh", by: parentA, now: start + 60)
+        // Undo can still bring the others back, so the phone keeps them until it ends.
+        #expect(data.mediaInUse == ["m1", "m2", "m3"])
+        data.endUndoWindows()
         #expect(data.mediaInUse == ["m2"])
     }
 }

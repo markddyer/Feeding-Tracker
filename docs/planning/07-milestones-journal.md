@@ -2223,7 +2223,7 @@ This list supersedes the CEO review's list above where they overlap (CEO T1 → 
   - Surfaced by: eng D2, D3, D9, D11; D19; OE8; O4; D8
   - Files: FeedingCore/Sources/FeedingCore/Store/MediaRules.swift (new)
   - Verify: `swift test --package-path FeedingCore` with fixed times (4.9 s keep, 5 s stop; clash re-checks the limit)
-- [ ] **T5 (P1, human: ~4h / CC: ~30min)** — FeedingCore — Milestone delete and item removal held 10 s; one "may this go now?" rule for `eventsToUpload` and `recordToSend`
+- [x] **T5 (P1, human: ~4h / CC: ~30min)** — FeedingCore — Milestone delete and item removal held 10 s; one "may this go now?" rule for `eventsToUpload` and `recordToSend` (built 18 Nov 2026: `deleteMilestone` (also what `delete` does for a first) hides the first and puts its photos on the removed list; it and an editor save that takes a photo out are held until `uploadNotBefore`, with `StoredEvent.heldUndo` saying what Undo puts back; `undoHeld` brings the first and its photos back in their order while held; `HouseholdData.mayUpload` is the one rule, used by `eventsToUpload` and `recordToSend`; going to the background ends the hold and Undo together; `mediaInUse` keeps the photos Undo can still bring back. 9 new tests)
   - Surfaced by: O6; OE4; eng D6 part 2
   - Files: FeedingCore/Sources/FeedingCore/Store/HouseholdData.swift, App/Sync/HouseholdSync.swift, FeedingCore/Tests/FeedingCoreTests/StoreTests.swift
   - Verify: `swift test --package-path FeedingCore`: a feed delete goes at once; a milestone delete waits 10 s

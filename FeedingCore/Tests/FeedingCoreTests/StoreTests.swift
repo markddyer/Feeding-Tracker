@@ -435,6 +435,25 @@ struct DeleteUploadTests {
         data.delete("e1", by: parentA, now: later)
         #expect(data.eventsToUpload(now: later).map(\.event.id) == ["e1"])
     }
+
+    /// A first's delete, and a photo taken out of a first, wait 10 seconds (O6).
+    @Test func aFirstsDeleteAndAPhotoTakenOutWait10Seconds() throws {
+        var data = HouseholdData()
+        data.addMilestone(id: "m1", babyID: baby, title: "First smile", media: ["p1", "p2"], at: t0, by: parentA,
+                          timeZoneID: "Europe/London", now: t0)
+        data.addMilestone(id: "m2", babyID: baby, title: "First laugh", media: ["p3"], at: t0, by: parentA,
+                          timeZoneID: "Europe/London", now: t0)
+        for id in ["m1", "m2"] {
+            let revision = try #require(data.events[id]?.localRevision)
+            data.didUploadEvent(id, sentRevision: revision, systemFields: Data([1]), serverCreatedAt: t0)
+        }
+        let later = t0.addingTimeInterval(.minutes(5))
+        data.delete("m2", by: parentA, now: later)
+        let original = try #require(data.events["m1"]?.snapshot)
+        data.editMilestone("m1", from: original, title: "First smile", note: nil, media: ["p2"], at: t0, by: parentA, now: later)
+        #expect(data.eventsToUpload(now: later.addingTimeInterval(9.9)).isEmpty)
+        #expect(Set(data.eventsToUpload(now: later.addingTimeInterval(10)).map(\.event.id)) == ["m1", "m2"])
+    }
 }
 
 @Suite("A parent's colour")

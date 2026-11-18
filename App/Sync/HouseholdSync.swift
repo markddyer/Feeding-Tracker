@@ -305,7 +305,9 @@ final class HouseholdSync {
     func recordToSend(_ recordID: CKRecord.ID) -> CKRecord? {
         let name = recordID.recordName
         if let stored = store.data.events[name] {
-            guard stored.needsUpload else { return nil }
+            // The same rule as `eventsToUpload`: a change queued earlier never carries a held
+            // delete out before its Undo window ends (outside voice OE4). It is queued again then.
+            guard HouseholdData.mayUpload(stored, now: Date()) else { return nil }
             inFlight[name] = stored.localRevision
             return RecordMapping.record(for: stored, zoneID: recordID.zoneID)
         }

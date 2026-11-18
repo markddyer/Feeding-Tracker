@@ -155,8 +155,10 @@ extension HouseholdData {
         guard !title.isEmpty, Self.fitsTheLimit(media) else { return false }
         let dateChanged = at != original.event.startedAt
         if dateChanged, milestoneDateProblem(at, babyID: current.event.babyID, now: now) != nil { return false }
+        let mediaBefore = milestone.media
+        var takenOut: [String] = []
         if media != before.media {
-            let takenOut = before.media.filter { !media.contains($0) }
+            takenOut = before.media.filter { !media.contains($0) }
             let added = media.filter { !before.media.contains($0) }
             let kept = milestone.media.filter { !takenOut.contains($0) }
             let onlyAddedOrTakenOut = before.media.filter { media.contains($0) } + added == media
@@ -168,11 +170,73 @@ extension HouseholdData {
         }
         if title != before.title { milestone.title = title }
         milestone.normalize()
-        return edit(id, by: member, now: now) { snapshot in
+        let removedBefore = Set(current.payload?.milestone?.removedMedia ?? [])
+        let saved = edit(id, by: member, now: now) { snapshot in
             snapshot.payload?.milestone = milestone
             if note != original.payload?.note { snapshot.payload?.note = note }
             if dateChanged { snapshot.event.startedAt = at }
         }
+        let newlyRemoved = takenOut.filter { !removedBefore.contains($0) }
+        if saved, !newlyRemoved.isEmpty {
+            hold(id, HeldUndo(undeletes: false, media: mediaBefore, addedRemovals: newlyRemoved), now: now)
+        }
+        return saved
+    }
+
+    /// Deletes a first: it is hidden, and its photos and videos go on its removed list, so they
+    /// are deleted for good once the delete is sent. The delete waits on this phone for the Undo
+    /// window first, so Undo brings everything back. Bringing a first back later (`restore`)
+    /// brings back its words only. False when it isn't a first this build reads, or is deleted.
+    @discardableResult
+    public mutating func deleteMilestone(_ id: String, by member: MemberID, now: Date) -> Bool {
+        guard let current = events[id]?.snapshot, current.event.kind == .milestone, current.event.deletedAt == nil,
+              let details = current.payload?.milestone else { return false }
+        let removedBefore = Set(details.removedMedia)
+        let deleted = edit(id, by: member, now: now) { snapshot in
+            snapshot.event.deletedAt = now
+            snapshot.payload?.milestone?.removedMedia += details.media
+            snapshot.payload?.milestone?.normalize()
+        }
+        if deleted {
+            hold(id, HeldUndo(undeletes: true, media: details.media,
+                              addedRemovals: details.media.filter { !removedBefore.contains($0) }), now: now)
+        }
+        return deleted
+    }
+
+    /// Undo for a first's delete or photos taken out, while it is still held on this phone: the
+    /// first shows again with its photos, in their order. False once the change has been sent or
+    /// its Undo window has passed.
+    @discardableResult
+    public mutating func undoHeld(_ id: String, by member: MemberID, now: Date) -> Bool {
+        guard let stored = events[id], let held = stored.heldUndo,
+              let deadline = stored.uploadNotBefore, now < deadline else { return false }
+        let undone = edit(id, by: member, now: now) { snapshot in
+            if held.undeletes { snapshot.event.deletedAt = nil }
+            guard var milestone = snapshot.payload?.milestone else { return }
+            milestone.removedMedia.removeAll { held.addedRemovals.contains($0) }
+            milestone.media = held.media + milestone.media.filter { !held.media.contains($0) }
+            milestone.normalize()
+            snapshot.payload?.milestone = milestone
+        }
+        guard undone else { return false }
+        events[id]?.heldUndo = nil
+        events[id]?.uploadNotBefore = nil
+        return true
+    }
+
+    /// Holds a change on this phone for the Undo window. A second change inside the window keeps
+    /// the first one's "before".
+    private mutating func hold(_ id: String, _ undo: HeldUndo, now: Date) {
+        guard var stored = events[id] else { return }
+        if let earlier = stored.heldUndo, let deadline = stored.uploadNotBefore, now < deadline {
+            stored.heldUndo = HeldUndo(undeletes: earlier.undeletes || undo.undeletes, media: earlier.media,
+                                       addedRemovals: earlier.addedRemovals + undo.addedRemovals)
+        } else {
+            stored.heldUndo = undo
+        }
+        stored.uploadNotBefore = max(stored.uploadNotBefore ?? now, now.addingTimeInterval(Self.undoWindow))
+        events[id] = stored
     }
 
     /// True when `media` names at most `MilestoneLimits.mediaItems` different items.

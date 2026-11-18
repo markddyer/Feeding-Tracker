@@ -22,13 +22,34 @@ public struct StoredEvent: Hashable, Sendable, Codable {
     /// Changed fields a newer build named that this build doesn't know (step 0, CEO review D18).
     /// They are kept for the newer build and cleared when the change is sent or replaced.
     public var keptChangedFields: Set<String> = []
+    /// What Undo puts back for a first's delete or a photo taken out, held on this phone until
+    /// `uploadNotBefore` (outside review O6). Gone once the change is sent.
+    public var heldUndo: HeldUndo?
 
     public var snapshot: EventSnapshot { EventSnapshot(event: event) }
 }
 
+/// A first's delete, or photos taken out of a first, waiting on this phone for the Undo window.
+/// Its photos are deleted for good once the change is sent, so it is never sent before Undo has
+/// ended (outside review O6, outside voice OE4).
+public struct HeldUndo: Hashable, Sendable, Codable {
+    /// True for a first's delete: Undo shows the first again.
+    public var undeletes: Bool
+    /// The photo list before, for Undo to put back.
+    public var media: [String]
+    /// The IDs the held change put on the removed list, for Undo to take off again.
+    public var addedRemovals: [String]
+
+    public init(undeletes: Bool, media: [String], addedRemovals: [String]) {
+        self.undeletes = undeletes
+        self.media = media
+        self.addedRemovals = addedRemovals
+    }
+}
+
 extension StoredEvent {
     private enum CodingKeys: String, CodingKey {
-        case event, changedFields, needsUpload, uploadNotBefore, systemFields, localRevision
+        case event, changedFields, needsUpload, uploadNotBefore, systemFields, localRevision, heldUndo
     }
 
     /// Reads the changed fields by name, so one this build doesn't know is kept, not fatal.
@@ -42,6 +63,7 @@ extension StoredEvent {
         uploadNotBefore = try container.decodeIfPresent(Date.self, forKey: .uploadNotBefore)
         systemFields = try container.decodeIfPresent(Data.self, forKey: .systemFields)
         localRevision = try container.decode(Int.self, forKey: .localRevision)
+        heldUndo = try? container.decodeIfPresent(HeldUndo.self, forKey: .heldUndo)
     }
 
     public func encode(to encoder: any Encoder) throws {
@@ -52,6 +74,7 @@ extension StoredEvent {
         try container.encodeIfPresent(uploadNotBefore, forKey: .uploadNotBefore)
         try container.encodeIfPresent(systemFields, forKey: .systemFields)
         try container.encode(localRevision, forKey: .localRevision)
+        try container.encodeIfPresent(heldUndo, forKey: .heldUndo)
     }
 }
 
@@ -271,10 +294,12 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         }
     }
 
-    /// Hides an event. It is never removed from iCloud.
+    /// Hides an event. It is never removed from iCloud. A first's delete is held for its Undo
+    /// window (`deleteMilestone`).
     @discardableResult
     public mutating func delete(_ id: String, by member: MemberID, now: Date) -> Bool {
-        edit(id, by: member, now: now) { $0.event.deletedAt = now }
+        if events[id]?.event.kind == .milestone { return deleteMilestone(id, by: member, now: now) }
+        return edit(id, by: member, now: now) { $0.event.deletedAt = now }
     }
 
     @discardableResult
@@ -292,9 +317,13 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         return true
     }
 
-    /// The app is going to the background: everything waiting may be sent at once.
+    /// The app is going to the background: everything waiting may be sent at once, and Undo ends
+    /// with it.
     public mutating func endUndoWindows() {
-        for id in events.keys { events[id]?.uploadNotBefore = nil }
+        for id in events.keys {
+            events[id]?.uploadNotBefore = nil
+            events[id]?.heldUndo = nil
+        }
     }
 
     // MARK: Plain records
@@ -321,8 +350,15 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// Events to send now: changed here, and past their undo window.
     public func eventsToUpload(now: Date) -> [StoredEvent] {
         events.values
-            .filter { $0.needsUpload && ($0.uploadNotBefore.map { $0 <= now } ?? true) }
+            .filter { Self.mayUpload($0, now: now) }
             .sorted { ($0.event.createdAt, $0.event.id) < ($1.event.createdAt, $1.event.id) }
+    }
+
+    /// The one answer to "may this go now?", for `eventsToUpload` and for the sync engine asking
+    /// for a record to send: changed here and past its undo window. So a change queued earlier
+    /// can't carry a held delete out early (outside voice OE4).
+    public static func mayUpload(_ stored: StoredEvent, now: Date) -> Bool {
+        stored.needsUpload && (stored.uploadNotBefore.map { $0 <= now } ?? true)
     }
 
     public func plainRecordsToUpload() -> [StoredPlainRecord] {
@@ -339,6 +375,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
             stored.changedFields = []
             stored.keptChangedFields = []
             stored.needsUpload = false
+            stored.heldUndo = nil
         }
         events[id] = stored
     }
