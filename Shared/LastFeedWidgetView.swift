@@ -80,7 +80,7 @@ struct LastFeedWidgetView: View {
                          ?? "Last feed")
                         .font(.caption)
                 } else {
-                    Label("Feeding", systemImage: "waterbottle")
+                    Label("Little Log", systemImage: "waterbottle")
                         .font(.headline)
                     Text(glance == nil ? "Open the app to set up" : "No feeds logged yet")
                         .font(.caption)
@@ -158,7 +158,7 @@ struct LastFeedWidgetView: View {
     }
 
     private var inlineText: String {
-        guard let glance else { return "Feeding" }
+        guard let glance else { return "Little Log" }
         if let since = glance.runningSince { return "Feed running \(GlanceText.elapsed(entry.date.timeIntervalSince(since)))" }
         if let start = glance.lastFeedStart { return "Last feed \(GlanceText.elapsed(entry.date.timeIntervalSince(start))) ago" }
         return "No feeds logged yet"
@@ -183,7 +183,7 @@ struct LastFeedWidgetView: View {
 
     /// The sentence VoiceOver reads.
     private var spoken: String {
-        guard let glance else { return "Feeding. Open the app to set up." }
+        guard let glance else { return "Little Log. Open the app to set up." }
         if let since = glance.runningSince {
             return "Feed running for \(GlanceText.spokenElapsed(entry.date.timeIntervalSince(since)))."
         }

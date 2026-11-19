@@ -125,7 +125,7 @@ struct CameraExplainer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Take a photo or video of a first").feedText(.title).accessibilityAddTraits(.isHeader)
-            Text("Feeding uses the camera only when you tap it, to catch the moment, and the microphone for a video's sound. iPhone asks you once.")
+            Text("Little Log uses the camera only when you tap it, to catch the moment, and the microphone for a video's sound. iPhone asks you once.")
                 .feedText(.body)
             Text("A copy of each photo or video you take here is kept in your Photos too. iPhone asks about that after you save.")
                 .feedText(.body)

@@ -157,9 +157,9 @@ struct WatchLastFeedView: View {
         Group {
             switch family {
             case .accessoryInline:
-                Text("Feeding")
+                Text("Little Log")
             case .accessoryRectangular:
-                Text("Open Feeding on your iPhone").font(.system(.body, design: .rounded))
+                Text("Open Little Log on your iPhone").font(.system(.body, design: .rounded))
             default:
                 ZStack {
                     AccessoryWidgetBackground()
@@ -167,7 +167,7 @@ struct WatchLastFeedView: View {
                 }
             }
         }
-        .accessibilityLabel("Feeding")
+        .accessibilityLabel("Little Log")
     }
 
     private func spoken(_ glance: FeedGlance) -> String {

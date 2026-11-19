@@ -40,6 +40,8 @@ final class NightAskNotifier {
         guard !new.isEmpty else { return }
         // Noted before sending, so two updates close together can't send one twice.
         told += new.map(\.id)
+        // Feeding Dev with its notices off (G4): noted as told, so nothing old arrives later.
+        guard !AppConfig.alertsOff else { return }
         for item in new {
             let other: MemberID = switch item {
             case .asked(let ask): ask.askedBy

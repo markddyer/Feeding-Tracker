@@ -148,8 +148,8 @@ struct WatchHomeView: View {
             }
             .tabViewStyle(.verticalPage)
         } else {
-            MessageScreen(text: state == nil ? "Open Feeding on your iPhone, with this watch nearby."
-                                             : "Set up Feeding on your iPhone first.")
+            MessageScreen(text: state == nil ? "Open Little Log on your iPhone, with this watch nearby."
+                                             : "Set up Little Log on your iPhone first.")
         }
     }
 

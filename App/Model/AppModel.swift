@@ -16,19 +16,24 @@ enum AppConfig {
     /// push-woken fetch, which the alarms wait on, never downloads a photo (eng D8, 18 Nov 2026).
     static let photosZoneName = "Photos"
 
-    /// Syncing runs only in Feeding Dev for now. Feeding (the real app) starts syncing once the
-    /// CloudKit Production schema is deployed, which needs the user's go-ahead.
-    static var syncEnabled: Bool {
+    /// Both apps sync. Feeding (the real app) does since the parents' go-ahead to deploy the schema
+    /// to CloudKit Production, journal included (19 Nov 2026, `08-going-live.md`, G1).
+    static var syncEnabled: Bool { true }
+
+    /// The journal's photos in iCloud (`MediaSync`), with the household's sync.
+    static var photosEnabled: Bool { syncEnabled }
+
+    /// Feeding Dev only: "Alarms and notices off" (`08-going-live.md`, G4), so Feeding Dev, kept
+    /// for testing, never rings beside the real app. On this phone only. Always false in Feeding.
+    static let alertsOffKey = "dev.alertsOff"
+
+    static var alertsOff: Bool {
         #if FEEDING_DEV
-        true
+        UserDefaults(suiteName: appGroupID)?.bool(forKey: alertsOffKey) ?? false
         #else
         false
         #endif
     }
-
-    /// The journal's photos in iCloud (`MediaSync`) run only in Feeding Dev: the `Media` and
-    /// `MediaTally` record types are in the Dev schema only, until the parents' go-ahead.
-    static var photosEnabled: Bool { syncEnabled }
 }
 
 /// The app's long-lived parts.

@@ -470,12 +470,12 @@ struct FirstEditor: View {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
         case .denied, .restricted:
             cameraOff = true
-            pickProblem = "The camera is off for Feeding. You can turn it on in iPhone Settings."
+            pickProblem = "The camera is off for Little Log. You can turn it on in iPhone Settings."
         default:
             cameraOff = false
             if CameraPicker.microphoneOff, !microphoneOffTold {
                 microphoneOffTold = true
-                pickProblem = "The microphone is off for Feeding, so the camera takes photos only. You can turn it on in iPhone Settings."
+                pickProblem = "The microphone is off for Little Log, so the camera takes photos only. You can turn it on in iPhone Settings."
             } else if !roomForVideo {
                 pickProblem = "Not enough space on this iPhone for a video, so the camera takes photos only."
             }

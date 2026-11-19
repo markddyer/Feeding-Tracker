@@ -176,7 +176,7 @@ enum QuickFeedError: Error, CustomLocalizedStringResourceConvertible {
     case openTheApp
 
     var localizedStringResource: LocalizedStringResource {
-        "Open Feeding to start or finish the feed there."
+        "Open Little Log to start or finish the feed there."
     }
 
     static func refuse() throws -> String {

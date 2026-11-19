@@ -159,7 +159,8 @@ extension HouseholdData {
         return true
     }
 
-    private mutating func addPendingChange(previousSettings: HouseholdSettings?, by member: MemberID, now: Date) {
+    /// Also used by the move from Feeding Dev, for the rota it brings (`bringIn`).
+    mutating func addPendingChange(previousSettings: HouseholdSettings?, by member: MemberID, now: Date) {
         let id = UUID().uuidString
         let change = PendingChange(id: id, madeBy: member, madeAt: now, previousSettings: previousSettings)
         putSetting(change, key: SettingKey.change(id), now: now)

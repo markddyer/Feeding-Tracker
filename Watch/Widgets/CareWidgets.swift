@@ -119,7 +119,7 @@ struct WatchNappyWidget: Widget {
                 .containerBackground(for: .widget) { Color.clear }
         }
         .configurationDisplayName("Nappy")
-        .description("The time since the last nappy. A tap opens Feeding to log wee, poo or both.")
+        .description("The time since the last nappy. A tap opens Little Log to log wee, poo or both.")
         .supportedFamilies([.accessoryCircular, .accessoryCorner])
     }
 }

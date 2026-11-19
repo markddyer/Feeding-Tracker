@@ -85,5 +85,5 @@ enum GlanceText {
         wee && poo ? "wee and poo" : poo ? "poo" : wee ? "wee" : "dry"
     }
 
-    static let notSetUp = "Open Feeding to set it up first."
+    static let notSetUp = "Open Little Log to set it up first."
 }

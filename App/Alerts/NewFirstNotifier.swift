@@ -111,7 +111,8 @@ final class NewFirstNotifier {
         }
     }
 
-    private var wanted: Bool { defaults.object(forKey: Self.wantedKey) as? Bool ?? true }
+    /// Off too in Feeding Dev with its notices off (G4).
+    private var wanted: Bool { !AppConfig.alertsOff && (defaults.object(forKey: Self.wantedKey) as? Bool ?? true) }
 
     private func remember(_ id: String) {
         let told = defaults.stringArray(forKey: Self.toldKey) ?? []

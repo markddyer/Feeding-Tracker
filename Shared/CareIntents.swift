@@ -232,7 +232,7 @@ enum QuickCareError: Error, CustomLocalizedStringResourceConvertible {
     case openTheApp
 
     var localizedStringResource: LocalizedStringResource {
-        "Open Feeding to log it there."
+        "Open Little Log to log it there."
     }
 
     static func refuse() throws -> String {

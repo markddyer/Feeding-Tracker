@@ -125,13 +125,19 @@ final class Reconciler {
             // file, so after a lost file the wait ends only once those feeds are back.
             let waiting = store.data.isWaitingForICloud(now: now)
             if !waiting { defaults.plannedFeedStarts = latest }
+            // Feeding Dev with its alarms and notices off (G4): every alert it set goes, and none
+            // is set. Never in Feeding.
+            let silenced = AppConfig.alertsOff
             if let applyAlerts {
-                await applyAlerts(desired, latest, now, state.settings.timeZone, waiting)
+                await applyAlerts(silenced ? [] : desired, silenced ? [:] : latest, now, state.settings.timeZone,
+                                  waiting && !silenced)
+            } else if silenced {
+                await scheduler.silenceAll()
             } else {
                 await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone,
                                       keepExisting: waiting)
             }
-            alerts = desired
+            alerts = silenced ? [] : desired
             lastRunAt = Date()
             for waiter in waiters { waiter.resume() }
         } while runAgain

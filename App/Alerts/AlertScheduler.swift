@@ -103,6 +103,27 @@ final class AlertScheduler {
         center.removePendingNotificationRequests(withIdentifiers: changes.notificationsToRemove)
     }
 
+    /// Feeding Dev with its alarms and notices off (G4): cancels every alarm this app has, set by
+    /// any build, the test screen's too, and takes away every alert and test notification,
+    /// waiting or shown. Every run does it again, so an alarm that wouldn't cancel is tried again.
+    func silenceAll() async {
+        lastError = nil
+        var ids = Set(scheduledAlarms.map(\.alarmID))
+        ids.formUnion(((try? AlarmManager.shared.alarms) ?? []).map(\.id))
+        var stuck = 0
+        for id in ids {
+            do { try AlarmManager.shared.cancel(id: id) } catch { stuck += 1 }
+        }
+        if stuck > 0 { lastError = "Couldn't cancel \(stuck) alarm\(stuck == 1 ? "" : "s"). Trying again next time." }
+        scheduledAlarms = []
+        let ours = { (id: String) in id.hasPrefix("alert.") || id.hasPrefix("spike.") }
+        let center = UNUserNotificationCenter.current()
+        let waiting = await center.pendingNotificationRequests().map(\.identifier).filter(ours)
+        center.removePendingNotificationRequests(withIdentifiers: waiting)
+        let shown = await center.deliveredNotifications().map(\.request.identifier).filter(ours)
+        center.removeDeliveredNotifications(withIdentifiers: shown)
+    }
+
     private func schedule(_ alert: DesiredAlert, id: UUID, timeZone: TimeZone) async throws {
         let title = AlertText.title(for: alert)
         let attributes = AlarmAttributes<FeedingAlarmMetadata>(

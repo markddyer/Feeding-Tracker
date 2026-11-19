@@ -83,10 +83,10 @@ targetTemplates:
         # Only Apple's own encryption (iCloud's HTTPS and CloudKit's encrypted fields), which is
         # exempt: TestFlight then doesn't ask the export question at each upload.
         ITSAppUsesNonExemptEncryption: false
-        NSAlarmKitUsageDescription: Feeding rings an alarm when the feed window you set closes, even when the phone is on silent.
-        NSCameraUsageDescription: Feeding takes a photo or video of a first for your journal, when you choose to.
-        NSMicrophoneUsageDescription: Feeding records the sound of a video you take of a first, when you choose to.
-        NSPhotoLibraryAddUsageDescription: Feeding keeps a copy of a photo you take in the app in your Photos.
+        NSAlarmKitUsageDescription: Little Log rings an alarm when the feed window you set closes, even when the phone is on silent.
+        NSCameraUsageDescription: Little Log takes a photo or video of a first for your journal, when you choose to.
+        NSMicrophoneUsageDescription: Little Log records the sound of a video you take of a first, when you choose to.
+        NSPhotoLibraryAddUsageDescription: Little Log keeps a copy of a photo you take in the app in your Photos.
         FeedingCloudKitContainer: iCloud.com.tracker.feeding${bundleSuffix}
         FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}
         # "Export the journal" carries on in the background (a continued-processing task, iOS 26;
@@ -226,7 +226,7 @@ targets:
     templates: [FeedingApp]
     templateAttributes:
       bundleSuffix: ""
-      displayName: Feeding
+      displayName: Little Log
       appIcon: AppIcon
       widgets: FeedingWidgets
       watch: FeedingWatch
@@ -234,7 +234,7 @@ targets:
     templates: [FeedingApp]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Feeding Dev
+      displayName: Little Log Dev
       appIcon: AppIcon-Dev
       widgets: FeedingDevWidgets
       watch: FeedingDevWatch
@@ -249,25 +249,25 @@ targets:
     templates: [FeedingWidgets]
     templateAttributes:
       bundleSuffix: ""
-      displayName: Feeding
+      displayName: Little Log
   FeedingDevWidgets:
     templates: [FeedingWidgets]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Feeding Dev
+      displayName: Little Log Dev
 
   FeedingWatch:
     templates: [FeedingWatchApp]
     templateAttributes:
       bundleSuffix: ""
-      displayName: Feeding
+      displayName: Little Log
       appIcon: AppIcon
       watchWidgets: FeedingWatchFaceWidgets
   FeedingDevWatch:
     templates: [FeedingWatchApp]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Feeding Dev
+      displayName: Little Log Dev
       appIcon: AppIcon-Dev
       watchWidgets: FeedingDevWatchFaceWidgets
     settings:
@@ -279,12 +279,12 @@ targets:
     templates: [FeedingWatchWidgets]
     templateAttributes:
       bundleSuffix: ""
-      displayName: Feeding
+      displayName: Little Log
   FeedingDevWatchFaceWidgets:
     templates: [FeedingWatchWidgets]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Feeding Dev
+      displayName: Little Log Dev
 
   # Tests of the app's Apple-only parts (CloudKit record mapping and the like), run in the
   # simulator: xcodebuild test -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'

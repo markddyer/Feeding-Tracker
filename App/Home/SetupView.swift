@@ -78,7 +78,7 @@ struct SetupView: View {
             disclaimer
         } else if !AppConfig.syncEnabled {
             title("Not ready yet")
-            Text("This version of Feeding doesn't share feeds between phones yet. Use Feeding Dev for now.")
+            Text("This version of Little Log doesn't share feeds between phones yet. Use Little Log Dev for now.")
                 .feedText(.body)
         } else if sync.accountAvailable == false {
             signIn(sync)
@@ -105,7 +105,7 @@ struct SetupView: View {
 
     private var disclaimer: some View {
         Group {
-            title("Feeding")
+            title("Little Log")
             Text("Logs your baby's feeds on both parents' phones, and alerts as a safety net when a long time has passed since the last feed started. The parents can take turns at night.")
                 .feedText(.body)
             note("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
@@ -116,7 +116,7 @@ struct SetupView: View {
     private func signIn(_ sync: HouseholdSync) -> some View {
         Group {
             title("Sign in to iCloud")
-            Text("Feeding keeps everything in your own iCloud, and shares it only with the other parent. Open Settings, tap your name at the top, and sign in. Then come back here.")
+            Text("Little Log keeps everything in your own iCloud, and shares it only with the other parent. Open Settings, tap your name at the top, and sign in. Then come back here.")
                 .feedText(.body)
             BigButton(title: "Check again", prominent: false) { Task { await sync.refreshAccount() } }
         }
@@ -131,7 +131,7 @@ struct SetupView: View {
                 Task { await model.sync.createHousehold() }
             }
             .disabled(model.sync.busy)
-            Text("Joining instead? Ask the other parent to send the invite from their phone, then tap the link in Messages. If the link doesn't open Feeding, copy it and paste it here:")
+            Text("Joining instead? Ask the other parent to send the invite from their phone, then tap the link in Messages. If the link doesn't open Little Log, copy it and paste it here:")
                 .feedText(.subheadline)
                 .foregroundStyle(Theme.textMuted)
             TextField("Invite link", text: $pastedLink)
@@ -179,7 +179,7 @@ struct SetupView: View {
     private var invite: some View {
         Group {
             title("Invite the other parent")
-            Text("Send the invite in Messages. When they tap it on their phone, Feeding opens and joins this household.")
+            Text("Send the invite in Messages. When they tap it on their phone, Little Log opens and joins this household.")
                 .feedText(.body)
             BigButton(title: "Send the invite", prominent: true) {
                 Task {
@@ -258,9 +258,9 @@ struct SetupView: View {
     private var permissions: some View {
         Group {
             title("Alarms and alerts")
-            Text("Feeding sets an alarm or a notification for when the time you choose has passed since the last feed started. Each parent picks loud or gentle in Settings. If nobody logs a feed, a loud backup alarm rings on both phones.")
+            Text("Little Log sets an alarm or a notification for when the time you choose has passed since the last feed started. Each parent picks loud or gentle in Settings. If nobody logs a feed, a loud backup alarm rings on both phones.")
                 .feedText(.body)
-            note("Never hide Feeding or lock it with Face ID. Apple says alarms from hidden or locked apps can fail without warning.")
+            note("Never hide Little Log or lock it with Face ID. Apple says alarms from hidden or locked apps can fail without warning.")
             BigButton(title: "Allow alarms and notifications", prominent: true) {
                 Task {
                     await model.reconciler.requestPermissions()

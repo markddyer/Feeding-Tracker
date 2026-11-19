@@ -1,6 +1,6 @@
 import AppIntents
 
-/// "Start a feed in Feeding" and "Finish the feed in Feeding" for Siri, Spotlight and the
+/// "Start a feed in Little Log" and "Finish the feed in Little Log" (the app's name, 19 Nov 2026) for Siri, Spotlight and the
 /// Shortcuts app, ready to use with no setting up. Each also goes on the Action Button from the
 /// iPhone's Settings (Action Button, then Shortcut).
 struct FeedingShortcuts: AppShortcutsProvider {

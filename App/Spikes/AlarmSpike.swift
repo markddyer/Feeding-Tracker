@@ -141,7 +141,8 @@ final class AlarmSpikeStore {
     /// notification. Does nothing while another quick test waits. Returns the ring time, or nil
     /// if nothing was set.
     func scheduleQuickTest(notificationDelay: TimeInterval?, followUpAfter: TimeInterval?, watchWorn: Bool) async -> Date? {
-        guard !isScheduling, activeQuickTest() == nil else { return nil }
+        // Not while Feeding Dev's alarms and notices are off (G4).
+        guard !isScheduling, activeQuickTest() == nil, !AppConfig.alertsOff else { return nil }
         isScheduling = true
         defer { isScheduling = false }
         let due = Date().addingTimeInterval(120)
@@ -151,7 +152,7 @@ final class AlarmSpikeStore {
 
     /// Sets the overnight tests. Does nothing while earlier overnight tests still wait.
     func scheduleOvernight(at dates: [Date], followUpAfter: TimeInterval?, withNotification: Bool, watchWorn: Bool) async -> [Date] {
-        guard !isScheduling, waitingOvernightTests().isEmpty else { return [] }
+        guard !isScheduling, waitingOvernightTests().isEmpty, !AppConfig.alertsOff else { return [] }
         isScheduling = true
         defer { isScheduling = false }
         for due in dates {
@@ -178,13 +179,13 @@ final class AlarmSpikeStore {
             isQuickTest: quick
         )
         do {
-            try await scheduleAlarm(id: test.mainAlarmID, at: due, title: "Feeding Dev test alarm")
+            try await scheduleAlarm(id: test.mainAlarmID, at: due, title: "Little Log Dev test alarm")
         } catch {
             test.errors.append("main alarm: \(error)")
         }
         if let followUpID = test.followUpAlarmID, let followUpDue = test.followUpDueAt {
             do {
-                try await scheduleAlarm(id: followUpID, at: followUpDue, title: "Feeding Dev test follow-up")
+                try await scheduleAlarm(id: followUpID, at: followUpDue, title: "Little Log Dev test follow-up")
             } catch {
                 test.errors.append("follow-up alarm: \(error)")
             }
@@ -206,7 +207,7 @@ final class AlarmSpikeStore {
 
     private func scheduleNotification(id: String, at date: Date) async throws {
         let content = UNMutableNotificationContent()
-        content.title = "Feeding Dev test alert"
+        content.title = "Little Log Dev test alert"
         content.body = "Practice alert, set for \(date.formatted(date: .omitted, time: .shortened))."
         content.sound = .default
         content.interruptionLevel = .timeSensitive

@@ -582,7 +582,7 @@ struct ExportView: View {
             Text(detail).feedText(.body).foregroundStyle(Theme.textMuted).fixedSize(horizontal: false, vertical: true)
         }
         if exporter.keepOpen {
-            Text("Keep Feeding open until it finishes: this iPhone didn't let it carry on in the background.")
+            Text("Keep Little Log open until it finishes: this iPhone didn't let it carry on in the background.")
                 .feedText(.subheadline)
                 .foregroundStyle(Theme.text)
         }

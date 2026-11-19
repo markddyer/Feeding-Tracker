@@ -156,7 +156,7 @@ struct ContentView: View {
         } else {
             NavigationStack {
                 SetupView()
-                    .navigationTitle("Feeding")
+                    .navigationTitle("Little Log")
                     .toolbar(removing: .title)
                     .modifier(TopBar(settings: model.baby != nil))
             }
@@ -298,7 +298,8 @@ struct AlarmSpikeHooks: ViewModifier {
 /// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
 /// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping`, `editLastFeed`,
 /// `addFirst` (with `-firstTitle "First smile"` to fill What happened) or `firstPage` (with
-/// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`).
+/// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`),
+/// or the move's two screens, `moveOut` and `moveIn` (`08-going-live.md`).
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -327,6 +328,10 @@ struct DevScreen: View {
             ShareCardPreview(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", babyID: babyID)
         case "export":
             ExportView(babyID: babyID)
+        case "moveOut":
+            NavigationStack { MoveOutScreen() }
+        case "moveIn":
+            NavigationStack { MoveInScreen() }
         case "firstsList":
             NavigationStack { FirstsListView(me: me, babyID: babyID) }
         case "firstPage":
@@ -434,7 +439,7 @@ struct SpikeMenu: View {
             } header: {
                 Text("Tests")
             } footer: {
-                Text("Feeding Dev only. These screens never appear in the real app.")
+                Text("Little Log Dev only. These screens never appear in the real app.")
             }
         }
         .navigationTitle("Tests")

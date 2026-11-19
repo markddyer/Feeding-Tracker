@@ -599,7 +599,7 @@ final class MediaSync {
             // Not made yet.
         }
         let share = CKShare(recordZoneID: zone.id)
-        share[CKShare.SystemFieldKey.title] = "Feeding photos"
+        share[CKShare.SystemFieldKey.title] = "Little Log photos"
         share.publicPermission = .none
         return share
     }

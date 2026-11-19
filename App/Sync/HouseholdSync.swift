@@ -183,7 +183,7 @@ final class HouseholdSync {
             return existing
         }
         let share = CKShare(recordZoneID: ownZoneID)
-        share[CKShare.SystemFieldKey.title] = "Feeding household"
+        share[CKShare.SystemFieldKey.title] = "Little Log household"
         share.publicPermission = .none
         guard let saved = try await database.save(share) as? CKShare else { throw CKError(.internalError) }
         return saved
@@ -751,7 +751,7 @@ final class InviteSheetDelegate: NSObject, UICloudSharingControllerDelegate {
 
     func cloudSharingControllerDidStopSharing(_ csc: UICloudSharingController) { sharesChanged() }
 
-    func itemTitle(for csc: UICloudSharingController) -> String? { "Feeding household" }
+    func itemTitle(for csc: UICloudSharingController) -> String? { "Little Log household" }
 }
 
 /// Asks iOS for a little time to finish sending after the app leaves the screen.

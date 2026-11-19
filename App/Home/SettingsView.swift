@@ -13,6 +13,10 @@ struct SettingsView: View {
     /// "Tell me about new firsts": this phone's own switch (X1, D8).
     @AppStorage(NewFirstNotifier.wantedKey, store: UserDefaults(suiteName: AppConfig.appGroupID))
     private var newFirstNotices = true
+    /// Feeding Dev's "Alarms and notices off" (`08-going-live.md`, G4).
+    @AppStorage(AppConfig.alertsOffKey, store: UserDefaults(suiteName: AppConfig.appGroupID))
+    private var alertsOff = false
+    @State private var confirmingAlertsOff = false
 
     var body: some View {
         let settings = model.store.data.householdSettings
@@ -114,6 +118,8 @@ struct SettingsView: View {
 
             journalSection
 
+            moveSection
+
             Section {
                 Text("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
                     .feedText(.subheadline)
@@ -126,6 +132,15 @@ struct SettingsView: View {
         // On the list itself, once: on the Journal section it was attached to each of its parts,
         // and one closed the screen as another opened it (found with the photo picker, 19 Nov 2026).
         .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: model.baby?.name ?? "") }
+        .alert("Turn off Little Log Dev's alarms?", isPresented: $confirmingAlertsOff) {
+            Button("Turn off", role: .destructive) {
+                alertsOff = true
+                model.reconciler.runSoon()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Little Log Dev won't ring or send any notice on this phone, test alarms included. Little Log, the real app, keeps alerting.")
+        }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
         // The big Fredoka title is the first row; "Settings" stays the screen's name.
@@ -190,6 +205,43 @@ struct SettingsView: View {
                 .foregroundStyle(Theme.textMuted)
         }
         .listRowBackground(Theme.surface)
+    }
+
+    /// The move from Feeding Dev (`08-going-live.md`): in Feeding Dev, its alarms switch and the
+    /// move file; in Feeding, bringing the file in.
+    @ViewBuilder
+    private var moveSection: some View {
+        #if FEEDING_DEV
+        Section {
+            Toggle("Alarms and notices off", isOn: Binding {
+                alertsOff
+            } set: { off in
+                if off {
+                    confirmingAlertsOff = true
+                } else {
+                    alertsOff = false
+                    model.reconciler.runSoon()
+                }
+            })
+            NavigationLink("Move to Little Log") { MoveOutScreen() }
+        } header: {
+            header("Little Log Dev · this phone")
+        } footer: {
+            Text("For testing beside Little Log, the real app. Turn the alarms and notices off only once Little Log shows your entries and has its alarms set.")
+                .foregroundStyle(Theme.textMuted)
+        }
+        .listRowBackground(Theme.surface)
+        #else
+        Section {
+            NavigationLink("Bring in from Little Log Dev") { MoveInScreen() }
+        } header: {
+            header("From Little Log Dev")
+        } footer: {
+            Text("Once, after setting up: brings in what you logged in Little Log Dev, from the move file it makes on this phone.")
+                .foregroundStyle(Theme.textMuted)
+        }
+        .listRowBackground(Theme.surface)
+        #endif
     }
 
     /// 1, 2, 5 or 10 GB, and the household's own if it is another.
