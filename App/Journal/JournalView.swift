@@ -9,6 +9,9 @@ import SwiftUI
 struct JournalView: View {
     let me: MemberID
     let babyID: String
+    /// The tab's screens, and a first a tapped notice asked for (nil in previews).
+    var path: Binding<NavigationPath>?
+    var target: Binding<String?>?
 
     private let model = AppModel.shared
     @State private var adding: FirstEditor.Mode?
@@ -100,6 +103,32 @@ struct JournalView: View {
             }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: addedCount)
+        .onChange(of: target?.wrappedValue, initial: true) { openTarget() }
+        .onChange(of: model.store.data.events.count) { openTarget() }
+        // Waits for the width, so it knows whether the open Duo shows two columns.
+        .onChange(of: width) { openTarget() }
+    }
+
+    /// Opens the first a notice was tapped for (design review D18): on the open Duo in the right
+    /// column, otherwise its own page. Its photos move to the front of the downloads. While the
+    /// file fills again from iCloud and it isn't here yet, it waits; once it is known to be gone,
+    /// the Journal itself shows.
+    private func openTarget() {
+        guard let target, let id = target.wrappedValue, width > 0 else { return }
+        let data = model.store.data
+        if let first = data.events[id], first.event.deletedAt == nil {
+            target.wrappedValue = nil
+            model.media.preferFirst(id)
+            if twoColumns {
+                selected = id
+                path?.wrappedValue = NavigationPath()
+            } else {
+                path?.wrappedValue = NavigationPath([Route(id: id)])
+            }
+        } else if !data.isWaitingForICloud(now: Date()) {
+            target.wrappedValue = nil
+            path?.wrappedValue = NavigationPath()
+        }
     }
 
     /// The new first settles onto the line: a 0.3-second fade and slide by day, with one soft

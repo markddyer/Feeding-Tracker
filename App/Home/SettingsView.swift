@@ -10,6 +10,9 @@ struct SettingsView: View {
     @AppStorage(LookSetting.storageKey) private var lookSetting = LookSetting.automatic.rawValue
     @State private var colourTaps = 0
     @State private var settingBirthDate = false
+    /// "Tell me about new firsts": this phone's own switch (X1, D8).
+    @AppStorage(NewFirstNotifier.wantedKey, store: UserDefaults(suiteName: AppConfig.appGroupID))
+    private var newFirstNotices = true
 
     var body: some View {
         let settings = model.store.data.householdSettings
@@ -31,10 +34,12 @@ struct SettingsView: View {
                     ForEach(LookSetting.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
                 }
                 .tint(Theme.textMuted)
+                Toggle("Tell me about new firsts", isOn: $newFirstNotices)
             } header: {
                 header("This phone")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
+                    Text("New firsts: a quiet notice, with no sound, when the other parent adds a first. At night it goes to the list without lighting the screen.")
                     Text("Bottle only: Start feed asks expressed milk or formula, and there are no Left and Right buttons. The other phone keeps its own choice.")
                     Text("Look: Automatic uses the night look from \(settings.dayHours.nightStart.description) to \(settings.dayHours.dayStart.description), the night rota's hours. Match iPhone follows the phone's Dark Mode.")
                 }

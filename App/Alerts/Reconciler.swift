@@ -20,11 +20,23 @@ final class Reconciler {
     @ObservationIgnored private var isRunning = false
     @ObservationIgnored private var runAgain = false
     @ObservationIgnored private var debounce: Task<Void, Never>?
+    /// Callers waiting for the pass that starts after their call (a push, whose data must be in
+    /// the alerts before the app sleeps again).
+    @ObservationIgnored private var waitingForNextPass: [CheckedContinuation<Void, Never>] = []
+    /// Called once a run is over and every alert is set, with the data the last pass planned them
+    /// from: the notice of a new first from the other phone starts then, on its own (outside review
+    /// O8). It is never awaited here, so nothing it does can hold up an alarm.
+    @ObservationIgnored var onRunFinished: (@MainActor (HouseholdData) -> Void)?
+    /// Sets the alerts: the scheduler, or a stand-in in tests.
+    typealias ApplyAlerts = @MainActor (_ desired: [DesiredAlert], _ latestFeedStarts: [String: Date], _ now: Date,
+                                        _ timeZone: TimeZone, _ keepExisting: Bool) async -> Void
+    @ObservationIgnored private let applyAlerts: ApplyAlerts?
 
-    init(store: HouseholdStore, sync: HouseholdSync, defaults: UserDefaults) {
+    init(store: HouseholdStore, sync: HouseholdSync, defaults: UserDefaults, applyAlerts: ApplyAlerts? = nil) {
         self.store = store
         self.sync = sync
         self.defaults = defaults
+        self.applyAlerts = applyAlerts
         scheduler = AlertScheduler(defaults: defaults)
         store.onDataChange = { [weak self] in self?.runSoon() }
         for name in [UIApplication.significantTimeChangeNotification, Notification.Name.NSSystemTimeZoneDidChange] {
@@ -66,19 +78,26 @@ final class Reconciler {
         debounce = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
-            await self?.run()
+            // Only the wait is cancelled by a later request, never a run under way (Codex review
+            // of X1): the run goes in a task of its own.
+            Task { [weak self] in await self?.run() }
         }
     }
 
+    /// Runs `reconcile` and sets the alerts. A call during a run waits for the next pass, which
+    /// starts after it, so the caller's data is in the alerts when it returns.
     func run() async {
         if isRunning {
             runAgain = true
+            await withCheckedContinuation { waitingForNextPass.append($0) }
             return
         }
         isRunning = true
-        defer { isRunning = false }
+        var planned = store.data
         repeat {
             runAgain = false
+            let waiters = waitingForNextPass
+            waitingForNextPass = []
             let now = Date()
             if let me = sync.memberID, !store.data.pendingChanges.filter({ $0.madeBy != me }).isEmpty {
                 // Tell the other phone this one has its changes ("seen by Parent B ✓").
@@ -93,9 +112,10 @@ final class Reconciler {
             let me = Me(id: sync.memberID ?? "this-phone", preferences: preferences,
                         lastForegroundAt: defaults.object(forKey: "lastForegroundAt") as? Date)
             let roster = state.roster(for: me.id)
-            let desired = reconcile(events: store.data.allEvents, settings: state.settings, roster: roster,
+            planned = store.data
+            let desired = reconcile(events: planned.allEvents, settings: state.settings, roster: roster,
                                     pendingChanges: state.pendingChanges, me: me, now: now)
-            let events = store.data.allEvents
+            let events = planned.allEvents
             let babies = Set(events.filter(\.isLiveFeed).map(\.babyID))
             let latest = Dictionary(uniqueKeysWithValues: babies.compactMap { baby in
                 events.latestFeedStart(babyID: baby, now: now).map { (baby, $0) }
@@ -105,11 +125,18 @@ final class Reconciler {
             // file, so after a lost file the wait ends only once those feeds are back.
             let waiting = store.data.isWaitingForICloud(now: now)
             if !waiting { defaults.plannedFeedStarts = latest }
-            await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone,
-                                  keepExisting: waiting)
+            if let applyAlerts {
+                await applyAlerts(desired, latest, now, state.settings.timeZone, waiting)
+            } else {
+                await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone,
+                                      keepExisting: waiting)
+            }
             alerts = desired
             lastRunAt = Date()
+            for waiter in waiters { waiter.resume() }
         } while runAgain
+        isRunning = false
+        onRunFinished?(planned)
     }
 }
 

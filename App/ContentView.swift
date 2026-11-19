@@ -19,6 +19,10 @@ struct ContentView: View {
     @State private var homeWidth: CGFloat = 0
     /// The screens opened from Home's top bar, so a tapped notification can go back to Home.
     @State private var path = NavigationPath()
+    /// The Journal tab's screens, so a notice of a new first can open that first's page.
+    @State private var journalPath = NavigationPath()
+    /// A first a tapped notice asked for, handed to the Journal to open (`JournalView.openTarget`).
+    @State private var journalTarget: String?
     @State private var tab: MainTab = Self.firstTab
 
     private enum MainTab: Hashable { case home, history, graphs, journal }
@@ -78,6 +82,10 @@ struct ContentView: View {
             path = NavigationPath()
             tab = .home
         }
+        // A tapped notice of a new first opens its page, at any hour (design review D18, eng2 D1);
+        // also when the tap started the app, before these screens were there.
+        .onChange(of: NotificationTaps.shared.firstRequests) { openTappedFirst() }
+        .onChange(of: journalReady, initial: true) { openTappedFirst() }
         .onChange(of: feedingStyle, initial: true) {
             model.widgets.feedingStyleChanged(feedingStyle)
             model.watch.update(model)
@@ -114,8 +122,10 @@ struct ContentView: View {
                 }
                 Tab("Journal", systemImage: "book.closed", value: MainTab.journal) {
                     // Never coral here: coral is for Start feed only (design review D5).
-                    NavigationStack { JournalView(me: me, babyID: baby.name) }
-                        .tint(Theme.text)
+                    NavigationStack(path: $journalPath) {
+                        JournalView(me: me, babyID: baby.name, path: $journalPath, target: $journalTarget)
+                    }
+                    .tint(Theme.text)
                 }
             }
             // The chosen tab in the text colour, as the top bar's buttons: coral on cream is hard
@@ -129,6 +139,21 @@ struct ContentView: View {
                     .modifier(TopBar(settings: model.baby != nil))
             }
         }
+    }
+
+    /// The tabs are showing (setup is done), so the Journal can open a tapped first.
+    private var journalReady: Bool {
+        SetupView.isComplete(disclaimerSeen: disclaimerSeen, inviteOffered: inviteOffered,
+                             permissionsAsked: permissionsAsked, feedingStyle: feedingStyle)
+            && model.me != nil && model.baby != nil
+    }
+
+    /// The first a notice was tapped for goes to the Journal tab, which opens it once it can;
+    /// until the tabs are showing, it stays waiting (Codex review of X1).
+    private func openTappedFirst() {
+        guard journalReady, let id = NotificationTaps.shared.takePendingFirst() else { return }
+        tab = .journal
+        journalTarget = id
     }
 
     private func home(me: MemberID, babyID: String) -> some View {

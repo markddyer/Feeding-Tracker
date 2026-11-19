@@ -16,6 +16,12 @@ enum JournalText {
     static let deleteQuestion = "Delete this first?"
     static let deleteWarning = "Its photos and videos will be removed from both phones for good once Undo ends."
 
+    /// The notice on the other phone when a first is logged (X1, D8): facts only, no photo.
+    static func newFirstNotice(name: String, title: String?) -> String {
+        guard let title, !title.isEmpty else { return "\(name) logged a first" }
+        return "\(name) logged a first: \(title)"
+    }
+
     /// "30 Oct", with the year when it isn't this year (D31).
     static func date(_ day: PlainDate, today: PlainDate) -> String {
         FirstsListRow.words(day, withYear: day.year != today.year)

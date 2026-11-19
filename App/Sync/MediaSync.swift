@@ -155,6 +155,8 @@ final class MediaSync {
     private(set) var fileVersions: [String: Int] = [:]
     /// Items an editor has made and not saved yet: never cleaned away (Codex review of T7 and T8).
     @ObservationIgnored private var drafts: Set<String> = []
+    /// A first a parent opened from its notice: its photos come first (still behind the feeds).
+    @ObservationIgnored private var preferredFirst: String?
 
     private let store: HouseholdStore
     private let household: HouseholdSync
@@ -232,6 +234,12 @@ final class MediaSync {
     func holdDraft(_ id: String) {
         drafts.insert(id)
         changed(id)
+    }
+
+    /// A first opened from its notice: its photos and videos move to the front of the downloads.
+    func preferFirst(_ eventID: String) {
+        preferredFirst = eventID
+        kick()
     }
 
     /// The editor saved, or let go of, the item.
@@ -766,9 +774,13 @@ final class MediaSync {
 
     private func downloadFiles(_ zone: PhotosZone, files: MediaFiles) async throws {
         let index = savedIndex
-        let wanted = store.data.mediaInUse.filter { !files.hasFile($0) && index[$0] != nil }.sorted()
         let database = zone.database
-        for id in wanted {
+        var tried = Set<String>()
+        // Chosen again before each one, so a first opened from its notice meanwhile comes next
+        // (design review D18); feeds are still first, as no transfer runs while the household's
+        // sync has work.
+        while let id = nextDownload(index: index, files: files, excluding: tried) {
+            tried.insert(id)
             guard let entry = index[id] else { continue }
             try needSpace(entry.byteSize, files: files)
             let recordID = CKRecord.ID(recordName: id, zoneID: zone.id)
@@ -797,6 +809,14 @@ final class MediaSync {
                 continue
             }
         }
+    }
+
+    /// The next full file to fetch: a first opened from its notice first, then in ID order.
+    private func nextDownload(index: [String: IndexEntry], files: MediaFiles, excluding tried: Set<String>) -> String? {
+        let front = Set(preferredFirst.flatMap { store.data.events[$0]?.snapshot.payload?.milestone?.media } ?? [])
+        return store.data.mediaInUse
+            .filter { !tried.contains($0) && !files.hasFile($0) && index[$0] != nil }
+            .min { (front.contains($0) ? 0 : 1, $0) < (front.contains($1) ? 0 : 1, $1) }
     }
 
     /// Stops the run when keeping `bytes` more would eat into the space kept free for feeds (D19).

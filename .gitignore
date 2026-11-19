@@ -1,6 +1,8 @@
 # Personal context: never commit (the repository is public)
 CLAUDE.local.md
 *.local.md
+# This Mac's own Claude Code settings (they hold home-folder paths)
+.claude/
 
 # macOS
 .DS_Store

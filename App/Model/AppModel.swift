@@ -41,8 +41,12 @@ final class AppModel {
     let media: MediaSync
     let reconciler: Reconciler
     let nightAskNotifier: NightAskNotifier
+    let newFirstNotifier: NewFirstNotifier
     let widgets = WidgetRefresher()
     let watch = WatchRelay()
+    /// The notice of new firsts under way, and the data for one more run after it.
+    private var newFirstsTask: Task<Void, Never>?
+    private var newFirstsAgain: HouseholdData?
 
     private init() {
         store = HouseholdStore()
@@ -57,6 +61,7 @@ final class AppModel {
         sync.onEngineFetch = { [weak media] started in media?.engineFetch(started: started) }
         sync.onSent = { [weak media] in media?.kick() }
         nightAskNotifier = NightAskNotifier(defaults: defaults)
+        newFirstNotifier = NewFirstNotifier(defaults: defaults)
         // After any change, from this phone or the other: if both parents tapped Start feed at
         // once, this phone's copy (hidden on the screens) finishes when the first feed does. An
         // ask, or its answer, from the other phone becomes a notification.
@@ -72,6 +77,38 @@ final class AppModel {
             }
         }
         widgets.update(store.data)
+        reconciler.onRunFinished = { [weak self] planned in self?.tellNewFirsts(planned: planned) }
+    }
+
+    /// The notice of a first logged on the other phone (X1), from the data an alert run planned
+    /// the alerts from, once that run is over. One at a time; a request meanwhile runs after it.
+    private func tellNewFirsts(planned: HouseholdData) {
+        guard newFirstsTask == nil else {
+            newFirstsAgain = planned
+            return
+        }
+        newFirstsTask = Task { [weak self] in
+            var next: HouseholdData? = planned
+            while let data = next, let self {
+                await newFirstNotifier.update(planned: data, current: { self.store.data }, me: me, names: memberNames,
+                                              fetchedOnce: sync.lastFetchAt != nil)
+                next = newFirstsAgain
+                newFirstsAgain = nil
+            }
+            self?.newFirstsTask = nil
+        }
+    }
+
+    /// For a push: waits for the notices under way so they go before the app sleeps again, but
+    /// never longer than `limit`.
+    func waitForNewFirsts(upTo limit: Duration) async {
+        guard let task = newFirstsTask else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await task.value }
+            group.addTask { try? await Task.sleep(for: limit) }
+            await group.next()
+            group.cancelAll()
+        }
     }
 
     /// Notifications about asks to take a night. Also awaited after a push, so it runs before
