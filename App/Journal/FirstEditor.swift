@@ -41,6 +41,12 @@ struct FirstEditor: View {
     @State private var working = false
     @State private var pickProblem: String?
     @State private var confirmingDelete = false
+    @State private var confirmingDiscard = false
+    /// A photo taken with the camera here: kept in Photos too, after Save (D20).
+    @State private var takenImage: UIImage?
+    @State private var explainingCamera = false
+    @State private var usingCamera = false
+    @AppStorage("journal.cameraExplained") private var cameraExplained = false
     private let original: EventSnapshot?
 
     init(mode: Mode, me: MemberID, babyID: String, onDone: @escaping (Outcome) -> Void) {
@@ -68,6 +74,18 @@ struct FirstEditor: View {
     private var data: HouseholdData { AppModel.shared.store.data }
     private var zone: TimeZone { data.householdSettings.timeZone }
     private var today: PlainDate { PlainDate(Date(), in: zone) }
+
+    /// Something changed here: title, date, note or photo (D37).
+    private var isDirty: Bool {
+        if let original {
+            return HouseholdData.cleanTitle(title) != original.payload?.milestone?.title
+                || HouseholdData.cleanNote(note) != original.payload?.note
+                || when != original.event.startedAt
+                || photoID != original.payload?.milestone?.media.first
+        }
+        return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || picked != nil || whenTouched
+    }
 
     /// Why Save is off, if it is.
     private var problem: String? {
@@ -107,6 +125,25 @@ struct FirstEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { save() }.disabled(problem != nil).tint(Theme.text)
                 }
+            }
+            // A swipe down with changes asks first (D37); "Keep editing" is the default.
+            .dismissalConfirmationDialog("Discard this first?", shouldPresent: isDirty) {
+                Button("Discard", role: .destructive) { discard() }
+                Button("Keep editing", role: .cancel) {}
+            }
+            .confirmationDialog("Discard this first?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
+                Button("Discard", role: .destructive) { discard() }
+                Button("Keep editing", role: .cancel) {}
+            }
+            .sheet(isPresented: $explainingCamera) {
+                CameraExplainer {
+                    cameraExplained = true
+                    usingCamera = true
+                }
+            }
+            .fullScreenCover(isPresented: $usingCamera) {
+                CameraPicker { image in Task { await takePhoto(image) } }
+                    .ignoresSafeArea()
             }
             .confirmationDialog(JournalText.deleteQuestion, isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { delete() }
@@ -185,6 +222,15 @@ struct FirstEditor: View {
                         .feedText(.smallButton)
                         .foregroundStyle(Theme.text)
                         .frame(minHeight: 44)
+                    if CameraPicker.isAvailable {
+                        Button("Take a photo") {
+                            if cameraExplained { usingCamera = true } else { explainingCamera = true }
+                        }
+                        .feedText(.smallButton)
+                        .foregroundStyle(Theme.text)
+                        .frame(minHeight: 44)
+                        .buttonStyle(.plain)
+                    }
                     if photoID != nil {
                         Button("Take the photo out") { removePhoto() }
                             .feedText(.smallButton)
@@ -284,10 +330,37 @@ struct FirstEditor: View {
         }
     }
 
+    /// A photo taken here: the journal's copy is made from it at once; the photo itself goes to
+    /// Photos after Save.
+    private func takePhoto(_ image: UIImage) async {
+        guard let jpeg = image.jpegData(compressionQuality: 0.95) else { return }
+        working = true
+        pickProblem = nil
+        defer { working = false }
+        guard let files = MediaFiles.appGroup() else { return }
+        do {
+            try FileManager.default.createDirectory(at: MediaStore.workFolder, withIntermediateDirectories: true)
+            let source = MediaStore.workFolder.appendingPathComponent("taken-\(UUID().uuidString).jpg")
+            try jpeg.write(to: source)
+            defer { try? FileManager.default.removeItem(at: source) }
+            let added = try await MediaStore(files: files).addPhoto(from: source)
+            if let previous = picked { files.remove(previous.id) }
+            picked = added
+            photoID = added.id
+            takenImage = image
+            AppModel.shared.media.noteNewFiles()
+        } catch let refusal as MediaStore.Refusal {
+            pickProblem = JournalText.refusal(refusal)
+        } catch {
+            pickProblem = JournalText.refusal(.unreadablePhoto)
+        }
+    }
+
     private func removePhoto() {
         if let picked, let files = MediaFiles.appGroup() { files.remove(picked.id) }
         picked = nil
         photoID = nil
+        takenImage = nil
         if whenFromPhoto, !whenTouched {
             when = original?.event.startedAt ?? Date()
             whenFromPhoto = false
@@ -297,7 +370,15 @@ struct FirstEditor: View {
     // MARK: Saving
 
     private func cancel() {
-        // A photo picked here and never saved goes from the phone.
+        if isDirty {
+            confirmingDiscard = true
+        } else {
+            dismiss()
+        }
+    }
+
+    /// Closes without saving. A photo picked here and never saved goes from the phone.
+    private func discard() {
         if let picked, let files = MediaFiles.appGroup() { files.remove(picked.id) }
         dismiss()
     }
@@ -329,8 +410,10 @@ struct FirstEditor: View {
         dismiss()
     }
 
-    /// A photo picked here goes into the upload queue, behind the feeds.
+    /// A photo picked here goes into the upload queue, behind the feeds; one taken here is also
+    /// kept in Photos (asked now, after Save: D20).
     private func queue(eventID: String, now: Date) {
+        if let takenImage { Task { await PhotosCopy.keep(takenImage) } }
         guard let picked else { return }
         AppModel.shared.media.add(MediaUpload(id: picked.id, eventID: eventID, byteSize: picked.byteSize,
                                               payload: try? PayloadCoder.encode(picked.details), queuedAt: now, pause: nil))

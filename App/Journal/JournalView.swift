@@ -16,6 +16,21 @@ struct JournalView: View {
     @State private var settingBirthDate = false
     /// "Not now" on the birth-date row hides it on this phone (design review D14).
     @AppStorage("journal.birthDateRowHidden") private var birthDateRowHidden = false
+    /// A photo taken here wasn't copied to Photos (permission declined): said once (D20).
+    @AppStorage(PhotosCopy.declinedKey) private var photosCopyDeclined = false
+    @AppStorage(PhotosCopy.toldKey) private var photosCopyTold = false
+    /// The open iPhone Duo: the line on the left, the chosen first's page on the right (D34).
+    @State private var selected: String?
+    @State private var listWidth: CGFloat = 0
+    @State private var arrangementWidth: CGFloat = 0
+    /// The soft settle and buzz after a first is saved (D21).
+    @State private var settlingID: String?
+    @State private var settled = true
+    @State private var addedCount = 0
+    @Environment(\.look) private var look
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
 
     /// A first's page.
     struct Route: Hashable {
@@ -25,35 +40,21 @@ struct JournalView: View {
     /// The Firsts list, from the top bar (D7, D42).
     struct FirstsListRoute: Hashable {}
 
+    /// Two columns: the arrangement shows the second one (the open Duo, D34).
+    private var twoColumns: Bool { DayColumn.isShowing(homeWidth: listWidth, arrangementWidth: arrangementWidth) }
+
+    /// Sideways with one column (the closed Duo turned): Add moves into the side bar (D34).
+    private var addInBar: Bool { verticalSizeClass == .compact && !twoColumns }
+
     var body: some View {
-        let data = model.store.data
-        let zone = data.householdSettings.timeZone
-        let today = PlainDate(Date(), in: zone)
-        let birth = data.birthDate(babyID: babyID)
-        let firsts = Array(data.milestones(babyID: babyID).reversed())
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("Journal")
-                    .feedText(.title)
-                    .accessibilityAddTraits(.isHeader)
-                    .padding(.bottom, 12)
-                if birth == nil && !birthDateRowHidden {
-                    birthDateRow
-                }
-                if let notice = allowanceNotice {
-                    noticeRow(notice)
-                }
-                if firsts.isEmpty {
-                    emptyLine(birth: birth, today: today)
-                } else {
-                    line(firsts, birth: birth, zone: zone, today: today)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
+        ArrangementView {
+            listColumn
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { listWidth = $0 }
+        } secondary: {
+            pageColumn
         }
-        .safeAreaInset(edge: .bottom) { bottom }
+        .arrangementViewStyle(.split.axes(.horizontal))
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { arrangementWidth = $0 }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Journal")
@@ -67,6 +68,12 @@ struct JournalView: View {
         }
         .toolbar {
             // Each has a title and a symbol, so the folded Duo can move them into its side bar (D7).
+            if addInBar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { adding = .new(title: nil) } label: { Label(JournalText.addAFirst, systemImage: "plus") }
+                        .tint(Theme.text)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 NavigationLink(value: FirstsListRoute()) {
                     Label("Firsts list", systemImage: "list.bullet")
@@ -86,14 +93,92 @@ struct JournalView: View {
         .sheet(item: $adding) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
                 undo = JournalUndo.action(for: outcome, me: me)
+                if case .added(let id, _, _) = outcome { settle(id) }
             }
         }
+        .sensoryFeedback(.impact(weight: .light), trigger: addedCount)
         .task(id: undo?.expiresAt) {
             // The bar goes when Undo does (the hold's own deadline).
             guard let expires = undo?.expiresAt else { return }
             try? await Task.sleep(for: .seconds(max(0, expires.timeIntervalSinceNow)))
             if !Task.isCancelled { undo = nil }
         }
+    }
+
+    /// The new first settles onto the line: a 0.3-second fade and slide by day, with one soft
+    /// haptic; at night, or with Reduce Motion, the haptic only (D21).
+    private func settle(_ id: String) {
+        addedCount += 1
+        guard look == .day, !reduceMotion else { return }
+        settlingID = id
+        settled = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(350))
+            withAnimation(.easeOut(duration: 0.3)) { settled = true }
+        }
+    }
+
+    /// The open Duo's right-hand column: the chosen first's page, or the newest first's.
+    @ViewBuilder
+    private var pageColumn: some View {
+        let firsts = model.store.data.milestones(babyID: babyID)
+        let shown = selected.flatMap { id in firsts.contains { $0.id == id } ? id : nil } ?? firsts.last?.id
+        if let shown {
+            FirstPage(id: shown, me: me, babyID: babyID, embedded: true, onUndo: { undo = $0 })
+        } else {
+            Text(JournalText.emptyLine)
+                .feedText(.body)
+                .foregroundStyle(Theme.textMuted)
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .background(Theme.background)
+        }
+    }
+
+    private var listColumn: some View {
+        let data = model.store.data
+        let zone = data.householdSettings.timeZone
+        let today = PlainDate(Date(), in: zone)
+        let birth = data.birthDate(babyID: babyID)
+        let firsts = Array(data.milestones(babyID: babyID).reversed())
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Journal")
+                    .feedText(.title)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.bottom, 12)
+                if birth == nil && !birthDateRowHidden {
+                    birthDateRow
+                }
+                if let notice = allowanceNotice {
+                    noticeRow(notice)
+                }
+                if photosCopyDeclined && !photosCopyTold {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("The photo you took wasn't copied to your Photos. It is still in the journal. You can allow copies in iPhone Settings › Privacy › Photos.")
+                            .feedText(.subheadline)
+                        Button("OK") { photosCopyTold = true }
+                            .feedText(.smallButton)
+                            .frame(minHeight: 44)
+                            .buttonStyle(.plain)
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .padding(.bottom, 14)
+                }
+                if firsts.isEmpty {
+                    emptyLine(birth: birth, today: today)
+                } else {
+                    line(firsts, birth: birth, zone: zone, today: today)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
+        }
+        .safeAreaInset(edge: .bottom) { bottom }
+        .background(Theme.background.ignoresSafeArea())
     }
 
     // MARK: Rows above the line
@@ -172,12 +257,22 @@ struct JournalView: View {
                 }
                 .padding(.vertical, 6)
                 ForEach(entry.firsts) { first in
-                    NavigationLink(value: Route(id: first.id)) {
-                        row(first, birth: birth, zone: zone, today: today)
+                    Group {
+                        if twoColumns {
+                            // The open Duo: a tap shows the first on the right.
+                            Button { selected = first.id } label: { row(first, birth: birth, zone: zone, today: today) }
+                                .accessibilityAddTraits(selected == first.id ? .isSelected : [])
+                        } else {
+                            NavigationLink(value: Route(id: first.id)) {
+                                row(first, birth: birth, zone: zone, today: today)
+                            }
+                        }
                     }
                     .buttonStyle(.plain)
                     .padding(.leading, 24)
                     .padding(.bottom, 10)
+                    .opacity(first.id == settlingID && !settled ? 0 : 1)
+                    .offset(y: first.id == settlingID && !settled ? -12 : 0)
                 }
             }
             if let birth {
@@ -203,9 +298,15 @@ struct JournalView: View {
         let media = details?.media ?? []
         let name = model.memberNames[first.event.loggedBy]
         let onlyHere = media.contains { onlyOnThisPhone($0) }
-        return HStack(alignment: .top, spacing: 10) {
+        let large = dynamicTypeSize.isAccessibilitySize
+        // At the largest text sizes the picture goes on top, full width, and the words under (D35).
+        let layout = large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
+        return layout {
             MediaPicture(id: media.first)
-                .frame(width: 104, height: 104)
+                .frame(width: large ? nil : 104, height: large ? nil : 104)
+                .frame(maxWidth: large ? .infinity : nil)
+                .aspectRatio(1, contentMode: .fit)
                 .overlay(alignment: .topTrailing) {
                     if media.count > 1 {
                         Text("+\(media.count - 1)")
@@ -236,8 +337,8 @@ struct JournalView: View {
                         .foregroundStyle(Theme.textMuted)
                 }
             }
-            .padding(.top, 6)
-            Spacer(minLength: 0)
+            .padding(.top, large ? 0 : 6)
+            if !large { Spacer(minLength: 0) }
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
@@ -304,6 +405,7 @@ struct JournalView: View {
                 UndoBanner(action: undo) { self.undo = nil }
                     .accessibilityAddTraits(.updatesFrequently)
             }
+            if !addInBar {
             Button { adding = .new(title: nil) } label: {
                 HStack(spacing: 9) {
                     SparkleShape().fill(Theme.text).frame(width: 22, height: 22).accessibilityHidden(true)
@@ -314,6 +416,7 @@ struct JournalView: View {
             }
             .buttonStyle(PressStyle())
             .foregroundStyle(Theme.text)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.top, 8)

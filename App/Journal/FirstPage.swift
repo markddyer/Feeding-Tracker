@@ -8,6 +8,8 @@ struct FirstPage: View {
     let id: String
     let me: MemberID
     let babyID: String
+    /// In the open Duo's right-hand column, beside the line, rather than a screen of its own.
+    var embedded = false
     /// The Undo bar lives on the Journal tab; a delete from here shows it there.
     let onUndo: (UndoAction) -> Void
 
@@ -63,13 +65,11 @@ struct FirstPage: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("First")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(removing: .title)
+        .modifier(PageBar(embedded: embedded))
         .sheet(item: $editing) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
                 if let action = JournalUndo.action(for: outcome, me: me) { onUndo(action) }
-                if case .deleted = outcome { dismiss() }
+                if case .deleted = outcome, !embedded { dismiss() }
             }
         }
     }
@@ -81,6 +81,22 @@ struct FirstPage: View {
             Text("Logged by \(name)").feedText(.subheadline).foregroundStyle(Theme.textMuted)
         }
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A page of its own has the screen's name for Back; beside the line it has no bar of its own.
+private struct PageBar: ViewModifier {
+    let embedded: Bool
+
+    func body(content: Content) -> some View {
+        if embedded {
+            content
+        } else {
+            content
+                .navigationTitle("First")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(removing: .title)
+        }
     }
 }
 

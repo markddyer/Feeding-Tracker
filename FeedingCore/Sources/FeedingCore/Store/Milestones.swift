@@ -288,7 +288,7 @@ extension HouseholdData {
     }
 
     /// A note as it is saved: trimmed and cut to the limits; nil when empty.
-    static func cleanNote(_ note: String?) -> String? {
+    public static func cleanNote(_ note: String?) -> String? {
         guard let note else { return nil }
         let clean = trimmed(MilestoneLimits.note(trimmed(note)))
         return clean.isEmpty ? nil : clean

@@ -225,6 +225,8 @@ struct DevScreen: View {
             NavigationStack { GraphsView() }
         case "duo":
             DuoPreview(me: me, babyID: babyID)
+        case "journalDuo":
+            JournalDuoPreview(me: me, babyID: babyID)
         case "pumping":
             EventEditor(mode: .newPump, me: me, babyID: babyID)
         case "addFirst":
@@ -270,6 +272,38 @@ struct DuoPreview: View {
             .frame(width: size.width, height: size.height)
             .scaleEffect(scale, anchor: .topLeading)
             // The shrunk picture's own footprint, from the top left.
+            .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
+        }
+        .background(Theme.surface.ignoresSafeArea())
+    }
+}
+
+/// Feeding Dev only: the Journal as the unfolded Duo shows it (design review D34), the line on the
+/// left and the newest first's page on the right, at the measured open size, shrunk to fit, as
+/// `DuoPreview` does for Home. The real split comes from `ArrangementView` in `JournalView`.
+struct JournalDuoPreview: View {
+    let me: MemberID
+    let babyID: String
+
+    var body: some View {
+        let size = CGSize(width: 867, height: 587)
+        let newest = AppModel.shared.store.data.milestones(babyID: babyID).last?.id
+        GeometryReader { proxy in
+            let scale = proxy.size.width / size.width
+            HStack(spacing: 0) {
+                NavigationStack { JournalView(me: me, babyID: babyID) }
+                    .frame(width: size.width / 2)
+                Group {
+                    if let newest {
+                        FirstPage(id: newest, me: me, babyID: babyID, embedded: true, onUndo: { _ in })
+                    } else {
+                        Theme.background
+                    }
+                }
+                .frame(width: size.width / 2)
+            }
+            .frame(width: size.width, height: size.height)
+            .scaleEffect(scale, anchor: .topLeading)
             .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
         }
         .background(Theme.surface.ignoresSafeArea())
