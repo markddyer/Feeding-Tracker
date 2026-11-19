@@ -44,12 +44,17 @@ public struct HeldUndo: Hashable, Sendable, Codable {
     /// already has as removed (the other phone removed it too) is taken off this list, as Undo
     /// can't bring that one back.
     public var addedRemovals: [String]
+    /// The crops of the photos the held change took out, so Undo puts each back in its place in the
+    /// square (Codex review of step 2). Nil from a build before 19 Nov 2026.
+    public var crops: [String: MediaCrop]?
 
-    public init(undeletes: Bool, media: [String], addedLocally: [String] = [], addedRemovals: [String]) {
+    public init(undeletes: Bool, media: [String], addedLocally: [String] = [], addedRemovals: [String],
+                crops: [String: MediaCrop]? = nil) {
         self.undeletes = undeletes
         self.media = media
         self.addedLocally = addedLocally
         self.addedRemovals = addedRemovals
+        self.crops = crops
     }
 
     /// What Undo can still do once iCloud's copy says `removed` are removed, and whether the

@@ -10,6 +10,8 @@ struct UndoAction {
     let perform: @MainActor () -> Void
     /// A quick log (a sleep, a nappy, a medicine) also offers Change time, for a tap made late.
     var changeTime: TimeChange?
+    /// False for a bar that only tells (Undo can't happen): it shows OK instead of Undo.
+    var canUndo = true
 
     init(message: String, changeTime: TimeChange? = nil, perform: @escaping @MainActor () -> Void) {
         self.message = message
@@ -40,8 +42,8 @@ struct UndoBanner: View {
                 .foregroundStyle(Theme.text)
                 .frame(minHeight: 44)
             }
-            Button("Undo") {
-                action.perform()
+            Button(action.canUndo ? "Undo" : "OK") {
+                if action.canUndo { action.perform() }
                 dismiss()
             }
             .feedText(.smallButton)

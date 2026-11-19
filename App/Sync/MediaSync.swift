@@ -226,10 +226,43 @@ final class MediaSync {
         changed(id)
     }
 
+    /// Queues several items in one write (a first's Save), all or none. False, and none queued,
+    /// when the queue couldn't be written to this phone (Codex review of step 2).
+    @discardableResult
+    func add(_ batch: [MediaUpload]) -> Bool {
+        let new = batch.filter { item in !uploads.contains { $0.id == item.id } }
+        guard !new.isEmpty else { return true }
+        let before = uploads
+        for var upload in new {
+            if upload.binding == nil, let zone = photosZone, let me = household.memberID?.rawValue {
+                upload.binding = Self.binding(me: me, zone: zone)
+            }
+            uploads.append(upload)
+        }
+        guard saveUploads() else {
+            uploads = before
+            return false
+        }
+        kick()
+        return true
+    }
+
     /// Takes an item off the queue only (its first couldn't be saved), keeping its files.
     func unqueue(_ id: String) {
-        uploads.removeAll { $0.id == id }
+        unqueue([id])
+    }
+
+    /// Takes several items off the queue in one write.
+    func unqueue(_ ids: [String]) {
+        guard uploads.contains(where: { ids.contains($0.id) }) else { return }
+        uploads.removeAll { ids.contains($0.id) }
         saveUploads()
+    }
+
+    /// Forgets every item queued for a first whose add was undone, its files with them: also those
+    /// a later edit inside the Undo window added (Codex review of step 2).
+    func forgetUploads(ofFirst eventID: String) {
+        for upload in uploads where upload.eventID == eventID { forget(upload.id) }
     }
 
     /// The editor made an item's files: kept while the editor is open.

@@ -3,9 +3,10 @@ import FeedingCore
 import PhotosUI
 import SwiftUI
 
-/// Adding or changing a first (design review D9, step 1: one photo per first). One form in a
-/// sheet: Cancel and Save at the top; What happened, with the ideas under it (D38); the photo; When
-/// (from the photo when it was taken earlier, D17); and the note. Delete is inside Edit (D8), with
+/// Adding or changing a first (design review D9). One form in a sheet: Cancel and Save at the top;
+/// What happened, with the ideas under it (D38); up to 4 photos in slots, the first the cover, each
+/// moved, made the cover or taken out (D13, D35); When (from the photos when they were taken
+/// earlier, D17); and the note. Delete is inside Edit (D8), with
 /// its own question (D15). Save works at once (D16). A swipe down or Cancel with changes asks
 /// "Discard this first?" (D37).
 struct FirstEditor: View {
@@ -18,7 +19,7 @@ struct FirstEditor: View {
 
     /// What happened, for the Undo bar.
     enum Outcome {
-        case added(id: String, title: String, photo: String?)
+        case added(id: String, title: String, photos: [String])
         case saved(id: String, photoRemoved: Bool)
         case deleted(id: String, title: String)
     }
@@ -35,17 +36,19 @@ struct FirstEditor: View {
     /// When was set from the photo, and nobody changed it since.
     @State private var whenFromPhoto = false
     @State private var whenTouched = false
-    /// The item in the slot: the one already saved, or one just picked or taken.
-    @State private var photoID: String?
-    /// A photo picked or taken here and not saved yet: its details, to queue on Save.
-    @State private var picked: MediaStore.Added?
-    /// A photo taken with the camera here: kept in Photos too, after Save (D20).
-    @State private var takenImage: UIImage?
+    /// The items in the slots, in order: the first is the cover (D9).
+    @State private var items: [String]
+    /// The slot shown large, to drag in its square and move.
+    @State private var selected: String?
+    /// Photos picked or taken here and not saved yet: their details, to queue on Save.
+    @State private var drafts: [String: MediaStore.Added] = [:]
+    /// Photos taken with the camera here: kept in Photos too, after Save (D20).
+    @State private var takenImages: [String: UIImage] = [:]
     /// Where each photo sits in its square on the line (D39), by media ID.
     @State private var crops: [String: MediaCrop]
-    @State private var pickerItem: PhotosPickerItem?
+    @State private var pickerItems: [PhotosPickerItem] = []
     @State private var choosingPhoto = false
-    /// The photo being made ready: one at a time, and a newer choice (or Discard) wins.
+    /// Photos being made ready, one at a time in the order chosen; Discard stops them.
     @State private var importTask: Task<Void, Never>?
     @State private var importToken = UUID()
     @State private var working = false
@@ -57,7 +60,10 @@ struct FirstEditor: View {
     @State private var explainingCamera = false
     @State private var usingCamera = false
     @AppStorage("journal.cameraExplained") private var cameraExplained = false
-    private let original: EventSnapshot?
+    /// The first as it was when the editor opened. Kept in the view's state, so a rebuild after the
+    /// other phone's change never moves the starting point under the parent's draft (Codex review
+    /// of step 2): Save applies only what changed from this.
+    @State private var original: EventSnapshot?
 
     init(mode: Mode, me: MemberID, babyID: String, onDone: @escaping (Outcome) -> Void) {
         self.mode = mode
@@ -66,19 +72,19 @@ struct FirstEditor: View {
         self.onDone = onDone
         switch mode {
         case .new(let idea):
-            original = nil
+            _original = State(initialValue: nil)
             _title = State(initialValue: idea ?? "")
             _note = State(initialValue: "")
             _when = State(initialValue: Date())
-            _photoID = State(initialValue: nil)
+            _items = State(initialValue: [])
             _crops = State(initialValue: [:])
         case .edit(let id):
             let snapshot = AppModel.shared.store.data.events[id]?.snapshot
-            original = snapshot
+            _original = State(initialValue: snapshot)
             _title = State(initialValue: snapshot?.payload?.milestone?.title ?? "")
             _note = State(initialValue: snapshot?.payload?.note ?? "")
             _when = State(initialValue: snapshot?.event.startedAt ?? Date())
-            _photoID = State(initialValue: snapshot?.payload?.milestone?.media.first)
+            _items = State(initialValue: snapshot?.payload?.milestone?.media ?? [])
             _crops = State(initialValue: snapshot?.payload?.milestone?.crops ?? [:])
         }
     }
@@ -86,9 +92,12 @@ struct FirstEditor: View {
     private var data: HouseholdData { AppModel.shared.store.data }
     private var zone: TimeZone { data.householdSettings.timeZone }
     private var today: PlainDate { PlainDate(Date(), in: zone) }
-    /// The first's whole list before this editor: step 1 shows only its cover, and the rest is kept
-    /// (the other phone may have added some: Codex review of T7 and T8).
+    /// The first's list when this editor opened. Saving applies only what changed from it, so an
+    /// item the other phone added meanwhile stays (`editMilestone`).
     private var originalMedia: [String] { original?.payload?.milestone?.media ?? [] }
+
+    /// The slot shown large: the one chosen, or the cover.
+    private var selectedItem: String? { selected.flatMap { items.contains($0) ? $0 : nil } ?? items.first }
 
     /// Something changed here: title, date, note or photo, or a photo still getting ready (D37).
     private var isDirty: Bool {
@@ -97,11 +106,11 @@ struct FirstEditor: View {
             return HouseholdData.cleanTitle(title) != original.payload?.milestone?.title
                 || HouseholdData.cleanNote(note) != original.payload?.note
                 || when != original.event.startedAt
-                || photoID != originalMedia.first
+                || items != originalMedia
                 || Self.moved(crops) != Self.moved(original.payload?.milestone?.crops ?? [:])
         }
         return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || picked != nil || whenTouched
+            || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !items.isEmpty || whenTouched
     }
 
     /// The crops that move a photo off its middle.
@@ -112,7 +121,7 @@ struct FirstEditor: View {
     /// Why Save is off, if it is.
     private var problem: String? {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say what happened." }
-        if working { return "The photo is getting ready." }
+        if working { return "A photo is getting ready." }
         return dateProblem
     }
 
@@ -175,7 +184,7 @@ struct FirstEditor: View {
                 }
             }
             .fullScreenCover(isPresented: $usingCamera) {
-                CameraPicker { image in startImport { try await makeCopy(ofTaken: image) } }
+                CameraPicker { image in startImport([{ try await makeCopy(ofTaken: image) }]) }
                     .ignoresSafeArea()
             }
             // A Save or Delete that didn't happen says so where it can't be missed; the form stays.
@@ -194,10 +203,10 @@ struct FirstEditor: View {
             } message: {
                 Text(JournalText.deleteWarning)
             }
-            .onChange(of: pickerItem) { _, item in
-                guard let item else { return }
-                pickerItem = nil
-                startImport { try await makeCopy(ofPicked: item) }
+            .onChange(of: pickerItems) { _, chosen in
+                guard !chosen.isEmpty else { return }
+                pickerItems = []
+                startImport(chosen.map { item in { try await makeCopy(ofPicked: item) } })
             }
         }
     }
@@ -236,52 +245,51 @@ struct FirstEditor: View {
 
     private var photoSection: some View {
         Section {
-            if let photoID {
-                // The cover in its square, as the Journal's line shows it; a drag moves the photo
-                // inside it (D39).
-                VStack(alignment: .leading, spacing: 10) {
-                    CropSquare(id: photoID, crop: Binding {
-                        crops[photoID] ?? .middle
-                    } set: {
-                        crops[photoID] = $0
-                    })
-                    .frame(maxWidth: 280)
-                    .overlay {
-                        if working { ProgressView().tint(Theme.textMuted) }
-                    }
+            if items.isEmpty {
+                HStack(spacing: 14) {
+                    emptySlot.frame(width: 66, height: 66)
                     photoButtons
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 10) {
+                        ForEach(Array(items.enumerated()), id: \.element) { index, id in slot(id, index: index) }
+                        if items.count < MilestoneLimits.mediaItems { addSlot }
+                    }
+                    if let shown = selectedItem, let index = items.firstIndex(of: shown) {
+                        // The chosen photo in its square, as the Journal's line shows a cover; a
+                        // drag moves it inside (D39).
+                        CropSquare(id: shown, crop: Binding {
+                            crops[shown] ?? .middle
+                        } set: {
+                            crops[shown] = $0
+                        })
+                        .frame(maxWidth: 280)
+                        FlowLayout(spacing: 6) {
+                            if index > 0 {
+                                IdeaButton(idea: "Make it the cover", fill: Theme.background) { move(shown, to: 0) }
+                                IdeaButton(idea: "Move earlier", fill: Theme.background) { move(shown, to: index - 1) }
+                            }
+                            if index < items.count - 1 {
+                                IdeaButton(idea: "Move later", fill: Theme.background) { move(shown, to: index + 1) }
+                            }
+                            IdeaButton(idea: "Take it out", fill: Theme.background) { remove(shown) }
+                        }
+                        .disabled(working)
+                    }
                 }
                 .padding(.vertical, 6)
-            } else {
-                HStack(spacing: 14) {
-                    Group {
-                        if working {
-                            Theme.background.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        } else {
-                            // An empty slot: a hole in the tile, in the page colour, with "+".
-                            Text("+")
-                                .font(.system(size: 26, weight: .semibold, design: .rounded))
-                                .foregroundStyle(Theme.textMuted)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .background(Theme.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .frame(width: 66, height: 66)
-                    .overlay {
-                        if working { ProgressView().tint(Theme.textMuted) }
-                    }
-                    photoButtons
-                }
             }
         } header: {
-            header("Photo")
+            header("Photos")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 if let pickProblem {
                     Text(pickProblem).feedText(.subheadline).foregroundStyle(Theme.text)
-                } else if photoID == nil {
+                } else if items.isEmpty {
                     Text("A photo isn't needed: a first can be saved without one.").foregroundStyle(Theme.textMuted)
+                } else {
+                    Text("Up to 4 photos. The first is the cover, shown on the Journal.").foregroundStyle(Theme.textMuted)
                 }
                 if cameraOff, let settings = URL(string: UIApplication.openSettingsURLString) {
                     Link("Open iPhone Settings", destination: settings)
@@ -292,20 +300,86 @@ struct FirstEditor: View {
             }
         }
         .listRowBackground(Theme.surface)
+        .photosPicker(isPresented: $choosingPhoto, selection: $pickerItems,
+                      maxSelectionCount: max(1, MilestoneLimits.mediaItems - items.count),
+                      // The order tapped is the order kept: the first tapped is the cover.
+                      selectionBehavior: .ordered, matching: .images, photoLibrary: .shared())
+    }
+
+    /// One slot: the photo in its square, "Cover" on the first; a tap shows it large below.
+    private func slot(_ id: String, index: Int) -> some View {
+        Button { selected = id } label: {
+            MediaPicture(id: id, cornerRadius: 14, crop: crops[id] ?? .middle)
+                .frame(width: 62, height: 62)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Theme.text, lineWidth: id == selectedItem ? 3 : 0)
+                }
+                .overlay(alignment: .bottom) {
+                    if index == 0 {
+                        Text("Cover")
+                            .feedText(.chip)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .padding(.horizontal, 5)
+                            .background(Theme.surface, in: Capsule())
+                            .padding(3)
+                    }
+                }
+                .frame(minWidth: 44, minHeight: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("slot-\(id)")
+        .accessibilityLabel("Photo \(index + 1) of \(items.count)\(index == 0 ? ", the cover" : "")")
+        .accessibilityAddTraits(id == selectedItem ? .isSelected : [])
+        // D35: moved with VoiceOver too.
+        .accessibilityActions {
+            if index > 0 {
+                Button("Make it the cover") { move(id, to: 0) }
+                Button("Move earlier") { move(id, to: index - 1) }
+            }
+            if index < items.count - 1 { Button("Move later") { move(id, to: index + 1) } }
+            Button("Take it out") { remove(id) }
+        }
+    }
+
+    /// The "+" slot: Choose from Photos, or Take a photo.
+    private var addSlot: some View {
+        Menu {
+            Button("Choose from Photos") { choosingPhoto = true }
+            if CameraPicker.isAvailable { Button("Take a photo") { tapCamera() } }
+        } label: {
+            emptySlot.frame(width: 62, height: 62)
+        }
+        .disabled(working)
+        .accessibilityLabel("Add a photo")
+    }
+
+    /// An empty slot: a hole in the tile, in the page colour, with "+" (or the ring while a photo
+    /// gets ready).
+    private var emptySlot: some View {
+        ZStack {
+            Theme.background
+            if working {
+                ProgressView().tint(Theme.textMuted)
+            } else {
+                Text("+")
+                    .font(.system(size: 26, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.textMuted)
+                    .accessibilityHidden(true)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var photoButtons: some View {
         VStack(alignment: .leading, spacing: 8) {
-            PhotoButton(title: photoID == nil ? "Choose from Photos" : "Choose another") { choosingPhoto = true }
+            PhotoButton(title: "Choose from Photos") { choosingPhoto = true }
             if CameraPicker.isAvailable {
                 PhotoButton(title: "Take a photo") { tapCamera() }
             }
-            if photoID != nil {
-                PhotoButton(title: "Take the photo out", muted: true) { removePhoto() }
-            }
         }
         .disabled(working)
-        .photosPicker(isPresented: $choosingPhoto, selection: $pickerItem, matching: .images, photoLibrary: .shared())
     }
 
     private var whenSection: some View {
@@ -369,26 +443,29 @@ struct FirstEditor: View {
 
     private func openCamera() { usingCamera = true }
 
-    /// One photo made ready at a time. A newer choice, or Discard, wins: an older one that finishes
-    /// late is thrown away, files and all.
-    private func startImport(_ make: @escaping @MainActor () async throws -> (MediaStore.Added, UIImage?)) {
+    /// Photos made ready one at a time, in the order chosen. Adding waits until they are done;
+    /// Discard stops them, and one that finishes late is thrown away, files and all.
+    private func startImport(_ makers: [@MainActor () async throws -> (MediaStore.Added, UIImage?)]) {
         importTask?.cancel()
         let token = UUID()
         importToken = token
         working = true
         pickProblem = nil
         importTask = Task {
-            do {
-                let (added, taken) = try await make()
-                guard token == importToken, !Task.isCancelled else {
-                    AppModel.shared.media.forget(added.id)
-                    return
+            for make in makers {
+                guard token == importToken, !Task.isCancelled else { break }
+                do {
+                    let (added, taken) = try await make()
+                    guard token == importToken, !Task.isCancelled, items.count < MilestoneLimits.mediaItems else {
+                        AppModel.shared.media.forget(added.id)
+                        continue
+                    }
+                    use(added, taken: taken)
+                } catch let refusal as MediaStore.Refusal {
+                    if token == importToken { pickProblem = JournalText.refusal(refusal) }
+                } catch {
+                    if token == importToken { pickProblem = JournalText.refusal(.unreadablePhoto) }
                 }
-                use(added, taken: taken)
-            } catch let refusal as MediaStore.Refusal {
-                if token == importToken { pickProblem = JournalText.refusal(refusal) }
-            } catch {
-                if token == importToken { pickProblem = JournalText.refusal(.unreadablePhoto) }
             }
             if token == importToken { working = false }
         }
@@ -399,50 +476,70 @@ struct FirstEditor: View {
     private func makeCopy(ofPicked item: PhotosPickerItem) async throws -> (MediaStore.Added, UIImage?) {
         guard let files = MediaFiles.appGroup(),
               let bytes = try await item.loadTransferable(type: Data.self) else { throw MediaStore.Refusal.unreadablePhoto }
-        let added = try await MediaStore(files: files).addPhoto(data: bytes)
-        AppModel.shared.media.holdDraft(added.id)
-        return (added, nil)
+        return (try await keepDraft(files: files, bytes: bytes), nil)
+    }
+
+    /// The draft's ID is held before its files are written, so the clean-up never takes them
+    /// half-way (Codex review of step 2).
+    private func keepDraft(files: MediaFiles, bytes: Data) async throws -> MediaStore.Added {
+        let id = UUID().uuidString
+        AppModel.shared.media.holdDraft(id)
+        do {
+            return try await MediaStore(files: files).addPhoto(data: bytes, id: id)
+        } catch {
+            AppModel.shared.media.releaseDraft(id)
+            throw error
+        }
     }
 
     private func makeCopy(ofTaken image: UIImage) async throws -> (MediaStore.Added, UIImage?) {
         guard let files = MediaFiles.appGroup() else { throw MediaStore.Refusal.unreadablePhoto }
         let bytes = await Task.detached { image.jpegData(compressionQuality: 0.95) }.value
         guard let bytes else { throw MediaStore.Refusal.unreadablePhoto }
-        let added = try await MediaStore(files: files).addPhoto(data: bytes)
-        AppModel.shared.media.holdDraft(added.id)
-        return (added, image)
+        return (try await keepDraft(files: files, bytes: bytes), image)
     }
 
-    /// The new photo, its camera picture (if taken here) and its suggested date go in together;
-    /// the one before goes. A date the parent set stays.
+    /// A new photo goes in the next slot and is shown large; When follows the photos while the
+    /// parent hasn't set it (D17).
     private func use(_ added: MediaStore.Added, taken: UIImage?) {
-        if let previous = picked {
-            // The photo replaced goes, and its place in the square with it.
-            crops[previous.id] = nil
-            AppModel.shared.media.forget(previous.id)
-        }
-        picked = added
-        photoID = added.id
-        takenImage = taken
-        guard !whenTouched else { return }
-        if let takenAt = added.takenAt, let fromPhoto = MilestoneWhen.fromPhotos(takenAt: [takenAt], now: Date()) {
-            when = fromPhoto
-            whenFromPhoto = true
-        } else {
-            when = original?.event.startedAt ?? Date()
-            whenFromPhoto = false
-        }
+        items.append(added.id)
+        drafts[added.id] = added
+        if let taken { takenImages[added.id] = taken }
+        selected = added.id
+        followPhotosForWhen()
     }
 
-    private func removePhoto() {
-        if let picked {
-            crops[picked.id] = nil
-            AppModel.shared.media.forget(picked.id)
+    /// Moves an item to `index`; 0 makes it the cover.
+    private func move(_ id: String, to index: Int) {
+        guard let from = items.firstIndex(of: id), items.indices.contains(index) else { return }
+        items.remove(at: from)
+        items.insert(id, at: index)
+        selected = id
+    }
+
+    /// Takes an item out. One picked here goes from the phone, with its place in the square.
+    private func remove(_ id: String) {
+        items.removeAll { $0 == id }
+        if drafts.removeValue(forKey: id) != nil {
+            crops[id] = nil
+            takenImages[id] = nil
+            AppModel.shared.media.forget(id)
         }
-        picked = nil
-        photoID = nil
-        takenImage = nil
-        if whenFromPhoto, !whenTouched {
+        selected = items.first
+        followPhotosForWhen()
+    }
+
+    /// When, from the photos picked here, while the parent hasn't set it (`MilestoneWhen`).
+    private func followPhotosForWhen() {
+        guard !whenTouched else { return }
+        // Only times the first could have: one before the birth date, say, is left out
+        // (Codex review of step 2).
+        let taken = items.compactMap { drafts[$0]?.takenAt }
+            .filter { data.milestoneDateProblem($0, babyID: babyID, now: Date()) == nil }
+        if let fromPhotos = MilestoneWhen.fromPhotos(takenAt: taken, now: Date()) {
+            when = fromPhotos
+            whenFromPhoto = true
+        } else if whenFromPhoto {
             when = original?.event.startedAt ?? Date()
             whenFromPhoto = false
         }
@@ -458,12 +555,12 @@ struct FirstEditor: View {
         }
     }
 
-    /// Lets go of everything made here: a photo picked or taken and not saved goes from the phone.
+    /// Lets go of everything made here: photos picked or taken and not saved go from the phone.
     private func cleanUp() {
         importTask?.cancel()
         importToken = UUID()
-        if let picked { AppModel.shared.media.forget(picked.id) }
-        picked = nil
+        for id in drafts.keys { AppModel.shared.media.forget(id) }
+        drafts = [:]
     }
 
     private func save() {
@@ -471,16 +568,14 @@ struct FirstEditor: View {
         let now = Date()
         // A time picked in this minute is now (the picker's own boundary).
         let at = min(when, now)
-        // Step 1 changes only the cover: the rest of the list stays as it is.
-        let rest = Array(originalMedia.dropFirst())
-        let media = photoID == originalMedia.first ? originalMedia : (photoID.map { [$0] } ?? []) + rest
+        let media = items
         // Only the places of photos this first will hold.
         let crops = crops.filter { media.contains($0.key) }
         switch mode {
         case .new:
             let id = UUID().uuidString
-            // The photo is queued first, then the first saved: if the app stops between the two,
-            // the queue keeps the photo and waits for its first (a day at most). A queue that
+            // The photos are queued first, then the first saved: if the app stops between the
+            // two, the queue keeps them and waits for their first (a day at most). A queue that
             // can't be written stops Save here, so no first names a photo that isn't queued.
             guard queue(eventID: id, now: now) else {
                 saveProblem = Self.notOnPhone
@@ -492,12 +587,12 @@ struct FirstEditor: View {
                                 timeZoneID: TimeZone.current.identifier, now: now)
             }
             guard added != nil, onPhone else {
-                if let picked { AppModel.shared.media.unqueue(picked.id) }
+                unqueueDrafts()
                 saveProblem = onPhone ? (dateProblem ?? "This first couldn't be saved. Check the date.") : Self.notOnPhone
                 return
             }
             finishSave()
-            onDone(.added(id: id, title: HouseholdData.cleanTitle(title), photo: picked?.id))
+            onDone(.added(id: id, title: HouseholdData.cleanTitle(title), photos: media.filter { drafts[$0] != nil }))
         case .edit(let id):
             guard let original else { return }
             guard queue(eventID: id, now: now) else {
@@ -509,9 +604,11 @@ struct FirstEditor: View {
                                  now: now)
             }
             guard saved, onPhone else {
-                if let picked { AppModel.shared.media.unqueue(picked.id) }
+                unqueueDrafts()
                 if !onPhone {
                     saveProblem = Self.notOnPhone
+                } else if wouldPassFour(id) {
+                    saveProblem = "This first has 4 photos now: the other phone added some. Take one out to add yours."
                 } else {
                     saveProblem = data.events[id]?.event.deletedAt != nil
                         ? "This first was deleted on the other phone." : (dateProblem ?? "This first couldn't be saved.")
@@ -527,20 +624,37 @@ struct FirstEditor: View {
     /// The app's words when a change couldn't be written to this phone.
     static let notOnPhone = "Couldn't save on this phone. Nothing was changed. Try again, or free up some space."
 
-    /// A photo picked here goes into the upload queue, behind the feeds. False when the queue
-    /// couldn't be written to this phone.
+    /// The photos picked here go into the upload queue, behind the feeds, in slot order, in one
+    /// write. False, and none queued, when the queue couldn't be written to this phone.
     private func queue(eventID: String, now: Date) -> Bool {
-        guard let picked else { return true }
-        return AppModel.shared.media.add(MediaUpload(id: picked.id, eventID: eventID, byteSize: picked.byteSize,
-                                                     payload: try? PayloadCoder.encode(picked.details), queuedAt: now,
-                                                     pause: nil))
+        let uploads = items.compactMap { id in
+            drafts[id].map { draft in
+                MediaUpload(id: id, eventID: eventID, byteSize: draft.byteSize,
+                            payload: try? PayloadCoder.encode(draft.details), queuedAt: now, pause: nil)
+            }
+        }
+        return AppModel.shared.media.add(uploads)
     }
 
-    /// Saved: the photo is no longer a draft, and one taken here goes to Photos too (asked now,
+    private func unqueueDrafts() {
+        AppModel.shared.media.unqueue(Array(drafts.keys))
+    }
+
+    /// True when the first as it is now, with this editor's changes, would hold more than 4.
+    private func wouldPassFour(_ id: String) -> Bool {
+        let now = data.events[id]?.snapshot.payload?.milestone?.media ?? []
+        let takenOut = Set(originalMedia).subtracting(items)
+        return Set(now).union(items).subtracting(takenOut).count > MilestoneLimits.mediaItems
+    }
+
+    /// Saved: the photos are no longer drafts, and those taken here go to Photos too (asked now,
     /// after Save: D20).
     private func finishSave() {
-        if let picked { AppModel.shared.media.releaseDraft(picked.id) }
-        if let takenImage { Task { await PhotosCopy.keep(takenImage) } }
+        for id in drafts.keys { AppModel.shared.media.releaseDraft(id) }
+        let taken = items.compactMap { takenImages[$0] }
+        if !taken.isEmpty {
+            Task { for image in taken { await PhotosCopy.keep(image) } }
+        }
     }
 
     private func delete() {

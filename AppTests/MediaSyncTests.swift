@@ -96,6 +96,9 @@ struct MediaSyncTests {
         try Data([1]).write(to: folder.appendingPathComponent("media-9.thumbnail"))
         let files = MediaFiles(folder: folder)
         #expect(files.storedIDs() == ["media-9"])
+        // Listing leaves it: it may be a copy under way. Launch clears it.
+        #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("abc.part").path))
+        files.removeHalfCopies()
         #expect(!FileManager.default.fileExists(atPath: folder.appendingPathComponent("abc.part").path))
     }
 }

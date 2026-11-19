@@ -47,18 +47,25 @@ struct MediaFiles: Sendable {
         return values?.volumeAvailableCapacityForImportantUsage ?? 0
     }
 
-    /// The IDs of the items with a file or a thumbnail here. Leftover half-copied files go.
+    /// The IDs of the items with a file or a thumbnail here. A half-copied file is left alone: it
+    /// may be one being copied now (Codex review of step 2); `removeHalfCopies` clears them at launch.
     func storedIDs() -> Set<String> {
         let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
         var ids = Set<String>()
         for name in names {
-            if name.hasSuffix(".part") {
-                try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
-            } else if let dot = name.lastIndex(of: "."), [".file", ".thumbnail"].contains(String(name[dot...])) {
+            if let dot = name.lastIndex(of: "."), [".file", ".thumbnail"].contains(String(name[dot...])) {
                 ids.insert(String(name[..<dot]))
             }
         }
         return ids
+    }
+
+    /// At launch, before any copy starts: half-copied files left by an app that was stopped go.
+    func removeHalfCopies() {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names where name.hasSuffix(".part") {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        }
     }
 
     private func keep(_ source: URL, at target: URL) throws {

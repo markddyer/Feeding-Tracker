@@ -195,12 +195,14 @@ enum SampleData {
             return calendar.date(from: DateComponents(year: date.year, month: date.month, day: date.day, hour: hour))!
         }
         let files = MediaFiles.appGroup()
-        let laugh = "sample-photo-laugh", smile = "sample-photo-smile"
+        let laugh = "sample-photo-laugh", smile = "sample-photo-smile", smileTwo = "sample-photo-smile-2"
         if let files {
             // One wide and one tall, as phone photos are, so a tile that lets a photo set its own
             // size shows at once.
             drawPicture(face: true, width: 1200, height: 900, into: files, id: laugh)
             drawPicture(face: false, width: 900, height: 1200, into: files, id: smile)
+            // A second photo on "First smile", for the slots, "+1" and "1 of 2".
+            drawPicture(face: true, width: 1000, height: 1000, into: files, id: smileTwo)
         }
         // `-sampleNoBirthDate YES`: the same firsts with no birth date (months, no ages).
         let birthDate: PlainDate? = UserDefaults.standard.bool(forKey: "sampleNoBirthDate") ? nil : born
@@ -212,7 +214,7 @@ enum SampleData {
             data.addMilestone(id: "sample-first-trip", babyID: "sample-baby", title: "First trip out", media: ["sample-photo-coming"],
                               at: day(16, 11), by: other, timeZoneID: zone.identifier, now: now)
             data.addMilestone(id: "sample-first-smile", babyID: "sample-baby", title: "First smile",
-                              note: "At the morning feed, after the left side. Then three more!", media: [smile],
+                              note: "At the morning feed, after the left side. Then three more!", media: [smile, smileTwo],
                               at: day(44, 7), by: me, timeZoneID: zone.identifier, now: now)
             data.addMilestone(id: "sample-first-laugh", babyID: "sample-baby", title: "First laugh", media: [laugh],
                               at: day(60, 18), by: other, timeZoneID: zone.identifier, now: now)

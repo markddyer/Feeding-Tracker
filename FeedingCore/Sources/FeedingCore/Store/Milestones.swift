@@ -275,7 +275,13 @@ extension HouseholdData {
             let added = media.filter { !before.media.contains($0) }
             let kept = milestone.media.filter { !takenOut.contains($0) }
             let onlyAddedOrTakenOut = before.media.filter { media.contains($0) } + added == media
-            let next = onlyAddedOrTakenOut ? kept + added.filter { !kept.contains($0) } : media + kept.filter { !media.contains($0) }
+            var next = onlyAddedOrTakenOut ? kept + added.filter { !kept.contains($0) } : media + kept.filter { !media.contains($0) }
+            // A cover the parent chose stays the cover, whatever the other phone added meanwhile
+            // (Codex review of step 2).
+            if let cover = media.first, cover != before.media.first, let index = next.firstIndex(of: cover), index != 0 {
+                next.remove(at: index)
+                next.insert(cover, at: 0)
+            }
             milestone.removedMedia += takenOut
             let removed = Set(milestone.removedMedia)
             guard Self.fitsTheLimit(next.filter { !removed.contains($0) }) else { return false }
@@ -301,7 +307,9 @@ extension HouseholdData {
         if saved, !newlyRemoved.isEmpty {
             let addedHere = milestone.media.filter { !mediaBefore.contains($0) && !before.media.contains($0) }
             hold(id, HeldUndo(undeletes: false, media: mediaBefore, addedLocally: addedHere.filter { media.contains($0) },
-                              addedRemovals: newlyRemoved), now: now)
+                              addedRemovals: newlyRemoved,
+                              crops: Self.nonEmpty((current.payload?.milestone?.crops ?? [:]).filter { newlyRemoved.contains($0.key) })),
+                 now: now)
         }
         return saved
     }
@@ -322,7 +330,8 @@ extension HouseholdData {
         }
         if deleted {
             hold(id, HeldUndo(undeletes: true, media: details.media,
-                              addedRemovals: details.media.filter { !removedBefore.contains($0) }), now: now)
+                              addedRemovals: details.media.filter { !removedBefore.contains($0) }, crops: Self.nonEmpty(details.crops)),
+                 now: now)
         }
         return deleted
     }
@@ -330,11 +339,15 @@ extension HouseholdData {
     /// Undo for a first's delete or photos taken out, while it is still held on this phone: the
     /// first shows again with its photos, in their order; a photo the same save added (a replaced
     /// photo's new one) goes onto the removed list, never sent; one the other phone added meanwhile
-    /// stays, after them. False once the change has been sent or its Undo window has passed.
+    /// stays, after them; each photo back in its place in the square. False once the change has
+    /// been sent or its Undo window has passed, and when bringing the photos back would make more
+    /// than 4 (the other phone added some meanwhile): nothing is dropped to make room
+    /// (`undoWouldPassTheLimit` says so).
     @discardableResult
     public mutating func undoHeld(_ id: String, by member: MemberID, now: Date) -> Bool {
         guard let stored = events[id], let held = stored.heldUndo,
-              let deadline = stored.uploadNotBefore, now < deadline else { return false }
+              let deadline = stored.uploadNotBefore, now < deadline,
+              !undoWouldPassTheLimit(id) else { return false }
         let undone = edit(id, by: member, now: now) { snapshot in
             if held.undeletes { snapshot.event.deletedAt = nil }
             guard var milestone = snapshot.payload?.milestone else { return }
@@ -342,6 +355,7 @@ extension HouseholdData {
             milestone.removedMedia.removeAll { held.addedRemovals.contains($0) }
             milestone.removedMedia += held.addedLocally
             milestone.media = held.media + addedElsewhere
+            for (item, crop) in held.crops ?? [:] where held.addedRemovals.contains(item) { milestone.crops[item] = crop }
             milestone.normalize()
             snapshot.payload?.milestone = milestone
         }
@@ -349,6 +363,16 @@ extension HouseholdData {
         events[id]?.heldUndo = nil
         events[id]?.uploadNotBefore = nil
         return true
+    }
+
+    /// True when Undo would bring back more than 4 photos and videos, as the other phone added some
+    /// while the change was held.
+    public func undoWouldPassTheLimit(_ id: String) -> Bool {
+        guard let stored = events[id], let held = stored.heldUndo, let milestone = stored.snapshot.payload?.milestone else {
+            return false
+        }
+        let addedElsewhere = milestone.media.filter { !held.media.contains($0) && !held.addedLocally.contains($0) }
+        return !Self.fitsTheLimit(held.media + addedElsewhere)
     }
 
     /// Holds a change on this phone for the Undo window. A second change inside the window keeps
@@ -359,13 +383,17 @@ extension HouseholdData {
             let arrivedBetween = undo.media.filter { !earlier.media.contains($0) && !earlier.addedLocally.contains($0) }
             stored.heldUndo = HeldUndo(undeletes: earlier.undeletes || undo.undeletes, media: earlier.media + arrivedBetween,
                                        addedLocally: earlier.addedLocally + undo.addedLocally,
-                                       addedRemovals: earlier.addedRemovals + undo.addedRemovals)
+                                       addedRemovals: earlier.addedRemovals + undo.addedRemovals,
+                                       crops: Self.nonEmpty((undo.crops ?? [:]).merging(earlier.crops ?? [:]) { _, first in first }))
         } else {
             stored.heldUndo = undo
         }
         stored.uploadNotBefore = max(stored.uploadNotBefore ?? now, now.addingTimeInterval(Self.undoWindow))
         events[id] = stored
     }
+
+    /// Nil for no crops, so a held change without any is stored as before.
+    static func nonEmpty(_ crops: [String: MediaCrop]) -> [String: MediaCrop]? { crops.isEmpty ? nil : crops }
 
     /// True when `media` names at most `MilestoneLimits.mediaItems` different items.
     static func fitsTheLimit(_ media: [String]) -> Bool {

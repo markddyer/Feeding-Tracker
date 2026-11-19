@@ -916,6 +916,52 @@ struct MediaCropTests {
         #expect(a.events[id]?.snapshot.payload?.v == 3)
     }
 
+    /// Undo of a photo taken out puts it back in its place in the square.
+    @Test func undoPutsAPhotoBackWithItsCrop() throws {
+        var (a, _, id) = try twoPhones()
+        let crop = MediaCrop(x: 0.5, y: 0.3)
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m2": crop], at: t0, by: parentA, now: t0 + 30)
+        _ = sent(&a, id, tag: 2)
+        a.saveEditor(id, title: "First smile", media: ["m1"], crops: [:], at: t0, by: parentA, now: t0 + 60)
+        #expect(details(a, id)?.crops == [:])
+        let undone = a.undoHeld(id, by: parentA, now: t0 + 61)
+        #expect(undone)
+        #expect(details(a, id)?.media == ["m1", "m2"])
+        #expect(details(a, id)?.crops == ["m2": crop])
+    }
+
+    /// A cover the parent chose stays the cover, even with a photo the other phone added meanwhile.
+    @Test func aChosenCoverStaysFirstWhenTheOtherPhoneAdded() throws {
+        var (a, b, id) = try twoPhones()
+        let editorOpenedOn = try #require(b.events[id]?.snapshot)
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2", "x"], at: t0, by: parentA, now: t0 + 30)
+        b.receiveEvent(sent(&a, id, tag: 2), systemFields: Data([2]))
+        // B took m1 out and added m3 and m4, making m4 the cover.
+        let saved = b.editMilestone(id, from: editorOpenedOn, title: "First smile", note: nil, media: ["m4", "m2", "m3"],
+                                    at: t0, by: parentB, now: t0 + 60)
+        #expect(saved)
+        #expect(details(b, id)?.media.first == "m4")
+        #expect(Set(details(b, id)?.media ?? []) == ["m4", "m2", "m3", "x"])
+    }
+
+    /// Undo never drops a photo to make room (Codex review of step 2): A takes out m4, which B never
+    /// saw, and B adds e; bringing m4 back would make 5, so Undo changes nothing.
+    @Test func undoThatWouldPassFourChangesNothing() throws {
+        var (a, b, id) = try twoPhones()
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2", "m3"], at: t0, by: parentA, now: t0 + 10)
+        b.receiveEvent(sent(&a, id, tag: 2), systemFields: Data([2]))
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2", "m3", "m4"], at: t0, by: parentA, now: t0 + 20)
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2", "m3"], at: t0, by: parentA, now: t0 + 30)
+        b.saveEditor(id, title: "First smile", media: ["m1", "m2", "m3", "e"], at: t0, by: parentB, now: t0 + 31)
+        a.receiveEvent(sent(&b, id, tag: 3), systemFields: Data([3]))
+        #expect(details(a, id)?.media == ["m1", "m2", "m3", "e"])
+        #expect(a.undoWouldPassTheLimit(id))
+        let before = details(a, id)
+        let undone = a.undoHeld(id, by: parentA, now: t0 + 35)
+        #expect(!undone)
+        #expect(details(a, id) == before)
+    }
+
     @Test func takingAPhotoOutDropsItsCrop() throws {
         var (a, _, id) = try twoPhones()
         a.saveEditor(id, title: "First smile", media: ["m1", "m2"],

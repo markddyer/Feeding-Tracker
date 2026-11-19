@@ -15,6 +15,9 @@ struct FirstPage: View {
     @Environment(\.dismiss) private var dismiss
     @State private var editing: FirstEditor.Mode?
     @State private var pageHeight: CGFloat = 0
+    /// The item on screen, by its ID, when a first has more than one (D8: "1 of 3", a swipe): kept
+    /// while that item stays, whatever the other phone changes around it (Codex review of step 2).
+    @State private var currentID: String?
 
     var body: some View {
         let data = model.store.data
@@ -29,10 +32,16 @@ struct FirstPage: View {
                         // The whole photo, at its own shape (the parents' choice, 19 Nov 2026): at
                         // most the column's width, and at most 70% of the screen's height, so the
                         // title is still in sight under a tall photo.
-                        MediaPicture(id: details.media.first, full: true, cornerRadius: 26)
-                            .frame(maxWidth: .infinity, maxHeight: pageHeight > 0 ? pageHeight * 0.7 : nil, alignment: .leading)
-                            .accessibilityElement()
-                            .accessibilityLabel(details.media.isEmpty ? "No photo" : "Photo of \(details.title)")
+                        let shownID = currentID.flatMap { details.media.contains($0) ? $0 : nil } ?? details.media.first
+                        if details.media.count > 1 {
+                            MediaPager(ids: details.media, selection: Binding { shownID } set: { currentID = $0 },
+                                       height: pageHeight > 0 ? pageHeight * 0.62 : 420)
+                        } else {
+                            MediaPicture(id: details.media.first, full: true, cornerRadius: 26)
+                                .frame(maxWidth: .infinity, maxHeight: pageHeight > 0 ? pageHeight * 0.7 : nil, alignment: .leading)
+                                .accessibilityElement()
+                                .accessibilityLabel(details.media.isEmpty ? "No photo" : "Photo of \(details.title)")
+                        }
                         Text(details.title)
                             .feedText(.title)
                             .accessibilityAddTraits(.isHeader)
@@ -46,8 +55,9 @@ struct FirstPage: View {
                         loggedBy(first.event.loggedBy)
                         // Share and Edit, two soft buttons (D8); Delete is inside Edit.
                         HStack(spacing: 10) {
+                            // The item on screen (journal plan, "Share").
                             ShareFirstButton(firstID: id, title: details.title, age: age?.words,
-                                             photoID: details.media.first)
+                                             photoID: shownID)
                             Button { editing = .edit(id: id) } label: {
                                 Text("Edit")
                                     .feedText(.button)
@@ -92,6 +102,47 @@ struct FirstPage: View {
     }
 }
 
+/// A first's photos, one at a time (design review D8): a swipe moves between them, with "1 of 3" in
+/// the corner. Each whole photo fits the frame. VoiceOver reads "Photo 1 of 3" and moves with its
+/// adjustable actions (D35).
+struct MediaPager: View {
+    let ids: [String]
+    @Binding var selection: String?
+    let height: CGFloat
+
+    var body: some View {
+        let current = selection.flatMap { ids.firstIndex(of: $0) } ?? 0
+        TabView(selection: $selection) {
+            ForEach(ids, id: \.self) { id in
+                MediaPicture(id: id, full: true, cornerRadius: 26)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .tag(Optional(id))
+            }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+        .frame(height: height)
+        .overlay(alignment: .topTrailing) {
+            Text("\(current + 1) of \(ids.count)")
+                .feedText(.chip)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 3)
+                .background(Theme.surface, in: Capsule())
+                .padding(10)
+        }
+        .accessibilityElement()
+        .accessibilityLabel("Photo \(current + 1) of \(ids.count)")
+        // Names the item shown, for the tap tests; VoiceOver doesn't read it.
+        .accessibilityIdentifier("pager-\(ids.indices.contains(current) ? ids[current] : "")")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: selection = ids[min(current + 1, ids.count - 1)]
+            case .decrement: selection = ids[max(current - 1, 0)]
+            @unknown default: break
+            }
+        }
+    }
+}
+
 /// A page of its own has the screen's name for Back; beside the line it has no bar of its own.
 private struct PageBar: ViewModifier {
     let embedded: Bool
@@ -121,30 +172,46 @@ enum JournalUndo {
     static func action(for outcome: FirstEditor.Outcome, me: MemberID) -> UndoAction? {
         let model = AppModel.shared
         switch outcome {
-        case .added(let id, let title, let photo):
+        case .added(let id, let title, let photos):
             return checked(JournalText.added(title)) {
                 let (neverSent, onPhone) = model.store.changeChecked { data -> Bool in
                     if data.undoAdd(id, now: Date()) { return true }
                     data.deleteMilestone(id, by: me, now: Date())
                     return false
                 }
-                // A first that never left the phone takes its photo with it, once that is saved.
-                // One already sent is deleted instead, and its photo goes by the delete's rules.
-                if onPhone, neverSent, let photo { model.media.forget(photo) }
+                // A first that never left the phone takes its photos with it, once that is saved.
+                // One already sent is deleted instead, and its photos go by the delete's rules.
+                // Also those a later edit inside the Undo window added (Codex review of step 2).
+                if onPhone, neverSent {
+                    photos.forEach(model.media.forget)
+                    model.media.forgetUploads(ofFirst: id)
+                }
                 return onPhone
             }
         case .deleted(let id, let title):
             return checked(JournalText.deleted(title)) {
                 guard model.sync.mayUndo(id) else { return true }
+                guard !model.store.data.undoWouldPassTheLimit(id) else { return tooMany() }
                 return model.store.changeChecked { $0.undoHeld(id, by: me, now: Date()) }.saved
             }
         case .saved(let id, let photoRemoved):
             guard photoRemoved else { return nil }
             return checked(JournalText.photoRemoved) {
                 guard model.sync.mayUndo(id) else { return true }
+                guard !model.store.data.undoWouldPassTheLimit(id) else { return tooMany() }
                 return model.store.changeChecked { $0.undoHeld(id, by: me, now: Date()) }.saved
             }
         }
+    }
+
+    /// Undo would make more than 4, as the other phone added some meanwhile: nothing is dropped to
+    /// make room, and the bar says why (Codex review of step 2).
+    @MainActor
+    private static func tooMany() -> Bool {
+        var notice = UndoAction(message: "This first has 4 photos now, so Undo can't bring it back") {}
+        notice.canUndo = false
+        UndoCenter.shared.show(notice)
+        return true
     }
 
     /// An Undo that, if it couldn't be saved on this phone, shows a bar to try again.
