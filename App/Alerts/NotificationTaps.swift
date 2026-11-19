@@ -1,4 +1,8 @@
+import Darwin
+import FeedingCore
+import Foundation
 import Observation
+import SwiftUI
 import UserNotifications
 
 /// Shows the app's notifications while it is open, and opens Home at the top when a notification
@@ -59,7 +63,39 @@ final class NotificationTaps {
     /// there, when it starts the app).
     @ObservationIgnored private var pendingFirst: String?
 
+    /// A notification was tapped since the app last left the screen: the return that comes with
+    /// it, before or after, never overrides what was tapped (eng2 D1, OV1; Codex review of D40).
+    @ObservationIgnored private(set) var tappedSinceLeaving = false
+    /// Forms pushed on a screen's stack that are open now (Settings › Medicines): a night return
+    /// keeps them, as it keeps a sheet (eng2 D3).
+    @ObservationIgnored var formsOpen = 0
+
+    private static let departureKey = "returnRule.leftAt"
+    private static let departureBootKey = "returnRule.leftInBoot"
+
+    /// The app left the screen: noted on the boot clock, kept across a launch (iOS may close the
+    /// app meanwhile).
+    func leftScreen() {
+        tappedSinceLeaving = false
+        UserDefaults.standard.set(BootClock.now(), forKey: Self.departureKey)
+        UserDefaults.standard.set(BootClock.boot(), forKey: Self.departureBootKey)
+    }
+
+    /// The time since the app left the screen; nil when unknown.
+    func timeAway() -> TimeInterval? {
+        let defaults = UserDefaults.standard
+        return ReturnRule.timeAway(leftAt: defaults.object(forKey: Self.departureKey) as? Double,
+                                   leftInBoot: defaults.object(forKey: Self.departureBootKey) as? Int,
+                                   now: BootClock.now(), boot: BootClock.boot())
+    }
+
+    /// Back on the screen: the departure is used once.
+    func clearDeparture() {
+        UserDefaults.standard.removeObject(forKey: Self.departureKey)
+    }
+
     func showHome() {
+        tappedSinceLeaving = true
         homeRequests += 1
     }
 
@@ -69,6 +105,7 @@ final class NotificationTaps {
     private(set) var pendingExport = false
 
     func showExport() {
+        tappedSinceLeaving = true
         pendingExport = true
         exportRequests += 1
     }
@@ -80,6 +117,7 @@ final class NotificationTaps {
     }
 
     func showFirst(_ id: String) {
+        tappedSinceLeaving = true
         pendingFirst = id
         firstRequests += 1
     }
@@ -97,8 +135,33 @@ final class NotificationTaps {
         return id.isEmpty ? nil : id
     }
 
-    /// The notifications whose tap opens Home: those about an ask (`NightAskNews.id`).
+    /// The notifications whose tap opens Home: those about an ask (`NightAskNews.id`), and the
+    /// feed alerts (`alert.`), so Start feed is in front (Codex review of D40).
     nonisolated static func opensHome(_ identifier: String) -> Bool {
-        identifier.hasPrefix("nightAsk-")
+        identifier.hasPrefix("nightAsk-") || identifier.hasPrefix("alert.")
+    }
+}
+
+/// The phone's boot clock: seconds since it started, counting sleep (Darwin's `CLOCK_MONOTONIC`),
+/// which setting the time can't move; and which boot it is, so two boots are never compared.
+enum BootClock {
+    static func now() -> Double {
+        Double(clock_gettime_nsec_np(CLOCK_MONOTONIC)) / 1_000_000_000
+    }
+
+    static func boot() -> Int {
+        var booted = timeval()
+        var size = MemoryLayout<timeval>.size
+        sysctlbyname("kern.boottime", &booted, &size, nil, 0)
+        return booted.tv_sec
+    }
+}
+
+/// A form on a screen's stack (not a sheet): while it is open, a night return leaves it in front.
+struct FormOnScreen: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .onAppear { NotificationTaps.shared.formsOpen += 1 }
+            .onDisappear { NotificationTaps.shared.formsOpen = max(0, NotificationTaps.shared.formsOpen - 1) }
     }
 }

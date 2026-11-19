@@ -9,7 +9,13 @@ struct MedicineListEditor: View {
     @State private var newName = ""
     @FocusState private var adding: Bool
 
+    /// A form: a night return leaves it in front (eng2 D3), wherever it was opened from.
     var body: some View {
+        form.modifier(FormOnScreen())
+    }
+
+    @ViewBuilder
+    private var form: some View {
         let medicines = model.store.data.medicines
         Form {
             Section {

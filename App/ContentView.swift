@@ -24,8 +24,12 @@ struct ContentView: View {
     /// A first a tapped notice asked for, handed to the Journal to open (`JournalView.openTarget`).
     @State private var journalTarget: String?
     @State private var tab: MainTab = Self.firstTab
+    @Environment(\.scenePhase) private var scenePhase
 
-    private enum MainTab: Hashable { case home, history, graphs, journal }
+    private enum MainTab: String, Hashable { case home, history, graphs, journal }
+    /// The last tab, kept by iOS if it closes the app in the background, so a day return finds it
+    /// (Codex review of D40); not after the parent quits the app.
+    @SceneStorage("mainTab") private var savedTab: String?
 
     private enum Screen: Hashable {
         case settings
@@ -85,7 +89,23 @@ struct ContentView: View {
         // A tapped notice of a new first opens its page, at any hour (design review D18, eng2 D1);
         // also when the tap started the app, before these screens were there.
         .onChange(of: NotificationTaps.shared.firstRequests) { openTappedFirst() }
-        .onChange(of: journalReady, initial: true) { openTappedFirst() }
+        // At night, coming back after more than 5 minutes away opens Home (D40).
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if phase == .background { NotificationTaps.shared.leftScreen() }
+            if phase == .active { cameBack() }
+        }
+        .onChange(of: tab) { savedTab = tab.rawValue }
+        .onAppear {
+            #if FEEDING_DEV
+            guard UserDefaults.standard.string(forKey: "startTab") == nil else { return }
+            #endif
+            if let savedTab, let restored = MainTab(rawValue: savedTab) { tab = restored }
+        }
+        .onChange(of: journalReady, initial: true) {
+            openTappedFirst()
+            // The export's notice that started the app: the Journal opens its Export screen.
+            if journalReady, NotificationTaps.shared.pendingExport { tab = .journal }
+        }
         // The export's notice: the Journal tab, which opens the Export screen as it was left.
         .onChange(of: NotificationTaps.shared.exportRequests) { if journalReady { tab = .journal } }
         .onChange(of: feedingStyle, initial: true) {
@@ -141,6 +161,47 @@ struct ContentView: View {
                     .modifier(TopBar(settings: model.baby != nil))
             }
         }
+    }
+
+    /// Back on the screen (design review D40, eng2 D1 and D3, `ReturnRule`): at night after more
+    /// than 5 minutes away, Home's main screen, so Start feed is in front; never over a tap just
+    /// made, and never with a form or panel open (nothing typed is lost); by day, as it was. A tap
+    /// that comes after this still opens its own target.
+    private func cameBack() {
+        let taps = NotificationTaps.shared
+        var away = taps.timeAway()
+        taps.clearDeparture()
+        Task {
+            // A tap can arrive just after the return: it is given a moment, then wins (OV1).
+            try? await Task.sleep(for: .milliseconds(800))
+            guard journalReady else { return }
+            let settings = model.store.data.householdSettings
+            var now = Date()
+            #if FEEDING_DEV && targetEnvironment(simulator)
+            // `-pretendReturn night` (or `day`): as if back at 03:00 (or 14:00) on the household's
+            // clock after 10 minutes away (tap tests); only on a real return.
+            if let pretend = UserDefaults.standard.string(forKey: "pretendReturn"), away != nil {
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.timeZone = settings.timeZone
+                away = 600
+                now = calendar.date(bySettingHour: pretend == "night" ? 3 : 14, minute: 0, second: 0, of: Date()) ?? now
+            }
+            #endif
+            let outcome = ReturnRule.outcome(tapped: taps.tappedSinceLeaving, awayFor: away, at: now,
+                                             dayHours: settings.dayHours, timeZone: settings.timeZone,
+                                             formOpen: Self.somethingOpen() || taps.formsOpen > 0)
+            guard outcome == .home else { return }
+            path = NavigationPath()
+            tab = .home
+        }
+    }
+
+    /// True while a form, panel or question is open over the tabs.
+    private static func somethingOpen() -> Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .contains { $0.isKeyWindow && $0.rootViewController?.presentedViewController != nil }
     }
 
     /// The tabs are showing (setup is done), so the Journal can open a tapped first.
