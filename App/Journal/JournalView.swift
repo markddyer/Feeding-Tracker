@@ -16,6 +16,7 @@ struct JournalView: View {
     private let model = AppModel.shared
     @State private var adding: FirstEditor.Mode?
     @State private var settingBirthDate = false
+    @State private var exporting = false
     /// "Not now" on the birth-date row hides it on this phone (design review D14).
     @AppStorage("journal.birthDateRowHidden") private var birthDateRowHidden = false
     /// A photo taken here wasn't copied to Photos (permission declined): said once (D20).
@@ -89,6 +90,7 @@ struct JournalView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button { settingBirthDate = true } label: { Label("Birth date", systemImage: "birthday.cake") }
+                    Button { exporting = true } label: { Label("Export the journal", systemImage: "square.and.arrow.down") }
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
@@ -96,6 +98,7 @@ struct JournalView: View {
             }
         }
         .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
+        .sheet(isPresented: $exporting) { ExportView(babyID: babyID) }
         .sheet(item: $adding) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
                 UndoCenter.shared.show(JournalUndo.action(for: outcome, me: me))
@@ -104,6 +107,9 @@ struct JournalView: View {
         }
         .sensoryFeedback(.impact(weight: .light), trigger: addedCount)
         .onChange(of: target?.wrappedValue, initial: true) { openTarget() }
+        .onChange(of: NotificationTaps.shared.exportRequests, initial: true) {
+            if NotificationTaps.shared.takePendingExport() { exporting = true }
+        }
         .onChange(of: model.store.data.events.count) { openTarget() }
         // Waits for the width, so it knows whether the open Duo shows two columns.
         .onChange(of: width) { openTarget() }

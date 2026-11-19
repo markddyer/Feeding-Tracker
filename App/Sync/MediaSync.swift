@@ -157,6 +157,8 @@ final class MediaSync {
     @ObservationIgnored private var drafts: Set<String> = []
     /// A first a parent opened from its notice: its photos come first (still behind the feeds).
     @ObservationIgnored private var preferredFirst: String?
+    /// An export is fetching what it needs: the photo run waits, so the two never transfer at once.
+    @ObservationIgnored private var exporting = false
 
     private let store: HouseholdStore
     private let household: HouseholdSync
@@ -173,7 +175,7 @@ final class MediaSync {
     @ObservationIgnored private var retryTask: Task<Void, Never>?
     @ObservationIgnored private var cleanUpTask: Task<Void, Never>?
     /// The request in flight, so a fetch starting can stop a download at once.
-    @ObservationIgnored private var inFlight: (isDownload: Bool, cancel: () -> Void)?
+    @ObservationIgnored private var inFlight: (id: UUID, isDownload: Bool, cancel: () -> Void)?
 
     init(store: HouseholdStore, household: HouseholdSync, files: MediaFiles?, defaults: UserDefaults, queueFile: URL?) {
         self.store = store
@@ -236,6 +238,97 @@ final class MediaSync {
         changed(id)
     }
 
+    // MARK: The export (task T10)
+
+    /// The sizes of the items in iCloud, read once, for the export's space check.
+    func byteSizes() -> [String: Int64] { savedIndex.mapValues(\.byteSize) }
+
+    /// For "Export the journal": fetches each item not on this phone yet, one at a time, behind
+    /// the feeds (the same gate and stops as every transfer; one stopped for the feeds is tried
+    /// again, as is one iCloud asks to wait for, up to `deadline`). The photo run waits meanwhile;
+    /// one export's fetch at a time, the one before drained first. This also runs with the app in
+    /// the background, under the export's own background task. Returns the IDs not fetched.
+    func fetchForExport(_ ids: [String], deadline: ContinuousClock.Instant = .now + .seconds(600),
+                        progress: @MainActor (Int) -> Void) async -> Set<String> {
+        guard let files else { return Set(ids) }
+        // A cancelled export before this one is still unwinding: wait for it (Codex review of T10).
+        while exporting {
+            if Task.isCancelled { return Set(ids) }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        exporting = true
+        running?.cancel()
+        inFlight?.cancel()
+        await running?.value
+        defer {
+            exporting = false
+            kick()
+        }
+        var missing = Set<String>()
+        for (index, id) in ids.enumerated() {
+            if Task.isCancelled || ContinuousClock.now >= deadline {
+                missing.formUnion(ids[index...].filter { !files.hasFile($0) })
+                break
+            }
+            if !files.hasFile(id), !(await fetchOneForExport(id, files: files, deadline: deadline)) { missing.insert(id) }
+            progress(index + 1)
+        }
+        return missing
+    }
+
+    /// A single photo for Share, by the same careful way. True once it is on this phone.
+    func fetchForShare(_ id: String) async -> Bool {
+        await fetchForExport([id], deadline: .now + .seconds(120)) { _ in }.isEmpty
+    }
+
+    private func fetchOneForExport(_ id: String, files: MediaFiles, deadline: ContinuousClock.Instant) async -> Bool {
+        // The photo index can lag behind a first (a new phone): the record is asked for by its ID.
+        guard let zone = photosZone else { return false }
+        if let size = savedIndex[id]?.byteSize, !SpaceRule.fits(size, free: files.freeSpace()) { return false }
+        let recordID = CKRecord.ID(recordName: id, zoneID: zone.id)
+        let database = zone.database
+        var attempts = 0
+        while attempts < 8, ContinuousClock.now < deadline, !Task.isCancelled {
+            attempts += 1
+            let failure: MediaFailure
+            do {
+                let results = try await transfer(isDownload: true) {
+                    try await database.configuredWith(configuration: Self.lowPriority) { database in
+                        try await database.records(for: [recordID], desiredKeys: ["file"])
+                    }
+                }
+                switch results[recordID] {
+                case .success(let record):
+                    guard let file = RecordMapping.fileURL(of: record) else { return false }
+                    let size = Int64((try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+                    guard SpaceRule.fits(size, free: files.freeSpace()) else { return false }
+                    try await Task.detached { try files.keepFile(from: file, for: id) }.value
+                    changed(id)
+                    return true
+                case .failure(let error):
+                    failure = MediaFailure(error)
+                case nil:
+                    return false
+                }
+            } catch {
+                failure = MediaFailure(error)
+            }
+            switch failure {
+            case .stopped:
+                // Stopped for the feeds: tried again once they are done (not counted).
+                attempts -= 1
+                try? await Task.sleep(for: .seconds(1))
+            case .retryLater(let after):
+                // iCloud's own wait, when it gives one.
+                try? await Task.sleep(for: .seconds(min(max(after ?? 3, 1), 60)))
+            default:
+                SyncLog.add("media: export couldn't fetch \(id): \(failure)")
+                return false
+            }
+        }
+        return false
+    }
+
     /// A first opened from its notice: its photos and videos move to the front of the downloads.
     func preferFirst(_ eventID: String) {
         preferredFirst = eventID
@@ -251,7 +344,7 @@ final class MediaSync {
     /// the app is open (a push that wakes it in the background is for the feeds alone), and not
     /// while iCloud has asked to wait.
     func kick() {
-        guard AppConfig.photosEnabled, UIApplication.shared.applicationState != .background else { return }
+        guard AppConfig.photosEnabled, UIApplication.shared.applicationState != .background, !exporting else { return }
         if let backOffUntil, ContinuousClock.now < backOffUntil {
             if retryTask == nil || retryTask?.isCancelled == true { wake(at: backOffUntil) }
             return
@@ -926,7 +1019,8 @@ final class MediaSync {
             guard let self, self.gate.mayStart else { throw MediaRunStop() }
             return try await work()
         }
-        inFlight = (isDownload, {
+        let handle = UUID()
+        inFlight = (handle, isDownload, {
             flag.stopped = true
             task.cancel()
         })
@@ -944,7 +1038,8 @@ final class MediaSync {
         }
         defer {
             watcher.cancel()
-            inFlight = nil
+            // Only this transfer's own handle: another may have started meanwhile (Codex review of T10).
+            if inFlight?.id == handle { inFlight = nil }
         }
         let value: T
         do {

@@ -44,14 +44,19 @@ struct FirstPage: View {
                             Text(note).feedText(.body)
                         }
                         loggedBy(first.event.loggedBy)
-                        Button { editing = .edit(id: id) } label: {
-                            Text("Edit")
-                                .feedText(.button)
-                                .frame(maxWidth: .infinity, minHeight: 50)
-                                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        // Share and Edit, two soft buttons (D8); Delete is inside Edit.
+                        HStack(spacing: 10) {
+                            ShareFirstButton(firstID: id, title: details.title, age: age?.words,
+                                             photoID: details.media.first)
+                            Button { editing = .edit(id: id) } label: {
+                                Text("Edit")
+                                    .feedText(.button)
+                                    .frame(maxWidth: .infinity, minHeight: 50)
+                                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            }
+                            .buttonStyle(PressStyle())
+                            .foregroundStyle(Theme.text)
                         }
-                        .buttonStyle(PressStyle())
-                        .foregroundStyle(Theme.text)
                         .padding(.top, 8)
                     }
                     .padding(16)

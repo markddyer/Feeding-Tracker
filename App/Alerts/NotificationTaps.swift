@@ -38,6 +38,8 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @u
         let identifier = response.notification.request.identifier
         if let first = NotificationTaps.firstID(identifier) {
             await MainActor.run { NotificationTaps.shared.showFirst(first) }
+        } else if identifier == JournalExporter.noticeID {
+            await MainActor.run { NotificationTaps.shared.showExport() }
         } else if NotificationTaps.opensHome(identifier) {
             await MainActor.run { NotificationTaps.shared.showHome() }
         }
@@ -59,6 +61,22 @@ final class NotificationTaps {
 
     func showHome() {
         homeRequests += 1
+    }
+
+    /// Goes up by one for each tap on the export's notice; `pendingExport` holds it until the
+    /// Journal opens the Export screen.
+    private(set) var exportRequests = 0
+    private(set) var pendingExport = false
+
+    func showExport() {
+        pendingExport = true
+        exportRequests += 1
+    }
+
+    /// True once, when the export's notice was tapped.
+    func takePendingExport() -> Bool {
+        defer { pendingExport = false }
+        return pendingExport
     }
 
     func showFirst(_ id: String) {

@@ -86,6 +86,8 @@ struct ContentView: View {
         // also when the tap started the app, before these screens were there.
         .onChange(of: NotificationTaps.shared.firstRequests) { openTappedFirst() }
         .onChange(of: journalReady, initial: true) { openTappedFirst() }
+        // The export's notice: the Journal tab, which opens the Export screen as it was left.
+        .onChange(of: NotificationTaps.shared.exportRequests) { if journalReady { tab = .journal } }
         .onChange(of: feedingStyle, initial: true) {
             model.widgets.feedingStyleChanged(feedingStyle)
             model.watch.update(model)
@@ -260,6 +262,10 @@ struct DevScreen: View {
         case "editFirst":
             FirstEditor(mode: .edit(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile"), me: me,
                         babyID: babyID) { _ in }
+        case "shareCard":
+            ShareCardPreview(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", babyID: babyID)
+        case "export":
+            ExportView(babyID: babyID)
         case "firstsList":
             NavigationStack { FirstsListView(me: me, babyID: babyID) }
         case "firstPage":
@@ -324,6 +330,34 @@ struct JournalDuoPreview: View {
             .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
         }
         .background(Theme.surface.ignoresSafeArea())
+    }
+}
+
+/// Feeding Dev only: a first's share card (design review D25), shrunk to fit, for screenshots.
+struct ShareCardPreview: View {
+    let id: String
+    let babyID: String
+    @State private var card: UIImage?
+
+    var body: some View {
+        Group {
+            if let card {
+                Image(uiImage: card).resizable().scaledToFit()
+            } else {
+                ProgressView()
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.gray.opacity(0.3).ignoresSafeArea())
+        .task {
+            let data = AppModel.shared.store.data
+            guard let first = data.events[id]?.snapshot, let details = first.payload?.milestone,
+                  let photo = details.media.first, let files = MediaFiles.appGroup() else { return }
+            let day = PlainDate(first.event.startedAt, in: data.householdSettings.timeZone)
+            let age = data.birthDate(babyID: babyID).flatMap { BabyAge(on: day, birthDate: $0) }?.words
+            let share = FirstCardShare(photoURL: files.fileURL(photo), title: details.title, age: age)
+            card = (try? await share.jpeg()).flatMap(UIImage.init(data:))
+        }
     }
 }
 

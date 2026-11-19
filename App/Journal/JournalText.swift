@@ -16,6 +16,41 @@ enum JournalText {
     static let deleteQuestion = "Delete this first?"
     static let deleteWarning = "Its photos and videos will be removed from both phones for good once Undo ends."
 
+    /// A first shared with no photo (D11): "First smile · 8 weeks", or the title alone.
+    static func shareLine(title: String, age: String?) -> String {
+        age.map { "\(title) · \($0)" } ?? title
+    }
+
+    /// The Export screen's words for each state (design review D12; the privacy note is D17).
+    static func export(_ state: JournalExporter.State) -> (heading: String, detail: String?) {
+        switch state {
+        case .ready:
+            ("One file with every first",
+             "This file holds every photo and video. Keep it somewhere private. It carries on if you lock the iPhone.")
+        case .gettingPhotos(let done, let total):
+            ("Getting photos: \(done) of \(total)", "It carries on if you lock the iPhone.")
+        case .packing:
+            ("Packing the file", nil)
+        case .done(_, let leftOut) where leftOut > 0:
+            ("The file is ready",
+             "It leaves out \(leftOut == 1 ? "1 photo" : "\(leftOut) photos"), and its list says which. Keep it somewhere private. It stays here until you close this screen.")
+        case .done:
+            ("The file is ready", "This file holds every photo and video. Keep it somewhere private. It stays here until you close this screen.")
+        case .missing(let titles):
+            ("\(titles.count == 1 ? "A photo" : "Photos") couldn't be fetched",
+             "From \(titles.count == 1 ? "this first" : "these firsts"). Check the connection and try again, or save the file without \(titles.count == 1 ? "it" : "them").")
+        case .stopped:
+            ("The export stopped before it finished", "Nothing was kept. Try again.")
+        case .noSpace:
+            ("Not enough space on this iPhone", "The export needs room for the photos and the file, and some space is always kept free for feeds.")
+        }
+    }
+
+    /// "Save without these 3", or "Save without this one".
+    static func saveWithout(_ count: Int) -> String {
+        count == 1 ? "Save without this one" : "Save without these \(count)"
+    }
+
     /// The notice on the other phone when a first is logged (X1, D8): facts only, no photo.
     static func newFirstNotice(name: String, title: String?) -> String {
         guard let title, !title.isEmpty else { return "\(name) logged a first" }
