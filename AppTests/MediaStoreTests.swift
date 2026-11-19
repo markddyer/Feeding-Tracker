@@ -72,6 +72,35 @@ struct MediaStoreTests {
         #expect(added.byteSize > 0)
     }
 
+    /// The picker's bytes go straight into the clean copy, never to a file with the place in it.
+    @Test func aPhotoFromMemoryHasNoPlace() async throws {
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let data = try Data(contentsOf: try picture(.jpeg))
+        let added = try await store().addPhoto(data: data, id: "from-memory")
+        let files = MediaFiles(folder: folder.appendingPathComponent("Media"))
+        #expect(try properties(files.fileURL("from-memory"))[kCGImagePropertyGPSDictionary] == nil)
+        #expect(added.takenAt == Date(timeIntervalSince1970: 1_793_342_412))
+    }
+
+    /// A time with no time zone isn't guessed; a time zone that isn't real is refused.
+    @Test func aTimeTakenWithNoTimeZoneIsNotGuessed() throws {
+        #expect(MediaStore.timeZone(offset: "+01:00")?.secondsFromGMT() == 3600)
+        #expect(MediaStore.timeZone(offset: "-05:30")?.secondsFromGMT() == -19800)
+        #expect(MediaStore.timeZone(offset: "+01:90") == nil)
+        #expect(MediaStore.timeZone(offset: "+25:00") == nil)
+        let url = folder.appendingPathComponent("no-zone.jpg")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let context = try #require(CGContext(data: nil, width: 10, height: 10, bitsPerComponent: 8, bytesPerRow: 0,
+                                             space: CGColorSpaceCreateDeviceRGB(),
+                                             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, try #require(context.makeImage()),
+                                   [kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2026:10:30 00:20:00"]] as CFDictionary)
+        #expect(CGImageDestinationFinalize(destination))
+        #expect(MediaStore.photoDate(try #require(CGImageSourceCreateWithURL(url as CFURL, nil))) == nil)
+    }
+
     @Test func aSmallPhotoIsNeverMadeLarger() async throws {
         defer { try? FileManager.default.removeItem(at: folder) }
         let added = try await store().addPhoto(from: try picture(.jpeg, width: 800, height: 600), id: "small")
@@ -94,7 +123,12 @@ struct MediaStoreTests {
         let source = try picture(.jpeg)
         let nearlyFull = store(freeSpace: SpaceRule.reserveBytes + 1_000_000)
         await #expect(throws: MediaStore.Refusal.notEnoughSpace) { try await nearlyFull.addPhoto(from: source) }
+        // The editor's way in: the picker's or the camera's bytes, refused before anything is written.
+        let bytes = try Data(contentsOf: source)
+        await #expect(throws: MediaStore.Refusal.notEnoughSpace) { try await nearlyFull.addPhoto(data: bytes) }
         #expect(MediaFiles(folder: folder.appendingPathComponent("Media")).storedIDs().isEmpty)
+        let work = (try? FileManager.default.contentsOfDirectory(atPath: MediaStore.workFolder.path)) ?? []
+        #expect(work.isEmpty)
     }
 
     /// A short clip with a place in it, as a phone camera would write.
@@ -142,6 +176,9 @@ struct MediaStoreTests {
         var items = try await asset.load(.metadata)
         for format in try await asset.load(.availableMetadataFormats) {
             items += (try? await asset.loadMetadata(for: format)) ?? []
+        }
+        for track in try await asset.load(.tracks) {
+            items += (try? await track.load(.metadata)) ?? []
         }
         return items.contains { $0.identifier == .quickTimeMetadataLocationISO6709 || $0.commonKey == .commonKeyLocation }
     }

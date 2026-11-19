@@ -63,5 +63,7 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
     func sceneDidEnterBackground(_ scene: UIScene) {
         AppModel.shared.sync.appDidEnterBackground()
         AppModel.shared.media.stop()
+        // A first's Undo ends when the app leaves the screen, as its hold does.
+        UndoCenter.shared.clear()
     }
 }

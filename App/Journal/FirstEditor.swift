@@ -1,3 +1,4 @@
+import AVFoundation
 import FeedingCore
 import PhotosUI
 import SwiftUI
@@ -5,7 +6,8 @@ import SwiftUI
 /// Adding or changing a first (design review D9, step 1: one photo per first). One form in a
 /// sheet: Cancel and Save at the top; What happened, with the ideas under it (D38); the photo; When
 /// (from the photo when it was taken earlier, D17); and the note. Delete is inside Edit (D8), with
-/// its own question (D15). Save works at once (D16).
+/// its own question (D15). Save works at once (D16). A swipe down or Cancel with changes asks
+/// "Discard this first?" (D37).
 struct FirstEditor: View {
     enum Mode: Hashable, Identifiable {
         case new(title: String?)
@@ -33,17 +35,22 @@ struct FirstEditor: View {
     /// When was set from the photo, and nobody changed it since.
     @State private var whenFromPhoto = false
     @State private var whenTouched = false
-    /// The item in the slot: the one already saved, or one just picked.
+    /// The item in the slot: the one already saved, or one just picked or taken.
     @State private var photoID: String?
-    /// A photo picked here and not saved yet: its details, to queue on Save.
+    /// A photo picked or taken here and not saved yet: its details, to queue on Save.
     @State private var picked: MediaStore.Added?
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var working = false
-    @State private var pickProblem: String?
-    @State private var confirmingDelete = false
-    @State private var confirmingDiscard = false
     /// A photo taken with the camera here: kept in Photos too, after Save (D20).
     @State private var takenImage: UIImage?
+    @State private var pickerItem: PhotosPickerItem?
+    /// The photo being made ready: one at a time, and a newer choice (or Discard) wins.
+    @State private var importTask: Task<Void, Never>?
+    @State private var importToken = UUID()
+    @State private var working = false
+    @State private var pickProblem: String?
+    @State private var cameraOff = false
+    @State private var saveProblem: String?
+    @State private var confirmingDelete = false
+    @State private var confirmingDiscard = false
     @State private var explainingCamera = false
     @State private var usingCamera = false
     @AppStorage("journal.cameraExplained") private var cameraExplained = false
@@ -74,14 +81,18 @@ struct FirstEditor: View {
     private var data: HouseholdData { AppModel.shared.store.data }
     private var zone: TimeZone { data.householdSettings.timeZone }
     private var today: PlainDate { PlainDate(Date(), in: zone) }
+    /// The first's whole list before this editor: step 1 shows only its cover, and the rest is kept
+    /// (the other phone may have added some: Codex review of T7 and T8).
+    private var originalMedia: [String] { original?.payload?.milestone?.media ?? [] }
 
-    /// Something changed here: title, date, note or photo (D37).
+    /// Something changed here: title, date, note or photo, or a photo still getting ready (D37).
     private var isDirty: Bool {
+        if working { return true }
         if let original {
             return HouseholdData.cleanTitle(title) != original.payload?.milestone?.title
                 || HouseholdData.cleanNote(note) != original.payload?.note
                 || when != original.event.startedAt
-                || photoID != original.payload?.milestone?.media.first
+                || photoID != originalMedia.first
         }
         return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || picked != nil || whenTouched
@@ -90,12 +101,18 @@ struct FirstEditor: View {
     /// Why Save is off, if it is.
     private var problem: String? {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say what happened." }
-        let dateChanged = original.map { $0.event.startedAt != when } ?? true
-        if dateChanged, let refusal = data.milestoneDateProblem(when, babyID: babyID, now: Date().addingTimeInterval(60)) {
-            return JournalText.refusal(refusal, today: today)
-        }
         if working { return "The photo is getting ready." }
-        return nil
+        return dateProblem
+    }
+
+    /// A date the store would refuse, in the parents' words. The same boundary as the store's:
+    /// a time in this minute counts as now.
+    private var dateProblem: String? {
+        let dateChanged = original.map { $0.event.startedAt != when } ?? true
+        guard dateChanged, let refusal = data.milestoneDateProblem(min(when, Date()), babyID: babyID, now: Date()) else {
+            return nil
+        }
+        return JournalText.refusal(refusal, today: today)
     }
 
     var body: some View {
@@ -117,6 +134,8 @@ struct FirstEditor: View {
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle(screenTitle)
             .navigationBarTitleDisplayMode(.inline)
+            // Never coral here: the date picker and the photo buttons in the text colour.
+            .tint(Theme.text)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(screenTitle).feedText(.dayHeading).accessibilityAddTraits(.isHeader)
@@ -126,23 +145,26 @@ struct FirstEditor: View {
                     Button("Save") { save() }.disabled(problem != nil).tint(Theme.text)
                 }
             }
-            // A swipe down with changes asks first (D37); "Keep editing" is the default.
+            // A swipe down with changes asks first (D37); iOS closes the sheet itself on Discard.
             .dismissalConfirmationDialog("Discard this first?", shouldPresent: isDirty) {
-                Button("Discard", role: .destructive) { discard() }
+                Button("Discard", role: .destructive) { cleanUp() }
                 Button("Keep editing", role: .cancel) {}
             }
             .confirmationDialog("Discard this first?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
-                Button("Discard", role: .destructive) { discard() }
+                Button("Discard", role: .destructive) {
+                    cleanUp()
+                    dismiss()
+                }
                 Button("Keep editing", role: .cancel) {}
             }
             .sheet(isPresented: $explainingCamera) {
                 CameraExplainer {
                     cameraExplained = true
-                    usingCamera = true
+                    openCamera()
                 }
             }
             .fullScreenCover(isPresented: $usingCamera) {
-                CameraPicker { image in Task { await takePhoto(image) } }
+                CameraPicker { image in startImport { try await makeCopy(ofTaken: image) } }
                     .ignoresSafeArea()
             }
             .confirmationDialog(JournalText.deleteQuestion, isPresented: $confirmingDelete, titleVisibility: .visible) {
@@ -152,7 +174,9 @@ struct FirstEditor: View {
                 Text(JournalText.deleteWarning)
             }
             .onChange(of: pickerItem) { _, item in
-                if let item { Task { await take(item) } }
+                guard let item else { return }
+                pickerItem = nil
+                startImport { try await makeCopy(ofPicked: item) }
             }
         }
     }
@@ -175,14 +199,7 @@ struct FirstEditor: View {
                 }
             FlowLayout(spacing: 6) {
                 ForEach(JournalText.ideas.filter { $0 != title }, id: \.self) { idea in
-                    Button(idea) { title = idea }
-                        .feedText(.smallButton)
-                        .foregroundStyle(Theme.text)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 6)
-                        .frame(minHeight: 44)
-                        .background(Theme.background, in: Capsule())
-                        .buttonStyle(.plain)
+                    IdeaButton(idea: idea, fill: Theme.background) { title = idea }
                 }
             }
             .padding(.vertical, 4)
@@ -223,13 +240,11 @@ struct FirstEditor: View {
                         .foregroundStyle(Theme.text)
                         .frame(minHeight: 44)
                     if CameraPicker.isAvailable {
-                        Button("Take a photo") {
-                            if cameraExplained { usingCamera = true } else { explainingCamera = true }
-                        }
-                        .feedText(.smallButton)
-                        .foregroundStyle(Theme.text)
-                        .frame(minHeight: 44)
-                        .buttonStyle(.plain)
+                        Button("Take a photo") { tapCamera() }
+                            .feedText(.smallButton)
+                            .foregroundStyle(Theme.text)
+                            .frame(minHeight: 44)
+                            .buttonStyle(.plain)
                     }
                     if photoID != nil {
                         Button("Take the photo out") { removePhoto() }
@@ -239,14 +254,23 @@ struct FirstEditor: View {
                             .buttonStyle(.plain)
                     }
                 }
+                .disabled(working)
             }
         } header: {
             header("Photo")
         } footer: {
-            if let pickProblem {
-                Text(pickProblem).feedText(.subheadline).foregroundStyle(Theme.notice)
-            } else {
-                Text("A photo isn't needed: a first can be saved without one.").foregroundStyle(Theme.textMuted)
+            VStack(alignment: .leading, spacing: 6) {
+                if let pickProblem {
+                    Text(pickProblem).feedText(.subheadline).foregroundStyle(Theme.text)
+                } else {
+                    Text("A photo isn't needed: a first can be saved without one.").foregroundStyle(Theme.textMuted)
+                }
+                if cameraOff, let settings = URL(string: UIApplication.openSettingsURLString) {
+                    Link("Open iPhone Settings", destination: settings)
+                        .feedText(.smallButton)
+                        .foregroundStyle(Theme.text)
+                        .frame(minHeight: 44)
+                }
             }
         }
         .listRowBackground(Theme.surface)
@@ -260,15 +284,15 @@ struct FirstEditor: View {
                 when = $0
                 whenTouched = true
                 whenFromPhoto = false
-            }, in: ...Date().addingTimeInterval(60))
+            }, in: ...Date())
             if whenFromPhoto {
                 Text("From the photo").feedText(.subheadline).foregroundStyle(Theme.textMuted)
             }
         } header: {
             header("When")
         } footer: {
-            if let problem, problem != "Say what happened.", problem != "The photo is getting ready." {
-                Text(problem).feedText(.subheadline).foregroundStyle(Theme.notice)
+            if let shown = saveProblem ?? dateProblem {
+                Text(shown).feedText(.subheadline).foregroundStyle(Theme.text)
             }
         }
         .listRowBackground(Theme.surface)
@@ -298,66 +322,84 @@ struct FirstEditor: View {
 
     // MARK: The photo
 
-    /// The picked photo becomes the journal's own copy at once (scaled, no place in it), so Save
-    /// never waits.
-    private func take(_ item: PhotosPickerItem) async {
-        working = true
-        pickProblem = nil
-        defer {
-            working = false
-            pickerItem = nil
-        }
-        guard let files = MediaFiles.appGroup() else { return }
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self) else { throw MediaStore.Refusal.unreadablePhoto }
-            try FileManager.default.createDirectory(at: MediaStore.workFolder, withIntermediateDirectories: true)
-            let source = MediaStore.workFolder.appendingPathComponent("picked-\(UUID().uuidString)")
-            try data.write(to: source)
-            defer { try? FileManager.default.removeItem(at: source) }
-            let added = try await MediaStore(files: files).addPhoto(from: source)
-            if let previous = picked { files.remove(previous.id) }
-            picked = added
-            photoID = added.id
-            AppModel.shared.media.noteNewFiles()
-            if !whenTouched, let takenAt = added.takenAt, let fromPhoto = MilestoneWhen.fromPhotos(takenAt: [takenAt], now: Date()) {
-                when = fromPhoto
-                whenFromPhoto = true
-            }
-        } catch let refusal as MediaStore.Refusal {
-            pickProblem = JournalText.refusal(refusal)
-        } catch {
-            pickProblem = JournalText.refusal(.unreadablePhoto)
+    /// The camera: the short screen first time (D20); a camera turned off in Settings says so, with
+    /// the way to turn it on.
+    private func tapCamera() {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .denied, .restricted:
+            cameraOff = true
+            pickProblem = "The camera is off for Feeding. You can turn it on in iPhone Settings."
+        default:
+            cameraOff = false
+            if cameraExplained { openCamera() } else { explainingCamera = true }
         }
     }
 
-    /// A photo taken here: the journal's copy is made from it at once; the photo itself goes to
-    /// Photos after Save.
-    private func takePhoto(_ image: UIImage) async {
-        guard let jpeg = image.jpegData(compressionQuality: 0.95) else { return }
+    private func openCamera() { usingCamera = true }
+
+    /// One photo made ready at a time. A newer choice, or Discard, wins: an older one that finishes
+    /// late is thrown away, files and all.
+    private func startImport(_ make: @escaping @MainActor () async throws -> (MediaStore.Added, UIImage?)) {
+        importTask?.cancel()
+        let token = UUID()
+        importToken = token
         working = true
         pickProblem = nil
-        defer { working = false }
-        guard let files = MediaFiles.appGroup() else { return }
-        do {
-            try FileManager.default.createDirectory(at: MediaStore.workFolder, withIntermediateDirectories: true)
-            let source = MediaStore.workFolder.appendingPathComponent("taken-\(UUID().uuidString).jpg")
-            try jpeg.write(to: source)
-            defer { try? FileManager.default.removeItem(at: source) }
-            let added = try await MediaStore(files: files).addPhoto(from: source)
-            if let previous = picked { files.remove(previous.id) }
-            picked = added
-            photoID = added.id
-            takenImage = image
-            AppModel.shared.media.noteNewFiles()
-        } catch let refusal as MediaStore.Refusal {
-            pickProblem = JournalText.refusal(refusal)
-        } catch {
-            pickProblem = JournalText.refusal(.unreadablePhoto)
+        importTask = Task {
+            do {
+                let (added, taken) = try await make()
+                guard token == importToken, !Task.isCancelled else {
+                    AppModel.shared.media.forget(added.id)
+                    return
+                }
+                use(added, taken: taken)
+            } catch let refusal as MediaStore.Refusal {
+                if token == importToken { pickProblem = JournalText.refusal(refusal) }
+            } catch {
+                if token == importToken { pickProblem = JournalText.refusal(.unreadablePhoto) }
+            }
+            if token == importToken { working = false }
+        }
+    }
+
+    /// The picker's bytes go straight into the journal's copy (scaled, no place in it), never to a
+    /// file of their own.
+    private func makeCopy(ofPicked item: PhotosPickerItem) async throws -> (MediaStore.Added, UIImage?) {
+        guard let files = MediaFiles.appGroup(),
+              let bytes = try await item.loadTransferable(type: Data.self) else { throw MediaStore.Refusal.unreadablePhoto }
+        let added = try await MediaStore(files: files).addPhoto(data: bytes)
+        AppModel.shared.media.holdDraft(added.id)
+        return (added, nil)
+    }
+
+    private func makeCopy(ofTaken image: UIImage) async throws -> (MediaStore.Added, UIImage?) {
+        guard let files = MediaFiles.appGroup() else { throw MediaStore.Refusal.unreadablePhoto }
+        let bytes = await Task.detached { image.jpegData(compressionQuality: 0.95) }.value
+        guard let bytes else { throw MediaStore.Refusal.unreadablePhoto }
+        let added = try await MediaStore(files: files).addPhoto(data: bytes)
+        AppModel.shared.media.holdDraft(added.id)
+        return (added, image)
+    }
+
+    /// The new photo, its camera picture (if taken here) and its suggested date go in together;
+    /// the one before goes. A date the parent set stays.
+    private func use(_ added: MediaStore.Added, taken: UIImage?) {
+        if let previous = picked { AppModel.shared.media.forget(previous.id) }
+        picked = added
+        photoID = added.id
+        takenImage = taken
+        guard !whenTouched else { return }
+        if let takenAt = added.takenAt, let fromPhoto = MilestoneWhen.fromPhotos(takenAt: [takenAt], now: Date()) {
+            when = fromPhoto
+            whenFromPhoto = true
+        } else {
+            when = original?.event.startedAt ?? Date()
+            whenFromPhoto = false
         }
     }
 
     private func removePhoto() {
-        if let picked, let files = MediaFiles.appGroup() { files.remove(picked.id) }
+        if let picked { AppModel.shared.media.forget(picked.id) }
         picked = nil
         photoID = nil
         takenImage = nil
@@ -377,54 +419,99 @@ struct FirstEditor: View {
         }
     }
 
-    /// Closes without saving. A photo picked here and never saved goes from the phone.
-    private func discard() {
-        if let picked, let files = MediaFiles.appGroup() { files.remove(picked.id) }
-        dismiss()
+    /// Lets go of everything made here: a photo picked or taken and not saved goes from the phone.
+    private func cleanUp() {
+        importTask?.cancel()
+        importToken = UUID()
+        if let picked { AppModel.shared.media.forget(picked.id) }
+        picked = nil
     }
 
     private func save() {
         let store = AppModel.shared.store
         let now = Date()
-        let media = photoID.map { [$0] } ?? []
+        // A time picked in this minute is now (the picker's own boundary).
+        let at = min(when, now)
+        // Step 1 changes only the cover: the rest of the list stays as it is.
+        let rest = Array(originalMedia.dropFirst())
+        let media = photoID == originalMedia.first ? originalMedia : (photoID.map { [$0] } ?? []) + rest
         switch mode {
         case .new:
             let id = UUID().uuidString
+            // The photo is queued first, then the first saved: if the app stops between the two,
+            // the queue keeps the photo and waits for its first (a day at most).
+            queue(eventID: id, now: now)
             let added = store.change {
-                $0.addMilestone(id: id, babyID: babyID, title: title, note: note, media: media, at: when, by: me,
+                $0.addMilestone(id: id, babyID: babyID, title: title, note: note, media: media, at: at, by: me,
                                 timeZoneID: TimeZone.current.identifier, now: now)
             }
-            guard added != nil else { return }
-            queue(eventID: id, now: now)
+            guard added != nil else {
+                if let picked { AppModel.shared.media.unqueue(picked.id) }
+                saveProblem = dateProblem ?? "This first couldn't be saved. Check the date."
+                return
+            }
+            finishSave()
             onDone(.added(id: id, title: HouseholdData.cleanTitle(title), photo: picked?.id))
         case .edit(let id):
             guard let original else { return }
-            let before = original.payload?.milestone?.media ?? []
-            let saved = store.change {
-                $0.editMilestone(id, from: original, title: title, note: note, media: media, at: when, by: me, now: now)
-            }
-            guard saved else { return }
             queue(eventID: id, now: now)
-            onDone(.saved(id: id, photoRemoved: before.contains { !media.contains($0) }))
+            let saved = store.change {
+                $0.editMilestone(id, from: original, title: title, note: note, media: media, at: at, by: me, now: now)
+            }
+            guard saved else {
+                if let picked { AppModel.shared.media.unqueue(picked.id) }
+                saveProblem = data.events[id]?.event.deletedAt != nil
+                    ? "This first was deleted on the other phone." : (dateProblem ?? "This first couldn't be saved.")
+                return
+            }
+            finishSave()
+            onDone(.saved(id: id, photoRemoved: originalMedia.contains { !media.contains($0) }))
         }
         dismiss()
     }
 
-    /// A photo picked here goes into the upload queue, behind the feeds; one taken here is also
-    /// kept in Photos (asked now, after Save: D20).
+    /// A photo picked here goes into the upload queue, behind the feeds.
     private func queue(eventID: String, now: Date) {
-        if let takenImage { Task { await PhotosCopy.keep(takenImage) } }
         guard let picked else { return }
         AppModel.shared.media.add(MediaUpload(id: picked.id, eventID: eventID, byteSize: picked.byteSize,
                                               payload: try? PayloadCoder.encode(picked.details), queuedAt: now, pause: nil))
     }
 
+    /// Saved: the photo is no longer a draft, and one taken here goes to Photos too (asked now,
+    /// after Save: D20).
+    private func finishSave() {
+        if let picked { AppModel.shared.media.releaseDraft(picked.id) }
+        if let takenImage { Task { await PhotosCopy.keep(takenImage) } }
+    }
+
     private func delete() {
         guard case .edit(let id) = mode else { return }
-        if let picked, let files = MediaFiles.appGroup() { files.remove(picked.id) }
+        cleanUp()
         let deleted = AppModel.shared.store.change { $0.deleteMilestone(id, by: me, now: Date()) }
         guard deleted else { return }
         onDone(.deleted(id: id, title: original?.payload?.milestone?.title ?? "First"))
         dismiss()
+    }
+}
+
+/// One of the ideas (design review D38): the whole 44-point capsule takes the tap, not just its
+/// words.
+struct IdeaButton: View {
+    let idea: String
+    let fill: Color
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(idea)
+                .feedText(.smallButton)
+                .foregroundStyle(Theme.text)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 6)
+                .frame(minHeight: 44)
+                .background(fill, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 }

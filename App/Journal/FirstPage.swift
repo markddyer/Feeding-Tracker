@@ -10,8 +10,6 @@ struct FirstPage: View {
     let babyID: String
     /// In the open Duo's right-hand column, beside the line, rather than a screen of its own.
     var embedded = false
-    /// The Undo bar lives on the Journal tab; a delete from here shows it there.
-    let onUndo: (UndoAction) -> Void
 
     private let model = AppModel.shared
     @Environment(\.dismiss) private var dismiss
@@ -68,7 +66,8 @@ struct FirstPage: View {
         .modifier(PageBar(embedded: embedded))
         .sheet(item: $editing) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
-                if let action = JournalUndo.action(for: outcome, me: me) { onUndo(action) }
+                // The bar shows on whatever screen is in front: this page, or the one under it.
+                if let action = JournalUndo.action(for: outcome, me: me) { UndoCenter.shared.show(action) }
                 if case .deleted = outcome, !embedded { dismiss() }
             }
         }
@@ -96,6 +95,11 @@ private struct PageBar: ViewModifier {
                 .navigationTitle("First")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
+                .safeAreaInset(edge: .bottom) {
+                    UndoCenterBar()
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
         }
     }
 }
@@ -108,10 +112,14 @@ enum JournalUndo {
         switch outcome {
         case .added(let id, let title, let photo):
             return UndoAction(message: JournalText.added(title)) {
-                model.store.change { data in
-                    if !data.undoAdd(id, now: Date()) { data.deleteMilestone(id, by: me, now: Date()) }
+                let neverSent = model.store.change { data -> Bool in
+                    if data.undoAdd(id, now: Date()) { return true }
+                    data.deleteMilestone(id, by: me, now: Date())
+                    return false
                 }
-                if let photo { model.media.forget(photo) }
+                // A first that never left the phone takes its photo with it. One already sent
+                // is deleted instead, and its photo goes by the delete's own rules.
+                if neverSent, let photo { model.media.forget(photo) }
             }
         case .deleted(let id, let title):
             return UndoAction(message: JournalText.deleted(title)) {

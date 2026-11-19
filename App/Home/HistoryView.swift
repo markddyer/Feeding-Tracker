@@ -71,7 +71,7 @@ struct HistoryView: View {
         }
         .navigationDestination(for: JournalView.Route.self) { route in
             if let me = model.me {
-                FirstPage(id: route.id, me: me, babyID: model.baby?.name ?? "", onUndo: { undo = $0 })
+                FirstPage(id: route.id, me: me, babyID: model.baby?.name ?? "")
             }
         }
         .confirmationDialog(JournalText.deleteQuestion, isPresented: Binding {
@@ -85,11 +85,15 @@ struct HistoryView: View {
             Text(JournalText.deleteWarning)
         }
         .safeAreaInset(edge: .bottom) {
-            if let undo {
-                UndoBanner(action: undo) { self.undo = nil }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+            VStack(spacing: 8) {
+                if let undo {
+                    UndoBanner(action: undo) { self.undo = nil }
+                }
+                // A first's Undo, from here or from its page.
+                UndoCenterBar()
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
         }
         .task(id: undo?.expiresAt) {
             guard let expires = undo?.expiresAt else { return }
@@ -137,7 +141,7 @@ struct HistoryView: View {
         deletingFirst = nil
         let title = model.store.data.events[id]?.snapshot.payload?.milestone?.title ?? "First"
         let deleted = model.store.change { $0.deleteMilestone(id, by: me, now: Date()) }
-        if deleted { undo = JournalUndo.action(for: .deleted(id: id, title: title), me: me) }
+        if deleted { UndoCenter.shared.show(JournalUndo.action(for: .deleted(id: id, title: title), me: me)) }
     }
 
     @ViewBuilder
@@ -151,12 +155,12 @@ struct HistoryView: View {
 
     /// A first: its row opens its page; a swipe deletes it after asking.
     private func firstRow(_ stored: StoredEvent, zone: TimeZone) -> some View {
-        // The link sits under the row, so the row has no ">" of its own, like every other row.
-        FirstRow(snapshot: stored.snapshot, zone: zone, loggedBy: RowPerson(stored.event.loggedBy))
-            .background {
-                NavigationLink(value: JournalView.Route(id: stored.event.id)) { EmptyView() }.opacity(0)
-            }
-            .accessibilityAddTraits(.isButton)
+        // A real link, so VoiceOver and Switch Control open it; no ">", like every other row.
+        NavigationLink(value: JournalView.Route(id: stored.event.id)) {
+            FirstRow(snapshot: stored.snapshot, zone: zone, loggedBy: RowPerson(stored.event.loggedBy))
+        }
+        .navigationLinkIndicatorVisibility(.hidden)
+        .buttonStyle(.plain)
         .accessibilityHint("Opens it. Swipe left to delete.")
         .swipeActions(allowsFullSwipe: false) {
             Button("Delete", role: .destructive) { deletingFirst = stored.event.id }

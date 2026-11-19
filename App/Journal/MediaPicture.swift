@@ -15,11 +15,15 @@ struct MediaPicture: View {
     var cornerRadius: CGFloat = 20
 
     @Environment(\.look) private var look
-    @State private var image: UIImage?
+    /// The loaded picture, and what it was loaded for: shown only for that same item, so a first
+    /// chosen next never shows the one before while its own loads.
+    @State private var loaded: (key: String, image: UIImage)?
 
     var body: some View {
-        // Asked again when a file arrives or goes (`MediaSync.filesChanged`).
-        let version = AppModel.shared.media.filesChanged
+        // Asked again when this item's file arrives or goes (`MediaSync.fileVersions`).
+        let key = "\(id ?? "-")|\(full)|\(id.map { AppModel.shared.media.fileVersions[$0] ?? 0 } ?? 0)"
+        let image = loaded.flatMap { $0.key == key ? $0.image : nil }
+            ?? loaded.flatMap { $0.key.hasPrefix("\(id ?? "-")|\(full)|") ? $0.image : nil }
         ZStack {
             Theme.surface
             if let image {
@@ -45,8 +49,11 @@ struct MediaPicture: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .task(id: "\(id ?? "-")|\(full)|\(version)") {
-            image = await Self.load(id, full: full)
+        .task(id: key) {
+            let image = await Self.load(id, full: full)
+            // A load overtaken by another item's is dropped.
+            guard !Task.isCancelled else { return }
+            loaded = image.map { (key, $0) }
         }
     }
 

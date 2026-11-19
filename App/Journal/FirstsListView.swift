@@ -8,7 +8,6 @@ import SwiftUI
 struct FirstsListView: View {
     let me: MemberID
     let babyID: String
-    let onUndo: (UndoAction) -> Void
 
     private let model = AppModel.shared
     @State private var settingBirthDate = false
@@ -35,17 +34,17 @@ struct FirstsListView: View {
                     .accessibilityAddTraits(.isHeader)
                     .plainRow()
                 ForEach(rows) { row in
-                    Text(row.line(today: today))
-                        .feedText(.body)
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        // The link sits under the row, so it has no ">".
-                        .background {
-                            NavigationLink(value: JournalView.Route(id: row.id)) { EmptyView() }.opacity(0)
-                        }
-                        .accessibilityAddTraits(.isButton)
-                        .plainRow()
+                    NavigationLink(value: JournalView.Route(id: row.id)) {
+                        Text(row.line(today: today))
+                            .feedText(.body)
+                            .foregroundStyle(Theme.text)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .padding(.horizontal, 12)
+                            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                    // A real link, so VoiceOver and Switch Control open it; with no ">".
+                    .navigationLinkIndicatorVisibility(.hidden)
+                    .plainRow()
                 }
             }
             if data.birthDate(babyID: babyID) == nil {
@@ -76,6 +75,11 @@ struct FirstsListView: View {
             }
         }
         .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
+        .safeAreaInset(edge: .bottom) {
+            UndoCenterBar()
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+        }
     }
 }
 

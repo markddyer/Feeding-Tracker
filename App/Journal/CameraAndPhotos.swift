@@ -79,10 +79,11 @@ struct CameraExplainer: View {
 }
 
 /// A photo taken in the app is also kept in the phone's Photos (journal plan, "No photo is lost"),
-/// with the add-only permission, asked after Save (design review D20). If it is declined, the first
-/// is still saved, and the Journal says so once.
+/// with the add-only permission, asked after Save (design review D20). If it is declined, or the
+/// copy fails, the first is still saved, and the Journal says so once.
 enum PhotosCopy {
     static let declinedKey = "journal.photosCopyDeclined"
+    static let failedKey = "journal.photosCopyFailed"
     static let toldKey = "journal.photosCopyDeclinedTold"
 
     @MainActor
@@ -92,8 +93,12 @@ enum PhotosCopy {
             UserDefaults.standard.set(true, forKey: declinedKey)
             return
         }
-        try? await PHPhotoLibrary.shared().performChanges {
-            PHAssetChangeRequest.creationRequestForAsset(from: image)
+        do {
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+        } catch {
+            UserDefaults.standard.set(true, forKey: failedKey)
         }
     }
 }

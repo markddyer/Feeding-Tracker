@@ -150,9 +150,11 @@ final class MediaSync {
     /// photos still go; the other phone can't get them until it is added ("Photos sharing:
     /// waiting", task T8; the fallback is the link in Messages).
     private(set) var otherParentWaiting = false
-    /// Goes up whenever a photo's file or thumbnail arrives on this phone or goes, so the screens
-    /// show it.
-    private(set) var filesChanged = 0
+    /// Goes up for an item whenever its file or thumbnail arrives on this phone or goes, so the
+    /// screens show it; only that item's picture loads again.
+    private(set) var fileVersions: [String: Int] = [:]
+    /// Items an editor has made and not saved yet: never cleaned away (Codex review of T7 and T8).
+    @ObservationIgnored private var drafts: Set<String> = []
 
     private let store: HouseholdStore
     private let household: HouseholdSync
@@ -199,11 +201,26 @@ final class MediaSync {
         uploads.removeAll { $0.id == id }
         saveUploads()
         files?.remove(id)
-        filesChanged += 1
+        drafts.remove(id)
+        changed(id)
     }
 
-    /// The editor put a new item's files on this phone.
-    func noteNewFiles() { filesChanged += 1 }
+    /// Takes an item off the queue only (its first couldn't be saved), keeping its files.
+    func unqueue(_ id: String) {
+        uploads.removeAll { $0.id == id }
+        saveUploads()
+    }
+
+    /// The editor made an item's files: kept while the editor is open.
+    func holdDraft(_ id: String) {
+        drafts.insert(id)
+        changed(id)
+    }
+
+    /// The editor saved, or let go of, the item.
+    func releaseDraft(_ id: String) { drafts.remove(id) }
+
+    private func changed(_ id: String) { fileVersions[id, default: 0] += 1 }
 
     /// Starts a run unless one is going; a call during a run starts one more after it. Only while
     /// the app is open (a push that wakes it in the background is for the feeds alone), and not
@@ -552,7 +569,7 @@ final class MediaSync {
                 let id = media.id
                 do {
                     try await Task.detached { try files.keepThumbnail(from: thumbnail, for: id) }.value
-                    filesChanged += 1
+                    changed(id)
                     try Task.checkCancellation()
                 } catch {
                     SyncLog.add("media: couldn't keep the thumbnail of \(id): \(String(reflecting: error))")
@@ -738,7 +755,7 @@ final class MediaSync {
                     continue
                 }
                 try await Task.detached { try files.keepFile(from: file, for: id) }.value
-                filesChanged += 1
+                changed(id)
                 try Task.checkCancellation()
                 SyncLog.add("media: fetched \(id)")
             case .failure(let error):
@@ -820,7 +837,7 @@ final class MediaSync {
     /// before its first is kept.
     private func removeFilesNoFirstNeeds(_ files: MediaFiles) {
         let inUse = store.data.mediaInUse
-        let queued = Set(uploads.map(\.id))
+        let queued = Set(uploads.map(\.id)).union(drafts)
         let index = savedIndex
         for id in files.storedIDs() where !inUse.contains(id) && !queued.contains(id) {
             guard let entry = index[id] else {

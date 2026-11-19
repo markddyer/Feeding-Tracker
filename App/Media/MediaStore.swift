@@ -61,8 +61,21 @@ struct MediaStore: Sendable {
     // MARK: Photos
 
     func addPhoto(from source: URL, id: String = UUID().uuidString) async throws -> Added {
-        try needSpace(Self.fileSize(source) + 2 * MediaSizes.videoAim / 8)
-        guard let image = CGImageSourceCreateWithURL(source as CFURL, nil), CGImageSourceGetCount(image) > 0,
+        try needSpace(Self.fileSize(source) + 2_000_000)
+        guard let image = CGImageSourceCreateWithURL(source as CFURL, nil) else { throw Refusal.unreadablePhoto }
+        return try await addPhoto(image, id: id)
+    }
+
+    /// A photo straight from memory (the picker's or the camera's bytes): the original, with its
+    /// place, is never written to the phone (Codex review of T7 and T8).
+    func addPhoto(data: Data, id: String = UUID().uuidString) async throws -> Added {
+        try needSpace(Int64(data.count) + 2_000_000)
+        guard let image = CGImageSourceCreateWithData(data as CFData, nil) else { throw Refusal.unreadablePhoto }
+        return try await addPhoto(image, id: id)
+    }
+
+    private func addPhoto(_ image: CGImageSource, id: String) async throws -> Added {
+        guard CGImageSourceGetCount(image) > 0,
               let full = Self.upright(image, longSide: MediaSizes.photoLongSide),
               let thumbnail = Self.upright(image, longSide: MediaSizes.thumbnailLongSide) else {
             throw Refusal.unreadablePhoto
@@ -100,23 +113,36 @@ struct MediaStore: Sendable {
         return CGImageDestinationFinalize(destination)
     }
 
-    /// When a photo was taken, from its camera data, in the time zone it says (or this phone's).
+    /// When a photo was taken: its camera time with the time zone it was taken in, or the GPS
+    /// clock's time (UTC). With neither, the moment isn't known for sure, so nil: a photo taken
+    /// abroad would otherwise be read in this phone's zone and could land on the wrong day.
     static func photoDate(_ source: CGImageSource) -> Date? {
-        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
-              let taken = exif[kCGImagePropertyExifDateTimeOriginal] as? String else { return nil }
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] else { return nil }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        formatter.timeZone = (exif[kCGImagePropertyExifOffsetTimeOriginal] as? String).flatMap(timeZone(offset:)) ?? .current
-        return formatter.date(from: taken)
+        if let exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any],
+           let taken = exif[kCGImagePropertyExifDateTimeOriginal] as? String,
+           let zone = (exif[kCGImagePropertyExifOffsetTimeOriginal] as? String).flatMap(timeZone(offset:)) {
+            formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            formatter.timeZone = zone
+            if let date = formatter.date(from: taken) { return date }
+        }
+        if let gps = properties[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+           let day = gps[kCGImagePropertyGPSDateStamp] as? String, let time = gps[kCGImagePropertyGPSTimeStamp] as? String {
+            formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            return formatter.date(from: "\(day) \(time.prefix(8))")
+        }
+        return nil
     }
 
-    /// "+01:00" or "-05:30" as a time zone.
+    /// "+01:00" or "-05:30" as a time zone; nil for anything else ("+01:90", "+25:00").
     static func timeZone(offset: String) -> TimeZone? {
         let parts = offset.dropFirst().split(separator: ":")
         guard let sign = offset.first, sign == "+" || sign == "-", parts.count == 2,
-              let hours = Int(parts[0]), let minutes = Int(parts[1]) else { return nil }
+              parts[0].count == 2, parts[1].count == 2,
+              let hours = Int(parts[0]), let minutes = Int(parts[1]), (0...14).contains(hours), (0..<60).contains(minutes)
+        else { return nil }
         return TimeZone(secondsFromGMT: (sign == "-" ? -1 : 1) * (hours * 3600 + minutes * 60))
     }
 
@@ -152,6 +178,8 @@ struct MediaStore: Sendable {
                 made = output
                 break
             }
+            // Too big: gone before the next, smaller try, so the work never piles up.
+            try? FileManager.default.removeItem(at: output)
         }
         guard let made else { throw Refusal.unreadableVideo }
         let copy = AVURLAsset(url: made)
@@ -165,6 +193,7 @@ struct MediaStore: Sendable {
             throw Refusal.unreadableVideo
         }
         let size = await Self.uprightSize(copy)
+        try needSpace(Self.fileSize(made) + Self.fileSize(thumbnailURL))
         try keep(file: made, thumbnail: thumbnailURL, id: id)
         return Added(id: id, details: MediaDetails(kind: .video, width: size.width, height: size.height, durationSeconds: length),
                      byteSize: Self.fileSize(made) + Self.fileSize(thumbnailURL), takenAt: takenAt)

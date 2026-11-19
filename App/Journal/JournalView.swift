@@ -12,17 +12,16 @@ struct JournalView: View {
 
     private let model = AppModel.shared
     @State private var adding: FirstEditor.Mode?
-    @State private var undo: UndoAction?
     @State private var settingBirthDate = false
     /// "Not now" on the birth-date row hides it on this phone (design review D14).
     @AppStorage("journal.birthDateRowHidden") private var birthDateRowHidden = false
     /// A photo taken here wasn't copied to Photos (permission declined): said once (D20).
     @AppStorage(PhotosCopy.declinedKey) private var photosCopyDeclined = false
+    @AppStorage(PhotosCopy.failedKey) private var photosCopyFailed = false
     @AppStorage(PhotosCopy.toldKey) private var photosCopyTold = false
     /// The open iPhone Duo: the line on the left, the chosen first's page on the right (D34).
     @State private var selected: String?
-    @State private var listWidth: CGFloat = 0
-    @State private var arrangementWidth: CGFloat = 0
+    @State private var width: CGFloat = 0
     /// The soft settle and buzz after a first is saved (D21).
     @State private var settlingID: String?
     @State private var settled = true
@@ -31,6 +30,7 @@ struct JournalView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     /// A first's page.
     struct Route: Hashable {
@@ -40,31 +40,34 @@ struct JournalView: View {
     /// The Firsts list, from the top bar (D7, D42).
     struct FirstsListRoute: Hashable {}
 
-    /// Two columns: the arrangement shows the second one (the open Duo, D34).
-    private var twoColumns: Bool { DayColumn.isShowing(homeWidth: listWidth, arrangementWidth: arrangementWidth) }
+    /// Two columns on the open Duo (D34): the inner display (regular width) at 594 points or wider,
+    /// held flat, as a book or as a laptop. An `ArrangementView` split only side by side shows one
+    /// column when the open Duo stands upright (669 wide), so the width decides (Codex review of
+    /// T7 and T8). The closed Duo, tent and Split View are compact width: one column.
+    private var twoColumns: Bool { horizontalSizeClass == .regular && width >= 594 }
 
     /// Sideways with one column (the closed Duo turned): Add moves into the side bar (D34).
     private var addInBar: Bool { verticalSizeClass == .compact && !twoColumns }
 
     var body: some View {
-        ArrangementView {
+        HStack(spacing: 0) {
             listColumn
-                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { listWidth = $0 }
-        } secondary: {
-            pageColumn
+            if twoColumns {
+                pageColumn
+                    .frame(maxWidth: .infinity)
+            }
         }
-        .arrangementViewStyle(.split.axes(.horizontal))
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { arrangementWidth = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle("Journal")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .navigationDestination(for: Route.self) { route in
-            FirstPage(id: route.id, me: me, babyID: babyID, onUndo: { undo = $0 })
+            FirstPage(id: route.id, me: me, babyID: babyID)
         }
         .navigationDestination(for: FirstsListRoute.self) { _ in
-            FirstsListView(me: me, babyID: babyID, onUndo: { undo = $0 })
+            FirstsListView(me: me, babyID: babyID)
         }
         .toolbar {
             // Each has a title and a symbol, so the folded Duo can move them into its side bar (D7).
@@ -92,17 +95,11 @@ struct JournalView: View {
         .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
         .sheet(item: $adding) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
-                undo = JournalUndo.action(for: outcome, me: me)
+                UndoCenter.shared.show(JournalUndo.action(for: outcome, me: me))
                 if case .added(let id, _, _) = outcome { settle(id) }
             }
         }
         .sensoryFeedback(.impact(weight: .light), trigger: addedCount)
-        .task(id: undo?.expiresAt) {
-            // The bar goes when Undo does (the hold's own deadline).
-            guard let expires = undo?.expiresAt else { return }
-            try? await Task.sleep(for: .seconds(max(0, expires.timeIntervalSinceNow)))
-            if !Task.isCancelled { undo = nil }
-        }
     }
 
     /// The new first settles onto the line: a 0.3-second fade and slide by day, with one soft
@@ -124,7 +121,7 @@ struct JournalView: View {
         let firsts = model.store.data.milestones(babyID: babyID)
         let shown = selected.flatMap { id in firsts.contains { $0.id == id } ? id : nil } ?? firsts.last?.id
         if let shown {
-            FirstPage(id: shown, me: me, babyID: babyID, embedded: true, onUndo: { undo = $0 })
+            FirstPage(id: shown, me: me, babyID: babyID, embedded: true)
         } else {
             Text(JournalText.emptyLine)
                 .feedText(.body)
@@ -153,9 +150,11 @@ struct JournalView: View {
                 if let notice = allowanceNotice {
                     noticeRow(notice)
                 }
-                if photosCopyDeclined && !photosCopyTold {
+                if (photosCopyDeclined || photosCopyFailed) && !photosCopyTold {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("The photo you took wasn't copied to your Photos. It is still in the journal. You can allow copies in iPhone Settings › Privacy › Photos.")
+                        Text(photosCopyDeclined
+                             ? "The photo you took wasn't copied to your Photos. It is still in the journal. You can allow copies in iPhone Settings › Privacy › Photos."
+                             : "The photo you took couldn't be copied to your Photos. It is still in the journal.")
                             .feedText(.subheadline)
                         Button("OK") { photosCopyTold = true }
                             .feedText(.smallButton)
@@ -179,6 +178,7 @@ struct JournalView: View {
         }
         .safeAreaInset(edge: .bottom) { bottom }
         .background(Theme.background.ignoresSafeArea())
+        .frame(maxWidth: twoColumns ? width / 2 : .infinity)
     }
 
     // MARK: Rows above the line
@@ -244,7 +244,8 @@ struct JournalView: View {
                 groups.append((group, [first]))
             }
         }
-        return VStack(alignment: .leading, spacing: 0) {
+        // Lazy, so a long journal draws only the pictures on screen.
+        return LazyVStack(alignment: .leading, spacing: 0) {
             ForEach(Array(groups.enumerated()), id: \.offset) { _, entry in
                 HStack(spacing: 0) {
                     Circle().fill(Theme.textMuted).frame(width: 13, height: 13)
@@ -381,14 +382,7 @@ struct JournalView: View {
                 .padding(.leading, 24)
             FlowLayout(spacing: 6) {
                 ForEach(JournalText.ideas, id: \.self) { idea in
-                    Button(idea) { adding = .new(title: idea) }
-                        .feedText(.smallButton)
-                        .foregroundStyle(Theme.text)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 6)
-                        .frame(minHeight: 44)
-                        .background(Theme.surface, in: Capsule())
-                        .buttonStyle(.plain)
+                    IdeaButton(idea: idea, fill: Theme.surface) { adding = .new(title: idea) }
                 }
             }
             .padding(.leading, 24)
@@ -401,10 +395,7 @@ struct JournalView: View {
 
     private var bottom: some View {
         VStack(spacing: 8) {
-            if let undo {
-                UndoBanner(action: undo) { self.undo = nil }
-                    .accessibilityAddTraits(.updatesFrequently)
-            }
+            UndoCenterBar()
             if !addInBar {
             Button { adding = .new(title: nil) } label: {
                 HStack(spacing: 9) {

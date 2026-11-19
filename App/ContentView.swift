@@ -30,7 +30,7 @@ struct ContentView: View {
         #endif
     }
 
-    /// Home, or in Feeding Dev the tab named by `-startTab history` or `graphs` (for screenshots).
+    /// Home, or in Feeding Dev the tab named by `-startTab history`, `graphs` or `journal` (for screenshots).
     private static var firstTab: MainTab {
         #if FEEDING_DEV
         switch UserDefaults.standard.string(forKey: "startTab") {
@@ -113,8 +113,9 @@ struct ContentView: View {
                         .tint(Theme.accent)
                 }
                 Tab("Journal", systemImage: "book.closed", value: MainTab.journal) {
+                    // Never coral here: coral is for Start feed only (design review D5).
                     NavigationStack { JournalView(me: me, babyID: baby.name) }
-                        .tint(Theme.accent)
+                        .tint(Theme.text)
                 }
             }
             // The chosen tab in the text colour, as the top bar's buttons: coral on cream is hard
@@ -232,11 +233,10 @@ struct DevScreen: View {
         case "addFirst":
             FirstEditor(mode: .new(title: UserDefaults.standard.string(forKey: "firstTitle")), me: me, babyID: babyID) { _ in }
         case "firstsList":
-            NavigationStack { FirstsListView(me: me, babyID: babyID, onUndo: { _ in }) }
+            NavigationStack { FirstsListView(me: me, babyID: babyID) }
         case "firstPage":
             NavigationStack {
-                FirstPage(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", me: me, babyID: babyID,
-                          onUndo: { _ in })
+                FirstPage(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", me: me, babyID: babyID)
             }
         case "editLastFeed":
             let last = AppModel.shared.store.data.visibleSnapshots(babyID: babyID)
@@ -280,29 +280,18 @@ struct DuoPreview: View {
 
 /// Feeding Dev only: the Journal as the unfolded Duo shows it (design review D34), the line on the
 /// left and the newest first's page on the right, at the measured open size, shrunk to fit, as
-/// `DuoPreview` does for Home. The real split comes from `ArrangementView` in `JournalView`.
+/// `DuoPreview` does for Home. `JournalView` splits by itself at this width.
 struct JournalDuoPreview: View {
     let me: MemberID
     let babyID: String
 
     var body: some View {
         let size = CGSize(width: 867, height: 587)
-        let newest = AppModel.shared.store.data.milestones(babyID: babyID).last?.id
         GeometryReader { proxy in
             let scale = proxy.size.width / size.width
-            HStack(spacing: 0) {
-                NavigationStack { JournalView(me: me, babyID: babyID) }
-                    .frame(width: size.width / 2)
-                Group {
-                    if let newest {
-                        FirstPage(id: newest, me: me, babyID: babyID, embedded: true, onUndo: { _ in })
-                    } else {
-                        Theme.background
-                    }
-                }
-                .frame(width: size.width / 2)
-            }
-            .frame(width: size.width, height: size.height)
+            NavigationStack { JournalView(me: me, babyID: babyID) }
+                .environment(\.horizontalSizeClass, .regular)
+                .frame(width: size.width, height: size.height)
             .scaleEffect(scale, anchor: .topLeading)
             .frame(width: size.width * scale, height: size.height * scale, alignment: .topLeading)
         }

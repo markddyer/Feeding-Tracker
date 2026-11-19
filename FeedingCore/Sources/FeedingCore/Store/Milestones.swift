@@ -125,9 +125,16 @@ extension HouseholdData {
 
     /// The earliest first of `babyID` dated before `birthDate`, on the household's calendar. A
     /// birth date is refused while one exists, and the refusal names it.
+    /// A first whose delete is still held for Undo counts too: Undo would bring it back before the
+    /// birth date (Codex review of T7 and T8).
     public func firstBefore(birthDate: PlainDate, babyID: String) -> EventSnapshot? {
         let timeZone = householdSettings.timeZone
-        return milestones(babyID: babyID).first { PlainDate($0.event.startedAt, in: timeZone) < birthDate }
+        let undoable = events.values.filter {
+            $0.event.kind == .milestone && $0.event.babyID == babyID && $0.heldUndo?.undeletes == true
+        }.map(\.snapshot).filter { $0.payload?.milestone != nil }
+        return (milestones(babyID: babyID) + undoable)
+            .sorted { ($0.event.startedAt, $0.event.id) < ($1.event.startedAt, $1.event.id) }
+            .first { PlainDate($0.event.startedAt, in: timeZone) < birthDate }
     }
 
     // MARK: Changes
@@ -178,7 +185,8 @@ extension HouseholdData {
     @discardableResult
     public mutating func editMilestone(_ id: String, from original: EventSnapshot, title: String, note: String?,
                                        media: [String], at: Date, by member: MemberID, now: Date) -> Bool {
-        guard let current = events[id]?.snapshot, current.event.kind == .milestone,
+        // A first deleted meanwhile (on the other phone) isn't changed: its edits would be hidden.
+        guard let current = events[id]?.snapshot, current.event.kind == .milestone, current.event.deletedAt == nil,
               var milestone = current.payload?.milestone, let before = original.payload?.milestone else { return false }
         let title = Self.cleanTitle(title)
         let note = Self.cleanNote(note)

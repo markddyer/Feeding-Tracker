@@ -711,6 +711,33 @@ struct MilestoneDateTests {
         #expect(data.plainRecordsToUpload().contains { $0.record.key == record.key })
     }
 
+    /// A first deleted a moment ago can still come back with Undo, so it still blocks a later
+    /// birth date.
+    @Test func aFirstUndoCanBringBackStillBlocksTheBirthDate() throws {
+        var data = try withBirthDate("2026-11-01")
+        data.addMilestone(id: "smile", babyID: baby, title: "First smile", at: at(2026, 11, 5, 9, 0), by: parentA,
+                          timeZoneID: londonID, now: t0)
+        data.endUndoWindows()
+        data.delete("smile", by: parentA, now: t0)
+        #expect(data.firstBefore(birthDate: date("2026-11-10"), babyID: baby)?.id == "smile")
+        data.endUndoWindows()
+        #expect(data.firstBefore(birthDate: date("2026-11-10"), babyID: baby) == nil)
+    }
+
+    /// A first deleted on the other phone while this editor was open isn't changed.
+    @Test func anEditorCantChangeAFirstDeletedMeanwhile() throws {
+        var data = HouseholdData()
+        let added = data.addMilestone(id: "smile", babyID: baby, title: "First smile", at: t0, by: parentA,
+                                      timeZoneID: londonID, now: t0)
+        try #require(added != nil)
+        let opened = try #require(data.events["smile"]?.snapshot)
+        data.delete("smile", by: parentB, now: t0 + 60)
+        let saved = data.editMilestone("smile", from: opened, title: "First big smile", note: nil, media: [], at: t0,
+                                       by: parentA, now: t0 + 120)
+        #expect(!saved)
+        #expect(details(data, "smile")?.title == "First smile")
+    }
+
     /// The birth date can't be set after a first; the refusal names the earliest one in the way.
     @Test func aBirthDateAfterAFirstNamesIt() throws {
         var data = HouseholdData()

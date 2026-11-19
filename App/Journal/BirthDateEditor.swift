@@ -38,7 +38,7 @@ struct BirthDateEditor: View {
                         .environment(\.timeZone, zone)
                 } footer: {
                     if let refusal {
-                        Text(refusal).feedText(.subheadline).foregroundStyle(Theme.notice)
+                        Text(refusal).feedText(.subheadline).foregroundStyle(Theme.text)
                     } else {
                         Text("Each first shows the baby's age on its day. Saved on both phones.")
                             .foregroundStyle(Theme.textMuted)
