@@ -18,6 +18,7 @@ struct FirstPage: View {
     /// The item on screen, by its ID, when a first has more than one (D8: "1 of 3", a swipe): kept
     /// while that item stays, whatever the other phone changes around it (Codex review of step 2).
     @State private var currentID: String?
+    @State private var explainingFailure = false
 
     var body: some View {
         let data = model.store.data
@@ -37,10 +38,19 @@ struct FirstPage: View {
                             MediaPager(ids: details.media, selection: Binding { shownID } set: { currentID = $0 },
                                        height: pageHeight > 0 ? pageHeight * 0.62 : 420)
                         } else {
-                            MediaPicture(id: details.media.first, full: true, cornerRadius: 26)
-                                .frame(maxWidth: .infinity, maxHeight: pageHeight > 0 ? pageHeight * 0.7 : nil, alignment: .leading)
-                                .accessibilityElement()
-                                .accessibilityLabel(details.media.isEmpty ? "No photo" : "Photo of \(details.title)")
+                            Group {
+                                if let only = details.media.first, AppModel.shared.isVideo(only) {
+                                    MediaItemView(id: only)
+                                        .aspectRatio(1, contentMode: .fit)
+                                        .accessibilityElement(children: .contain)
+                                        .accessibilityLabel("Video of \(details.title)")
+                                } else {
+                                    MediaPicture(id: details.media.first, full: true, cornerRadius: 26)
+                                        .accessibilityElement()
+                                        .accessibilityLabel(details.media.isEmpty ? "No photo" : "Photo of \(details.title)")
+                                }
+                            }
+                            .frame(maxWidth: .infinity, maxHeight: pageHeight > 0 ? pageHeight * 0.7 : nil, alignment: .leading)
                         }
                         Text(details.title)
                             .feedText(.title)
@@ -49,6 +59,7 @@ struct FirstPage: View {
                         Text(JournalText.ageAndDate(age: age, day: day, today: today))
                             .feedText(.subheadline)
                             .foregroundStyle(Theme.textMuted)
+                        videoStatus
                         if let note = first.payload?.note {
                             Text(note).feedText(.body)
                         }
@@ -92,6 +103,29 @@ struct FirstPage: View {
         }
     }
 
+    /// This phone's videos for the first: still being made smaller, or one that couldn't be
+    /// (eng2 D4: it was taken off the first on both phones), explained on tap.
+    @ViewBuilder
+    private var videoStatus: some View {
+        let videos: VideoQueue = model.videos
+        if !videos.failed(of: id).isEmpty {
+            Button { explainingFailure = true } label: {
+                Label(JournalText.videoNotAdded, systemImage: "exclamationmark.circle")
+                    .feedText(.subheadline)
+                    .foregroundStyle(Theme.text)
+                    .frame(minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .alert(JournalText.videoNotAdded, isPresented: $explainingFailure) {
+                Button("OK", role: .cancel) { videos.clearFailures(of: id) }
+            } message: {
+                Text("It couldn't be made smaller for the journal, so it was left out on both phones. The first is kept. You can add the video again in Edit.")
+            }
+        } else if !videos.pending(of: id).isEmpty {
+            Text("Getting a video ready").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+        }
+    }
+
     private func loggedBy(_ member: MemberID) -> some View {
         let name = model.memberNames[member] ?? "the other parent"
         return HStack(spacing: 8) {
@@ -114,7 +148,7 @@ struct MediaPager: View {
         let current = selection.flatMap { ids.firstIndex(of: $0) } ?? 0
         TabView(selection: $selection) {
             ForEach(ids, id: \.self) { id in
-                MediaPicture(id: id, full: true, cornerRadius: 26)
+                MediaItemView(id: id, isCurrent: id == selection)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .tag(Optional(id))
             }
@@ -129,8 +163,8 @@ struct MediaPager: View {
                 .background(Theme.surface, in: Capsule())
                 .padding(10)
         }
-        .accessibilityElement()
-        .accessibilityLabel("Photo \(current + 1) of \(ids.count)")
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("\(ids.indices.contains(current) && AppModel.shared.isVideo(ids[current]) ? "Video" : "Photo") \(current + 1) of \(ids.count)")
         // Names the item shown, for the tap tests; VoiceOver doesn't read it.
         .accessibilityIdentifier("pager-\(ids.indices.contains(current) ? ids[current] : "")")
         .accessibilityAdjustableAction { direction in
@@ -184,6 +218,7 @@ enum JournalUndo {
                 // Also those a later edit inside the Undo window added (Codex review of step 2).
                 if onPhone, neverSent {
                     photos.forEach(model.media.forget)
+                    photos.forEach(model.videos.forget)
                     model.media.forgetUploads(ofFirst: id)
                 }
                 return onPhone

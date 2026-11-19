@@ -96,6 +96,24 @@ struct FirstCardShare: Transferable {
     }
 }
 
+/// A video shared from a first (journal plan, "For a video"): the stored copy, which holds no place
+/// (it was removed when the video was made smaller), named by the first's title.
+struct FirstVideoShare: Transferable {
+    let fileURL: URL
+    let title: String
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(exportedContentType: .mpeg4Movie) { video in
+            // In the exports folder, which goes at the next launch.
+            let folder = MediaStore.exportsFolder.appendingPathComponent("share-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let named = folder.appendingPathComponent("\(HouseholdData.safeName(video.title)).mp4")
+            try FileManager.default.copyItem(at: video.fileURL, to: named)
+            return SentTransferredFile(named)
+        }
+    }
+}
+
 /// Share on a first's page (D11, D15): the card for a photo; one line of text with no photo; the
 /// note and who logged it never go. A photo not on this phone yet is fetched first, the same
 /// careful way as the export's; if it can't be, Share says so and offers to try again.
@@ -117,6 +135,11 @@ struct ShareFirstButton: View {
         Group {
             if photoID == nil {
                 ShareLink(item: JournalText.shareLine(title: title, age: age)) { label("Share") }
+            } else if let photoURL, let photoID, model.isVideo(photoID) {
+                // A video: the video, with one line of text.
+                ShareLink(item: FirstVideoShare(fileURL: photoURL, title: title),
+                          message: Text(JournalText.shareLine(title: title, age: age)),
+                          preview: SharePreview(title)) { label("Share") }
             } else if let photoURL {
                 ShareLink(item: FirstCardShare(photoURL: photoURL, title: title, age: age),
                           preview: SharePreview(title)) { label("Share") }
@@ -233,8 +256,10 @@ final class JournalExporter {
         let model = AppModel.shared
         let files = MediaFiles.appGroup()
         return JournalExporter(sources: Sources(
-            // Step 1 holds photos only; videos come with step 2 (task T13).
-            plan: { leavingOut in model.store.data.journalExport(babyID: babyID, fileExtension: { _ in "jpg" }, leavingOut: leavingOut) },
+            plan: { leavingOut in
+                model.store.data.journalExport(babyID: babyID, fileExtension: { model.isVideo($0) ? "mp4" : "jpg" },
+                                               leavingOut: leavingOut)
+            },
             files: files,
             fetch: { ids, progress in await model.media.fetchForExport(ids, progress: progress) },
             byteSizes: { model.media.byteSizes() },

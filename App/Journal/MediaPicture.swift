@@ -78,14 +78,19 @@ struct MediaPicture: View {
     static func load(_ id: String?, full: Bool) async -> UIImage? {
         guard let id, let files = MediaFiles.appGroup() else { return nil }
         let url = full && files.hasFile(id) ? files.fileURL(id) : files.thumbnailURL(id)
+        let thumbnail = files.thumbnailURL(id)
         return await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: full ? 1400 : 420,
-            ]
-            return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map { UIImage(cgImage: $0) }
+            func picture(_ url: URL) -> UIImage? {
+                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: full ? 1400 : 420,
+                ]
+                return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary).map { UIImage(cgImage: $0) }
+            }
+            // A video's file isn't a picture: its still is the thumbnail.
+            return picture(url) ?? (url == thumbnail ? nil : picture(thumbnail))
         }.value
     }
 }

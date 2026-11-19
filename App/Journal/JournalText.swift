@@ -16,6 +16,9 @@ enum JournalText {
     static let deleteQuestion = "Delete this first?"
     static let deleteWarning = "Its photos and videos will be removed from both phones for good once Undo ends."
 
+    /// A video that couldn't be made smaller after Save (D16).
+    static let videoNotAdded = "A video couldn't be added"
+
     /// A first shared with no photo (D11): "First smile · 8 weeks", or the title alone.
     static func shareLine(title: String, age: String?) -> String {
         age.map { "\(title) · \($0)" } ?? title

@@ -365,6 +365,19 @@ extension HouseholdData {
         return true
     }
 
+    /// A video that couldn't be made smaller after Save (design D16, eng2 D4): its ID joins the
+    /// first's removed list, so both phones' lists leave it out and the other phone stops waiting
+    /// for it. Sent like any change. False when the first isn't here or doesn't hold it.
+    @discardableResult
+    public mutating func dropFailedMedia(_ mediaID: String, from id: String, by member: MemberID, now: Date) -> Bool {
+        guard let current = events[id]?.snapshot, current.event.kind == .milestone,
+              current.payload?.milestone?.media.contains(mediaID) == true else { return false }
+        return edit(id, by: member, now: now) { snapshot in
+            snapshot.payload?.milestone?.removedMedia.append(mediaID)
+            snapshot.payload?.milestone?.normalize()
+        }
+    }
+
     /// True when Undo would bring back more than 4 photos and videos, as the other phone added some
     /// while the change was held.
     public func undoWouldPassTheLimit(_ id: String) -> Bool {

@@ -84,7 +84,8 @@ targetTemplates:
         # exempt: TestFlight then doesn't ask the export question at each upload.
         ITSAppUsesNonExemptEncryption: false
         NSAlarmKitUsageDescription: Feeding rings an alarm when the feed window you set closes, even when the phone is on silent.
-        NSCameraUsageDescription: Feeding takes a photo of a first for your journal, when you choose to.
+        NSCameraUsageDescription: Feeding takes a photo or video of a first for your journal, when you choose to.
+        NSMicrophoneUsageDescription: Feeding records the sound of a video you take of a first, when you choose to.
         NSPhotoLibraryAddUsageDescription: Feeding keeps a copy of a photo you take in the app in your Photos.
         FeedingCloudKitContainer: iCloud.com.tracker.feeding${bundleSuffix}
         FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}

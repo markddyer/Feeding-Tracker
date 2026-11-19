@@ -157,6 +157,14 @@ final class MediaSync {
     @ObservationIgnored private var drafts: Set<String> = []
     /// A first a parent opened from its notice: its photos come first (still behind the feeds).
     @ObservationIgnored private var preferredFirst: String?
+    /// The account and household an item saved now belongs to; nil until both are known.
+    func currentBinding() -> String? {
+        guard let zone = photosZone, let me = household.memberID?.rawValue else { return nil }
+        return Self.binding(me: me, zone: zone)
+    }
+
+    /// Photo or video, by item, once known (`kind(of:)`).
+    @ObservationIgnored private var kinds: [String: MediaKind] = [:]
     /// An export is fetching what it needs: the photo run waits, so the two never transfer at once.
     @ObservationIgnored private var exporting = false
 
@@ -372,6 +380,10 @@ final class MediaSync {
     func releaseDraft(_ id: String) { drafts.remove(id) }
 
     private func changed(_ id: String) { fileVersions[id, default: 0] += 1 }
+
+    /// An item's file or thumbnail was made on this phone (a video's still, then its copy): the
+    /// screens show it.
+    func noteFileChanged(_ id: String) { changed(id) }
 
     /// Starts a run unless one is going; a call during a run starts one more after it. Only while
     /// the app is open (a push that wakes it in the background is for the feeds alone), and not
@@ -623,6 +635,26 @@ final class MediaSync {
         var eventID: String
         var creator: String
         var byteSize: Int64
+        /// Photo or video, from the record's details; nil from an index saved before 19 Nov 2026.
+        var kind: MediaKind?
+    }
+
+    /// Whether an item is a photo or a video, when this phone knows: from its queue entry or the
+    /// photo index.
+    func kind(of id: String) -> MediaKind? {
+        if let known = kinds[id] { return known }
+        var kind: MediaKind?
+        if let upload = uploads.first(where: { $0.id == id }),
+           let details = PayloadCoder.decode(MediaDetails.self, from: upload.payload) {
+            kind = details.kind
+        } else if let indexed = savedIndex[id]?.kind {
+            kind = indexed
+        } else if let isVideo = files?.isVideoFile(id) {
+            kind = isVideo ? .video : .photo
+        }
+        // Remembered once known, so the screens never read the index or a file again for it.
+        if let kind { kinds[id] = kind }
+        return kind
     }
 
     /// Room a page of thumbnails may need: 20 thumbnails of up to a megabyte, copied once.
@@ -714,8 +746,14 @@ final class MediaSync {
     /// couldn't be kept, so the record is fetched again.
     private func take(_ record: CKRecord, into index: inout [String: IndexEntry], files: MediaFiles) async -> Bool {
         if let media = RecordMapping.media(from: record) {
+            let kind = PayloadCoder.decode(MediaDetails.self, from: media.payload)?.kind
             index[media.id] = IndexEntry(eventID: media.eventID, creator: record.creatorUserRecordID?.recordName ?? "",
-                                         byteSize: media.byteSize)
+                                         byteSize: media.byteSize, kind: kind)
+            // Learnt here: the screens show a play mark at once (Codex review of step 2).
+            if let kind, kinds[media.id] != kind {
+                kinds[media.id] = kind
+                changed(media.id)
+            }
             if !files.hasThumbnail(media.id), let thumbnail = RecordMapping.thumbnailURL(of: record) {
                 let id = media.id
                 do {

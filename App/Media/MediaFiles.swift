@@ -25,6 +25,15 @@ struct MediaFiles: Sendable {
 
     /// A stored video, for playing or reading. Its file name has no ".mp4", so the type is given:
     /// the journal's videos are always MP4 (`MediaStore.addVideo`).
+    /// True when the item's file here is a video (an MP4 starts with an "ftyp" box); nil when the
+    /// file isn't on this phone.
+    func isVideoFile(_ id: String) -> Bool? {
+        guard let handle = try? FileHandle(forReadingFrom: fileURL(id)) else { return nil }
+        defer { try? handle.close() }
+        guard let head = try? handle.read(upToCount: 8), head.count == 8 else { return false }
+        return head[4..<8] == Data("ftyp".utf8)
+    }
+
     func videoAsset(_ id: String) -> AVURLAsset {
         AVURLAsset(url: fileURL(id), options: [AVURLAssetOverrideMIMETypeKey: "video/mp4"])
     }

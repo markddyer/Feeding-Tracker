@@ -340,6 +340,9 @@ struct JournalView: View {
             : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
         return layout {
             MediaPicture(id: media.first, crop: media.first.flatMap { details?.crops[$0] } ?? .middle)
+                .overlay(alignment: .bottomLeading) {
+                    if let cover = media.first, model.isVideo(cover) { PlayMark(size: 26).padding(6) }
+                }
                 .frame(width: large ? nil : 104, height: large ? nil : 104)
                 .frame(maxWidth: large ? .infinity : nil)
                 .aspectRatio(1, contentMode: .fit)

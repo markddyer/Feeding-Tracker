@@ -148,8 +148,10 @@ struct MediaStore: Sendable {
 
     // MARK: Videos
 
-    func addVideo(from source: URL, id: String = UUID().uuidString) async throws -> Added {
-        try needSpace(Self.fileSize(source) + 2 * MediaSizes.videoAim)
+    /// `sourceAlreadyKept`: the original is already on this phone (the video queue's staged
+    /// copy), so only the new copy's room is needed.
+    func addVideo(from source: URL, id: String = UUID().uuidString, sourceAlreadyKept: Bool = false) async throws -> Added {
+        try needSpace((sourceAlreadyKept ? 0 : Self.fileSize(source)) + 2 * MediaSizes.videoAim)
         let asset = AVURLAsset(url: source)
         guard let tracks = try? await asset.loadTracks(withMediaType: .video), !tracks.isEmpty,
               let duration = try? await asset.load(.duration), duration.seconds > 0 else {

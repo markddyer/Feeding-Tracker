@@ -962,6 +962,20 @@ struct MediaCropTests {
         #expect(details(a, id) == before)
     }
 
+    /// Eng2 D4: a video that couldn't be made smaller leaves both phones' lists, so the other
+    /// phone stops waiting for it.
+    @Test func aFailedVideoLeavesBothPhonesLists() throws {
+        var (a, b, id) = try twoPhones()
+        let dropped = a.dropFailedMedia("m2", from: id, by: parentA, now: t0 + 30)
+        #expect(dropped)
+        #expect(details(a, id)?.media == ["m1"])
+        #expect(details(a, id)?.removedMedia == ["m2"])
+        b.receiveEvent(sent(&a, id, tag: 2), systemFields: Data([2]))
+        #expect(details(b, id)?.media == ["m1"])
+        let notHeld = a.dropFailedMedia("other", from: id, by: parentA, now: t0 + 40)
+        #expect(!notHeld)
+    }
+
     @Test func takingAPhotoOutDropsItsCrop() throws {
         var (a, _, id) = try twoPhones()
         a.saveEditor(id, title: "First smile", media: ["m1", "m2"],

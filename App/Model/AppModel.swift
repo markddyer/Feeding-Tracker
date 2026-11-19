@@ -42,6 +42,8 @@ final class AppModel {
     let reconciler: Reconciler
     let nightAskNotifier: NightAskNotifier
     let newFirstNotifier: NewFirstNotifier
+    /// Videos made smaller after Save (step 2, D16).
+    private(set) var videos: VideoQueue!
     let widgets = WidgetRefresher()
     let watch = WatchRelay()
     /// The notice of new firsts under way, and the data for one more run after it.
@@ -78,6 +80,14 @@ final class AppModel {
         }
         widgets.update(store.data)
         reconciler.onRunFinished = { [weak self] planned in self?.tellNewFirsts(planned: planned) }
+        videos = VideoQueue.live(store: store, media: media) { [weak self] in self?.me }
+    }
+
+    /// True for an item this phone knows to be a video.
+    func isVideo(_ id: String) -> Bool {
+        // Asked again on the screens when the item's file arrives.
+        _ = media.fileVersions[id]
+        return videos.holds(id) || media.kind(of: id) == .video
     }
 
     /// The notice of a first logged on the other phone (X1), from the data an alert run planned

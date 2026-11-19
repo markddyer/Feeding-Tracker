@@ -83,7 +83,7 @@ extension HouseholdData {
     /// A title as part of a file name: no slashes, colons or control characters, no leading dot,
     /// at most 60 characters and 120 bytes (a name of many emoji is too long for the disk
     /// otherwise; whole characters only, with room for the date, a count and the extension).
-    static func safeName(_ title: String) -> String {
+    public static func safeName(_ title: String) -> String {
         // Real control characters only: the joiners inside emoji such as a family stay.
         let controls = CharacterSet(charactersIn: Unicode.Scalar(0)...Unicode.Scalar(0x1F)).union(CharacterSet(charactersIn: "\u{7F}"))
         let banned = CharacterSet(charactersIn: "/\\:*?\"<>|").union(controls).union(.newlines)

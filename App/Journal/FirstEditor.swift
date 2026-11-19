@@ -44,6 +44,12 @@ struct FirstEditor: View {
     @State private var drafts: [String: MediaStore.Added] = [:]
     /// Photos taken with the camera here: kept in Photos too, after Save (D20).
     @State private var takenImages: [String: UIImage] = [:]
+    /// Videos picked or taken here, staged and not saved yet: made smaller after Save (D16).
+    @State private var videoDrafts: [String: VideoQueue.Job] = [:]
+    /// A picked video longer than 15 seconds: the parent chooses the 15 seconds to keep.
+    @State private var trimming: VideoQueue.Job?
+    /// The microphone is off for Feeding: said once (journal plan).
+    @AppStorage("journal.microphoneOffTold") private var microphoneOffTold = false
     /// Where each photo sits in its square on the line (D39), by media ID.
     @State private var crops: [String: MediaCrop]
     @State private var pickerItems: [PhotosPickerItem] = []
@@ -121,7 +127,7 @@ struct FirstEditor: View {
     /// Why Save is off, if it is.
     private var problem: String? {
         if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return "Say what happened." }
-        if working { return "A photo is getting ready." }
+        if working { return "A photo or video is getting ready." }
         return dateProblem
     }
 
@@ -184,7 +190,14 @@ struct FirstEditor: View {
                 }
             }
             .fullScreenCover(isPresented: $usingCamera) {
-                CameraPicker { image in startImport([{ try await makeCopy(ofTaken: image) }]) }
+                // Video only with room for a recording beyond the space kept for feeds (D19).
+                CameraPicker(onPhoto: { image in
+                    startImport([{ try await makeCopy(ofTaken: image) }])
+                }, onVideo: roomForVideo ? { movie in
+                    startImport([{ try await stage(takenVideo: movie) }])
+                } : nil, onFailure: {
+                    pickProblem = JournalText.refusal(.unreadableVideo)
+                })
                     .ignoresSafeArea()
             }
             // A Save or Delete that didn't happen says so where it can't be missed; the form stays.
@@ -196,6 +209,19 @@ struct FirstEditor: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(saveProblem ?? "")
+            }
+            .sheet(item: $trimming) { job in
+                if let staged = AppModel.shared.videos.stagedURL(job) {
+                    VideoTrimmer(url: staged) { trimmed in
+                        working = true
+                        Task {
+                            try? await AppModel.shared.videos.replaceStaged(job.id, with: trimmed)
+                            try? FileManager.default.removeItem(at: trimmed)
+                            working = false
+                        }
+                    }
+                    .ignoresSafeArea()
+                }
             }
             .confirmationDialog(JournalText.deleteQuestion, isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { delete() }
@@ -281,15 +307,15 @@ struct FirstEditor: View {
                 .padding(.vertical, 6)
             }
         } header: {
-            header("Photos")
+            header("Photos and videos")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 if let pickProblem {
                     Text(pickProblem).feedText(.subheadline).foregroundStyle(Theme.text)
                 } else if items.isEmpty {
-                    Text("A photo isn't needed: a first can be saved without one.").foregroundStyle(Theme.textMuted)
+                    Text("A photo or video isn't needed: a first can be saved without one.").foregroundStyle(Theme.textMuted)
                 } else {
-                    Text("Up to 4 photos. The first is the cover, shown on the Journal.").foregroundStyle(Theme.textMuted)
+                    Text("Up to 4 photos or short videos. The first is the cover, shown on the Journal.").foregroundStyle(Theme.textMuted)
                 }
                 if cameraOff, let settings = URL(string: UIApplication.openSettingsURLString) {
                     Link("Open iPhone Settings", destination: settings)
@@ -303,7 +329,7 @@ struct FirstEditor: View {
         .photosPicker(isPresented: $choosingPhoto, selection: $pickerItems,
                       maxSelectionCount: max(1, MilestoneLimits.mediaItems - items.count),
                       // The order tapped is the order kept: the first tapped is the cover.
-                      selectionBehavior: .ordered, matching: .images, photoLibrary: .shared())
+                      selectionBehavior: .ordered, matching: .any(of: [.images, .videos]), photoLibrary: .shared())
     }
 
     /// One slot: the photo in its square, "Cover" on the first; a tap shows it large below.
@@ -315,6 +341,9 @@ struct FirstEditor: View {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(Theme.text, lineWidth: id == selectedItem ? 3 : 0)
                 }
+                .overlay(alignment: .topTrailing) {
+                    if isVideo(id) { PlayMark(size: 18).padding(4) }
+                }
                 .overlay(alignment: .bottom) {
                     if index == 0 {
                         Text("Cover")
@@ -322,6 +351,8 @@ struct FirstEditor: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)
                             .padding(.horizontal, 5)
+                            // The slot already says "the cover" to VoiceOver.
+                            .accessibilityHidden(true)
                             .background(Theme.surface, in: Capsule())
                             .padding(3)
                     }
@@ -330,7 +361,7 @@ struct FirstEditor: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("slot-\(id)")
-        .accessibilityLabel("Photo \(index + 1) of \(items.count)\(index == 0 ? ", the cover" : "")")
+        .accessibilityLabel("\(isVideo(id) ? "Video" : "Photo") \(index + 1) of \(items.count)\(index == 0 ? ", the cover" : "")")
         .accessibilityAddTraits(id == selectedItem ? .isSelected : [])
         // D35: moved with VoiceOver too.
         .accessibilityActions {
@@ -347,7 +378,7 @@ struct FirstEditor: View {
     private var addSlot: some View {
         Menu {
             Button("Choose from Photos") { choosingPhoto = true }
-            if CameraPicker.isAvailable { Button("Take a photo") { tapCamera() } }
+            if CameraPicker.isAvailable { Button("Take a photo or video") { tapCamera() } }
         } label: {
             emptySlot.frame(width: 62, height: 62)
         }
@@ -376,7 +407,7 @@ struct FirstEditor: View {
         VStack(alignment: .leading, spacing: 8) {
             PhotoButton(title: "Choose from Photos") { choosingPhoto = true }
             if CameraPicker.isAvailable {
-                PhotoButton(title: "Take a photo") { tapCamera() }
+                PhotoButton(title: "Take a photo or video") { tapCamera() }
             }
         }
         .disabled(working)
@@ -437,15 +468,40 @@ struct FirstEditor: View {
             pickProblem = "The camera is off for Feeding. You can turn it on in iPhone Settings."
         default:
             cameraOff = false
+            if CameraPicker.microphoneOff, !microphoneOffTold {
+                microphoneOffTold = true
+                pickProblem = "The microphone is off for Feeding, so the camera takes photos only. You can turn it on in iPhone Settings."
+            } else if !roomForVideo {
+                pickProblem = "Not enough space on this iPhone for a video, so the camera takes photos only."
+            }
             if cameraExplained { openCamera() } else { explainingCamera = true }
         }
     }
 
     private func openCamera() { usingCamera = true }
 
+    /// Room for a 15-second recording and its smaller copy, beyond the space kept for feeds.
+    private var roomForVideo: Bool {
+        MediaFiles.appGroup().map { SpaceRule.fits(300_000_000, free: $0.freeSpace()) } ?? false
+    }
+
     /// Photos made ready one at a time, in the order chosen. Adding waits until they are done;
     /// Discard stops them, and one that finishes late is thrown away, files and all.
-    private func startImport(_ makers: [@MainActor () async throws -> (MediaStore.Added, UIImage?)]) {
+    /// What one pick or capture became: a photo's copy, or a staged video.
+    private enum Imported {
+        case photo(MediaStore.Added, taken: UIImage?)
+        /// `long`: more than 15 seconds, so the parent picks the part to keep.
+        case video(VideoQueue.Job, long: Bool)
+
+        var id: String {
+            switch self {
+            case .photo(let added, _): added.id
+            case .video(let job, _): job.id
+            }
+        }
+    }
+
+    private func startImport(_ makers: [@MainActor () async throws -> Imported]) {
         importTask?.cancel()
         let token = UUID()
         importToken = token
@@ -455,12 +511,12 @@ struct FirstEditor: View {
             for make in makers {
                 guard token == importToken, !Task.isCancelled else { break }
                 do {
-                    let (added, taken) = try await make()
+                    let made = try await make()
                     guard token == importToken, !Task.isCancelled, items.count < MilestoneLimits.mediaItems else {
-                        AppModel.shared.media.forget(added.id)
+                        letGo(made)
                         continue
                     }
-                    use(added, taken: taken)
+                    use(made)
                 } catch let refusal as MediaStore.Refusal {
                     if token == importToken { pickProblem = JournalText.refusal(refusal) }
                 } catch {
@@ -473,10 +529,27 @@ struct FirstEditor: View {
 
     /// The picker's bytes go straight into the journal's copy (scaled, no place in it), never to a
     /// file of their own.
-    private func makeCopy(ofPicked item: PhotosPickerItem) async throws -> (MediaStore.Added, UIImage?) {
+    private func makeCopy(ofPicked item: PhotosPickerItem) async throws -> Imported {
+        if item.supportedContentTypes.contains(where: { $0.conforms(to: .movie) }) {
+            // A video: its original staged, made smaller after Save (D16).
+            guard let movie = try await item.loadTransferable(type: PickedMovie.self) else {
+                throw MediaStore.Refusal.unreadableVideo
+            }
+            defer { try? FileManager.default.removeItem(at: movie.url) }
+            let duration = (try? await AVURLAsset(url: movie.url).load(.duration).seconds) ?? 0
+            let long = duration > MediaSizes.longestVideo + 0.5 && UIVideoEditorController.canEditVideo(atPath: movie.url.path)
+            return .video(try await AppModel.shared.videos.stage(movie.url), long: long)
+        }
         guard let files = MediaFiles.appGroup(),
               let bytes = try await item.loadTransferable(type: Data.self) else { throw MediaStore.Refusal.unreadablePhoto }
-        return (try await keepDraft(files: files, bytes: bytes), nil)
+        return .photo(try await keepDraft(files: files, bytes: bytes), taken: nil)
+    }
+
+    /// A video taken here (15 seconds at most): staged like a picked one, and copied to Photos
+    /// from its original after Save (D20).
+    private func stage(takenVideo movie: URL) async throws -> Imported {
+        defer { try? FileManager.default.removeItem(at: movie) }
+        return .video(try await AppModel.shared.videos.stage(movie, takenHere: true), long: false)
     }
 
     /// The draft's ID is held before its files are written, so the clean-up never takes them
@@ -492,20 +565,42 @@ struct FirstEditor: View {
         }
     }
 
-    private func makeCopy(ofTaken image: UIImage) async throws -> (MediaStore.Added, UIImage?) {
+    private func makeCopy(ofTaken image: UIImage) async throws -> Imported {
         guard let files = MediaFiles.appGroup() else { throw MediaStore.Refusal.unreadablePhoto }
         let bytes = await Task.detached { image.jpegData(compressionQuality: 0.95) }.value
         guard let bytes else { throw MediaStore.Refusal.unreadablePhoto }
-        return (try await keepDraft(files: files, bytes: bytes), image)
+        return .photo(try await keepDraft(files: files, bytes: bytes), taken: image)
+    }
+
+    /// One made too late (Discard, or the slots were full): it goes, files and all.
+    private func letGo(_ made: Imported) {
+        switch made {
+        case .photo(let added, _):
+            AppModel.shared.media.forget(added.id)
+        case .video(let job, _):
+            AppModel.shared.videos.discard(job.id)
+        }
+    }
+
+    /// True for a video in a slot. Read again when the item's file arrives (`fileVersions`).
+    private func isVideo(_ id: String) -> Bool {
+        _ = AppModel.shared.media.fileVersions[id]
+        return videoDrafts[id] != nil || AppModel.shared.isVideo(id)
     }
 
     /// A new photo goes in the next slot and is shown large; When follows the photos while the
     /// parent hasn't set it (D17).
-    private func use(_ added: MediaStore.Added, taken: UIImage?) {
-        items.append(added.id)
-        drafts[added.id] = added
-        if let taken { takenImages[added.id] = taken }
-        selected = added.id
+    private func use(_ made: Imported) {
+        switch made {
+        case .photo(let added, let taken):
+            drafts[added.id] = added
+            if let taken { takenImages[added.id] = taken }
+        case .video(let job, let long):
+            videoDrafts[job.id] = job
+            if long { trimming = job }
+        }
+        items.append(made.id)
+        selected = made.id
         followPhotosForWhen()
     }
 
@@ -525,6 +620,10 @@ struct FirstEditor: View {
             takenImages[id] = nil
             AppModel.shared.media.forget(id)
         }
+        if videoDrafts.removeValue(forKey: id) != nil {
+            crops[id] = nil
+            AppModel.shared.videos.discard(id)
+        }
         selected = items.first
         followPhotosForWhen()
     }
@@ -534,7 +633,7 @@ struct FirstEditor: View {
         guard !whenTouched else { return }
         // Only times the first could have: one before the birth date, say, is left out
         // (Codex review of step 2).
-        let taken = items.compactMap { drafts[$0]?.takenAt }
+        let taken = items.compactMap { drafts[$0]?.takenAt ?? videoDrafts[$0]?.takenAt }
             .filter { data.milestoneDateProblem($0, babyID: babyID, now: Date()) == nil }
         if let fromPhotos = MilestoneWhen.fromPhotos(takenAt: taken, now: Date()) {
             when = fromPhotos
@@ -561,6 +660,8 @@ struct FirstEditor: View {
         importToken = UUID()
         for id in drafts.keys { AppModel.shared.media.forget(id) }
         drafts = [:]
+        for id in videoDrafts.keys { AppModel.shared.videos.discard(id) }
+        videoDrafts = [:]
     }
 
     private func save() {
@@ -592,7 +693,8 @@ struct FirstEditor: View {
                 return
             }
             finishSave()
-            onDone(.added(id: id, title: HouseholdData.cleanTitle(title), photos: media.filter { drafts[$0] != nil }))
+            onDone(.added(id: id, title: HouseholdData.cleanTitle(title),
+                          photos: media.filter { drafts[$0] != nil || videoDrafts[$0] != nil }))
         case .edit(let id):
             guard let original else { return }
             guard queue(eventID: id, now: now) else {
@@ -627,17 +729,25 @@ struct FirstEditor: View {
     /// The photos picked here go into the upload queue, behind the feeds, in slot order, in one
     /// write. False, and none queued, when the queue couldn't be written to this phone.
     private func queue(eventID: String, now: Date) -> Bool {
+        // Videos first: written to their own queue, to be made smaller after Save (D16).
+        let videos = items.filter { videoDrafts[$0] != nil }
+        guard AppModel.shared.videos.commit(videos, to: eventID) else { return false }
         let uploads = items.compactMap { id in
             drafts[id].map { draft in
                 MediaUpload(id: id, eventID: eventID, byteSize: draft.byteSize,
                             payload: try? PayloadCoder.encode(draft.details), queuedAt: now, pause: nil)
             }
         }
-        return AppModel.shared.media.add(uploads)
+        guard AppModel.shared.media.add(uploads) else {
+            AppModel.shared.videos.uncommit(videos)
+            return false
+        }
+        return true
     }
 
     private func unqueueDrafts() {
         AppModel.shared.media.unqueue(Array(drafts.keys))
+        AppModel.shared.videos.uncommit(Array(videoDrafts.keys))
     }
 
     /// True when the first as it is now, with this editor's changes, would hold more than 4.
@@ -651,9 +761,13 @@ struct FirstEditor: View {
     /// after Save: D20).
     private func finishSave() {
         for id in drafts.keys { AppModel.shared.media.releaseDraft(id) }
+        for id in videoDrafts.keys { AppModel.shared.media.releaseDraft(id) }
+        AppModel.shared.videos.kick()
         let taken = items.compactMap { takenImages[$0] }
-        if !taken.isEmpty {
-            Task { for image in taken { await PhotosCopy.keep(image) } }
+        Task {
+            for image in taken { await PhotosCopy.keep(image) }
+            // Videos taken here: from their kept originals, also after a stop (`VideoQueue`).
+            await AppModel.shared.videos.copyTakenToPhotos()
         }
     }
 

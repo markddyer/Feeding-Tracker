@@ -1,4 +1,5 @@
 #if FEEDING_DEV && targetEnvironment(simulator)
+import AVFoundation
 import FeedingCore
 import Foundation
 import ImageIO
@@ -196,6 +197,7 @@ enum SampleData {
         }
         let files = MediaFiles.appGroup()
         let laugh = "sample-photo-laugh", smile = "sample-photo-smile", smileTwo = "sample-photo-smile-2"
+        let video = "sample-video-laugh"
         if let files {
             // One wide and one tall, as phone photos are, so a tile that lets a photo set its own
             // size shows at once.
@@ -203,6 +205,9 @@ enum SampleData {
             drawPicture(face: false, width: 900, height: 1200, into: files, id: smile)
             // A second photo on "First smile", for the slots, "+1" and "1 of 2".
             drawPicture(face: true, width: 1000, height: 1000, into: files, id: smileTwo)
+            // A short made-up clip as the second item on "First laugh", for the play mark and
+            // playback (step 2). Written a moment after launch.
+            Task { await writeClip(into: files, id: video) }
         }
         // `-sampleNoBirthDate YES`: the same firsts with no birth date (months, no ages).
         let birthDate: PlainDate? = UserDefaults.standard.bool(forKey: "sampleNoBirthDate") ? nil : born
@@ -216,10 +221,50 @@ enum SampleData {
             data.addMilestone(id: "sample-first-smile", babyID: "sample-baby", title: "First smile",
                               note: "At the morning feed, after the left side. Then three more!", media: [smile, smileTwo],
                               at: day(44, 7), by: me, timeZoneID: zone.identifier, now: now)
-            data.addMilestone(id: "sample-first-laugh", babyID: "sample-baby", title: "First laugh", media: [laugh],
+            data.addMilestone(id: "sample-first-laugh", babyID: "sample-baby", title: "First laugh", media: [laugh, video],
                               at: day(60, 18), by: other, timeZoneID: zone.identifier, now: now)
             data.endUndoWindows()
         }
+    }
+
+    /// A three-second clip of changing colour, as the journal keeps a video (MP4), with its still.
+    @MainActor
+    private static func writeClip(into files: MediaFiles, id: String) async {
+        let work = FileManager.default.temporaryDirectory.appendingPathComponent("sample-\(id).mp4")
+        try? FileManager.default.removeItem(at: work)
+        guard let writer = try? AVAssetWriter(outputURL: work, fileType: .mp4) else { return }
+        let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 640, AVVideoHeightKey: 480,
+        ])
+        input.expectsMediaDataInRealTime = false
+        let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
+            kCVPixelBufferWidthKey as String: 640, kCVPixelBufferHeightKey as String: 480,
+        ])
+        writer.add(input)
+        guard writer.startWriting() else { return }
+        writer.startSession(atSourceTime: .zero)
+        for frame in 0..<30 {
+            while !input.isReadyForMoreMediaData { try? await Task.sleep(for: .milliseconds(5)) }
+            var buffer: CVPixelBuffer?
+            guard let pool = adaptor.pixelBufferPool else { return }
+            CVPixelBufferPoolCreatePixelBuffer(nil, pool, &buffer)
+            guard let pixels = buffer else { return }
+            CVPixelBufferLockBaseAddress(pixels, [])
+            memset(CVPixelBufferGetBaseAddress(pixels), Int32(120 + frame * 4), CVPixelBufferGetDataSize(pixels))
+            CVPixelBufferUnlockBaseAddress(pixels, [])
+            adaptor.append(pixels, withPresentationTime: CMTime(value: Int64(frame), timescale: 10))
+        }
+        input.markAsFinished()
+        await writer.finishWriting()
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: work))
+        generator.maximumSize = CGSize(width: 400, height: 400)
+        let still = FileManager.default.temporaryDirectory.appendingPathComponent("sample-\(id).jpg")
+        if let image = try? await generator.image(at: .zero).image, MediaStore.writeJPEG(image, to: still, quality: 0.8) {
+            try? files.keepThumbnail(from: still, for: id)
+        }
+        try? files.keepFile(from: work, for: id)
+        AppModel.shared.media.noteFileChanged(id)
     }
 
     /// A simple drawn picture (a face, or a sky and a hill), as the mockups' drawings.

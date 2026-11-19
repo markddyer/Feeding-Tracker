@@ -17,6 +17,8 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Work and half-made exports left by an app that was stopped (journal, outside voice OE8).
         MediaStore.removeLeftovers()
         MediaFiles.appGroup()?.removeHalfCopies()
+        // Videos saved before the app stopped carry on; drafts it left go (D16).
+        AppModel.shared.videos.launch()
         // Start at launch, also when a push wakes the app in the background.
         AppModel.shared.sync.start()
         AppModel.shared.reconciler.runSoon()
@@ -66,6 +68,9 @@ final class SceneDelegate: NSObject, UIWindowSceneDelegate {
         Task {
             await AppModel.shared.sync.fetchNow()
             AppModel.shared.media.kick()
+            // Videos waiting to be made smaller, and copies to Photos not yet made, carry on.
+            AppModel.shared.videos.kick()
+            await AppModel.shared.videos.copyTakenToPhotos()
         }
     }
 
