@@ -33,10 +33,11 @@ private func withBirthDate(_ birth: String, _ data: HouseholdData = HouseholdDat
 extension HouseholdData {
     /// Opens the editor on the first as it is now and saves it at once.
     @discardableResult
-    mutating func saveEditor(_ id: String, title: String, note: String? = nil, media: [String], at: Date,
-                             by member: MemberID, now: Date) -> Bool {
+    mutating func saveEditor(_ id: String, title: String, note: String? = nil, media: [String],
+                             crops: [String: MediaCrop]? = nil, at: Date, by member: MemberID, now: Date) -> Bool {
         guard let original = events[id]?.snapshot else { return false }
-        return editMilestone(id, from: original, title: title, note: note, media: media, at: at, by: member, now: now)
+        return editMilestone(id, from: original, title: title, note: note, media: media, crops: crops, at: at, by: member,
+                             now: now)
     }
 }
 
@@ -71,7 +72,7 @@ struct MilestonePayloadTests {
         let id = try #require(added1)
         let stored = try #require(data.events[id])
         #expect(stored.event.kind == .milestone)
-        #expect(stored.changedFields == [.startedAt, .endedAt, .deletedAt, .note, .title, .media, .removedMedia])
+        #expect(stored.changedFields == [.startedAt, .endedAt, .deletedAt, .note, .title, .media, .removedMedia, .crops])
         let payload = try #require(stored.snapshot.payload)
         #expect(payload.milestone == MilestoneDetails(title: "First smile", media: ["m1"]))
         #expect(payload.note == "At bath time")
@@ -806,5 +807,125 @@ struct MilestoneAlertTests {
         let added20 = data.addMilestone(babyID: baby, title: "First smile", at: t0, by: parentA, timeZoneID: londonID, now: t0)
         try #require(added20 != nil)
         #expect(run(data.allEvents, now: t0 + 600).isEmpty)
+    }
+}
+
+/// Design review D39 and the parents' choice of 19 Nov 2026: the square on the Journal's line
+/// shows the part of the photo a parent dragged it to; the first's page shows the whole photo.
+@Suite("Firsts: each photo's square")
+struct MediaCropTests {
+    /// Parent A's phone and Parent B's, each holding the first with two photos.
+    func twoPhones() throws -> (a: HouseholdData, b: HouseholdData, id: String) {
+        var a = HouseholdData()
+        let added = a.addMilestone(babyID: baby, title: "First smile", media: ["m1", "m2"], at: t0,
+                                   by: parentA, timeZoneID: londonID, now: t0)
+        let id = try #require(added)
+        var b = HouseholdData()
+        b.receiveEvent(sent(&a, id), systemFields: Data([1]))
+        return (a, b, id)
+    }
+
+    /// A first with a photo moved is version 4, which an older build leaves unread, so it can't
+    /// save the first back without its crops. A first nobody cropped is written as version 3 was.
+    @Test func aCropMakesVersion4AndAnUncroppedFirstStaysVersion3() throws {
+        struct Version3Build: VersionedPayload {
+            static var currentVersion: Int { 3 }
+            var v: Int
+        }
+        let plain = EventPayload(milestone: MilestoneDetails(title: "First smile", media: ["m1"]))
+        #expect(plain.v == 3)
+        let plainBytes = try PayloadCoder.encode(plain)
+        #expect(!String(decoding: plainBytes, as: UTF8.self).contains("crops"))
+        #expect(PayloadCoder.decode(Version3Build.self, from: plainBytes) != nil)
+        let cropped = EventPayload(milestone: MilestoneDetails(title: "First smile", media: ["m1"],
+                                                               crops: ["m1": MediaCrop(x: 0.5, y: 0.3)]))
+        #expect(cropped.v == 4)
+        let croppedBytes = try PayloadCoder.encode(cropped)
+        #expect(PayloadCoder.decode(Version3Build.self, from: croppedBytes) == nil)
+        #expect(PayloadCoder.decode(EventPayload.self, from: croppedBytes)?.milestone?.crops == ["m1": MediaCrop(x: 0.5, y: 0.3)])
+    }
+
+    @Test func theMiddleARemovedPhotosCropAndOddNumbersAreNotKept() {
+        let details = MilestoneDetails(title: "First smile", media: ["m1", "m2"], removedMedia: ["m3"],
+                                       crops: ["m1": .middle, "m2": MediaCrop(x: 2, y: -1), "m3": MediaCrop(x: 0.1, y: 0.1)])
+        #expect(details.crops == ["m2": MediaCrop(x: 1, y: 0)])
+        #expect(MediaCrop(x: .nan, y: .infinity) == .middle)
+    }
+
+    /// A wide photo moves only sideways, a tall one only up and down, and the square never leaves
+    /// the photo.
+    @Test func theSquareStaysInsideThePhoto() {
+        #expect(MediaCrop(x: 0, y: 0.1).clamped(width: 1200, height: 900) == MediaCrop(x: 0.375, y: 0.5))
+        #expect(MediaCrop(x: 0.9, y: 0.9).clamped(width: 900, height: 1200) == MediaCrop(x: 0.5, y: 0.625))
+        #expect(MediaCrop(x: 0.2, y: 0.8).clamped(width: 1000, height: 1000) == .middle)
+    }
+
+    @Test func thePhotoFillsTheSquareWithTheCropInTheMiddle() {
+        // 1200 x 900 in a 90-point square: drawn 120 x 90.
+        let middle = MediaCrop.middle.placement(width: 1200, height: 900, box: 90)
+        #expect(middle.width == 120 && middle.height == 90)
+        #expect(middle.x == -15 && middle.y == 0)
+        // The left edge: the photo's left side at the square's left side, never a gap.
+        let left = MediaCrop(x: 0, y: 0.5).placement(width: 1200, height: 900, box: 90)
+        #expect(left.x == 0)
+    }
+
+    /// The photo follows the finger: dragging a tall photo down shows more of its top.
+    @Test func aDragMovesThePhotoWithTheFinger() {
+        // 900 x 1200 in a 90-point square: drawn 90 x 120.
+        let down = MediaCrop.middle.dragged(dx: 0, dy: 6, width: 900, height: 1200, box: 90)
+        #expect(down == MediaCrop(x: 0.5, y: 0.45))
+        let farDown = MediaCrop.middle.dragged(dx: 0, dy: 500, width: 900, height: 1200, box: 90)
+        #expect(farDown == MediaCrop(x: 0.5, y: 0.375))
+        // Sideways does nothing on a tall photo.
+        #expect(MediaCrop.middle.dragged(dx: 40, dy: 0, width: 900, height: 1200, box: 90) == .middle)
+    }
+
+    @Test func aNewFirstKeepsOnlyItsOwnPhotosCrops() throws {
+        var data = HouseholdData()
+        let added = data.addMilestone(babyID: baby, title: "First smile", media: ["m1"],
+                                      crops: ["m1": MediaCrop(x: 0.5, y: 0.4), "draft": MediaCrop(x: 0.5, y: 0.1)],
+                                      at: t0, by: parentA, timeZoneID: londonID, now: t0)
+        let id = try #require(added)
+        #expect(details(data, id)?.crops == ["m1": MediaCrop(x: 0.5, y: 0.4)])
+        #expect(data.events[id]?.snapshot.payload?.v == 4)
+    }
+
+    /// An editor open while the other phone moved one photo saves only the photo moved here.
+    @Test func anEditorChangesOnlyTheCropsItMoved() throws {
+        var (a, b, id) = try twoPhones()
+        let editorOpenedOn = try #require(b.events[id]?.snapshot)
+        let movedOnA = a.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m1": MediaCrop(x: 0.5, y: 0.4)],
+                                    at: t0, by: parentA, now: t0 + 30)
+        #expect(movedOnA)
+        b.receiveEvent(sent(&a, id, tag: 2), systemFields: Data([2]))
+        let movedOnB = b.editMilestone(id, from: editorOpenedOn, title: "First smile", note: nil, media: ["m1", "m2"],
+                                       crops: ["m2": MediaCrop(x: 0.3, y: 0.5)], at: t0, by: parentB, now: t0 + 60)
+        #expect(movedOnB)
+        #expect(details(b, id)?.crops == ["m1": MediaCrop(x: 0.5, y: 0.4), "m2": MediaCrop(x: 0.3, y: 0.5)])
+        #expect(b.events[id]?.changedFields == [.crops])
+    }
+
+    @Test func takingAPhotoOutDropsItsCrop() throws {
+        var (a, _, id) = try twoPhones()
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2"],
+                     crops: ["m1": MediaCrop(x: 0.5, y: 0.4), "m2": MediaCrop(x: 0.4, y: 0.5)], at: t0, by: parentA, now: t0 + 30)
+        a.saveEditor(id, title: "First smile", media: ["m2"], crops: ["m2": MediaCrop(x: 0.4, y: 0.5)], at: t0, by: parentA,
+                     now: t0 + 60)
+        #expect(details(a, id)?.crops == ["m2": MediaCrop(x: 0.4, y: 0.5)])
+    }
+
+    /// Eng2 D5 A: the crops merge as one field. Both phones, offline, move a different photo:
+    /// the later change wins whole, and the other photo goes back to its last synced place.
+    @Test func cropsOnBothPhonesAtOnceTheLaterWinsWhole() throws {
+        var (a, b, id) = try twoPhones()
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m1": MediaCrop(x: 0.5, y: 0.4)],
+                     at: t0, by: parentA, now: t0 + 60)
+        b.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m2": MediaCrop(x: 0.3, y: 0.5)],
+                     at: t0, by: parentB, now: t0 + 90)
+        let fromB = sent(&b, id, tag: 2)
+        a.receiveEvent(fromB, systemFields: Data([2]))
+        #expect(details(a, id)?.crops == ["m2": MediaCrop(x: 0.3, y: 0.5)])
+        #expect(details(a, id)?.media == ["m1", "m2"])
     }
 }

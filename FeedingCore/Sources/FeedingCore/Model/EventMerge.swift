@@ -61,7 +61,7 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
             default: growth.headMM = theirs?.headMM
             }
             payload?.growth = growth
-        case .title, .media, .removedMedia:
+        case .title, .media, .removedMedia, .crops:
             // Only where either copy is a first, so nothing else gains a first's details (which
             // would raise its version and hide it from an older build).
             guard payload?.milestone != nil || other.payload?.milestone != nil else { return }
@@ -70,6 +70,7 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
             switch field {
             case .title: milestone.title = theirs?.title ?? ""
             case .media: milestone.media = theirs?.media ?? []
+            case .crops: milestone.crops = theirs?.crops ?? [:]
             // Removed items only add up: copying joins the two lists (eng D10).
             default: milestone.removedMedia = milestone.removedMedia + (theirs?.removedMedia ?? [])
             }
@@ -101,6 +102,7 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
         if first?.title != last?.title { changed.insert(.title) }
         if first?.media != last?.media { changed.insert(.media) }
         if first?.removedMedia != last?.removedMedia { changed.insert(.removedMedia) }
+        if first?.crops ?? [:] != last?.crops ?? [:] { changed.insert(.crops) }
         return changed
     }
 

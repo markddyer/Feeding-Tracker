@@ -5,9 +5,52 @@ import Foundation
 // encrypted payload; its photos and videos are `Media` records in the photos zone, named here by
 // their IDs. None of it touches the alerts: `reconcile` counts feeds only.
 
+/// Which part of a photo shows in its square on the Journal's line (design review D39): the centre
+/// of the square, as a fraction of the photo's width (`x`, from the left) and height (`y`, from the
+/// top). The middle until a parent drags the photo in Edit. A first's page shows the whole photo
+/// (the parents' choice, 19 Nov 2026), so this is for the square only.
+public struct MediaCrop: Hashable, Sendable, Codable {
+    public var x: Double
+    public var y: Double
+
+    public static let middle = MediaCrop(x: 0.5, y: 0.5)
+
+    public init(x: Double, y: Double) {
+        self.x = x.isFinite ? min(max(x, 0), 1) : 0.5
+        self.y = y.isFinite ? min(max(y, 0), 1) : 0.5
+    }
+
+    /// The same crop moved as little as needed so a square cut from a `width` × `height` photo
+    /// stays inside it. A wide photo can only move sideways, a tall one only up and down.
+    public func clamped(width: Double, height: Double) -> MediaCrop {
+        guard width > 0, height > 0 else { return .middle }
+        let side = min(width, height)
+        let halfX = side / width / 2, halfY = side / height / 2
+        return MediaCrop(x: min(max(x, halfX), 1 - halfX), y: min(max(y, halfY), 1 - halfY))
+    }
+
+    /// Where the photo goes in a square of side `box`: its drawn size (filling the square) and the
+    /// offset of its top left corner, so the crop's centre is in the middle of the square.
+    public func placement(width: Double, height: Double, box: Double) -> (width: Double, height: Double, x: Double, y: Double) {
+        guard width > 0, height > 0, box > 0 else { return (box, box, 0, 0) }
+        let scale = max(box / width, box / height)
+        let drawnWidth = width * scale, drawnHeight = height * scale
+        let crop = clamped(width: width, height: height)
+        return (drawnWidth, drawnHeight, box / 2 - crop.x * drawnWidth, box / 2 - crop.y * drawnHeight)
+    }
+
+    /// The crop after a drag of `dx`, `dy` points on a square of side `box`, starting from this one:
+    /// the photo follows the finger, so the square's centre moves the other way.
+    public func dragged(dx: Double, dy: Double, width: Double, height: Double, box: Double) -> MediaCrop {
+        let place = placement(width: width, height: height, box: box)
+        let start = clamped(width: width, height: height)
+        return MediaCrop(x: start.x - dx / place.width, y: start.y - dy / place.height).clamped(width: width, height: height)
+    }
+}
+
 /// A first's details: what happened, and its photos and videos. The note is the event's own
-/// `note`. Each part merges on its own: the title and the media list by the later change, the
-/// removed list by joining both phones' lists (eng D10).
+/// `note`. Each part merges on its own: the title, the media list and the crops by the later
+/// change, the removed list by joining both phones' lists (eng D10).
 public struct MilestoneDetails: Hashable, Sendable, Codable {
     /// What happened, such as "First smile".
     public var title: String
@@ -18,21 +61,48 @@ public struct MilestoneDetails: Hashable, Sendable, Codable {
     /// with the other phone's on a merge, so an older media list from a phone that was offline can
     /// never name a removed item again. The clean-up deletes only `Media` records on this list.
     public var removedMedia: [String]
+    /// Each photo's square on the line, by media ID (D39; one field, so the later change wins
+    /// whole: eng2 D5). A photo with none shows its middle. Version 4 of `EventPayload`.
+    public var crops: [String: MediaCrop]
 
-    public init(title: String, media: [String] = [], removedMedia: [String] = []) {
+    public init(title: String, media: [String] = [], removedMedia: [String] = [], crops: [String: MediaCrop] = [:]) {
         self.title = title
         self.media = media
         self.removedMedia = removedMedia
+        self.crops = crops
         normalize()
     }
 
     /// Sorts the removed list without repeats, and leaves out of the media list every removed ID,
-    /// every repeat and anything past the limit. Every list shown or saved goes through this.
+    /// every repeat and anything past the limit; a removed item's crop goes too. Every list shown
+    /// or saved goes through this.
     public mutating func normalize() {
         removedMedia = Array(Set(removedMedia)).sorted()
         let removed = Set(removedMedia)
         var seen = Set<String>()
         media = Array(media.filter { !removed.contains($0) && seen.insert($0).inserted }.prefix(MilestoneLimits.mediaItems))
+        crops = crops.filter { !removed.contains($0.key) && $0.value != .middle }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title, media, removedMedia, crops
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        media = try container.decode([String].self, forKey: .media)
+        removedMedia = try container.decode([String].self, forKey: .removedMedia)
+        crops = try container.decodeIfPresent([String: MediaCrop].self, forKey: .crops) ?? [:]
+    }
+
+    /// No crops, no `crops` key: a first nobody cropped is written exactly as version 3 wrote it.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encode(media, forKey: .media)
+        try container.encode(removedMedia, forKey: .removedMedia)
+        if !crops.isEmpty { try container.encode(crops, forKey: .crops) }
     }
 }
 
@@ -161,14 +231,16 @@ extension HouseholdData {
     /// `MilestoneLimits.mediaItems` photos and videos.
     @discardableResult
     public mutating func addMilestone(id: String = UUID().uuidString, babyID: String, title: String, note: String? = nil,
-                                      media: [String] = [], at: Date, by member: MemberID, timeZoneID: String,
-                                      now: Date) -> String? {
+                                      media: [String] = [], crops: [String: MediaCrop] = [:], at: Date, by member: MemberID,
+                                      timeZoneID: String, now: Date) -> String? {
         let title = Self.cleanTitle(title)
         guard !title.isEmpty, Self.fitsTheLimit(media), milestoneDateProblem(at, babyID: babyID, now: now) == nil else {
             return nil
         }
         return add(id: id, kind: .milestone, babyID: babyID, startedAt: at,
-                   payload: EventPayload(milestone: MilestoneDetails(title: title, media: media), note: Self.cleanNote(note)),
+                   payload: EventPayload(milestone: MilestoneDetails(title: title, media: media,
+                                                                     crops: crops.filter { media.contains($0.key) }),
+                                         note: Self.cleanNote(note)),
                    by: member, timeZoneID: timeZoneID, now: now)
     }
 
@@ -179,12 +251,15 @@ extension HouseholdData {
     /// - a photo the parent only added goes at the end of the list as it is now (keeping an order
     ///   the other phone set); if the parent also moved photos, the parent's order is used, with a
     ///   photo the other phone added after them.
+    /// - only a crop the parent moved (or put back in the middle) is changed, so a crop the other
+    ///   phone set for another photo stays.
     /// False, and nothing changed, when the title is empty, a changed date is refused, the list
     /// would hold more than `MilestoneLimits.mediaItems` items (never cut silently), or it isn't a
     /// first this build reads.
     @discardableResult
     public mutating func editMilestone(_ id: String, from original: EventSnapshot, title: String, note: String?,
-                                       media: [String], at: Date, by member: MemberID, now: Date) -> Bool {
+                                       media: [String], crops: [String: MediaCrop]? = nil, at: Date, by member: MemberID,
+                                       now: Date) -> Bool {
         // A first deleted meanwhile (on the other phone) isn't changed: its edits would be hidden.
         guard let current = events[id]?.snapshot, current.event.kind == .milestone, current.event.deletedAt == nil,
               var milestone = current.payload?.milestone, let before = original.payload?.milestone else { return false }
@@ -207,6 +282,11 @@ extension HouseholdData {
             milestone.media = next
         }
         if title != before.title { milestone.title = title }
+        if let crops {
+            for item in Set(crops.keys).union(before.crops.keys) where crops[item] != before.crops[item] {
+                milestone.crops[item] = crops[item]
+            }
+        }
         milestone.normalize()
         let removedBefore = Set(current.payload?.milestone?.removedMedia ?? [])
         let saved = edit(id, by: member, now: now) { snapshot in

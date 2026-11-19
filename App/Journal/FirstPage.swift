@@ -14,6 +14,7 @@ struct FirstPage: View {
     private let model = AppModel.shared
     @Environment(\.dismiss) private var dismiss
     @State private var editing: FirstEditor.Mode?
+    @State private var pageHeight: CGFloat = 0
 
     var body: some View {
         let data = model.store.data
@@ -25,9 +26,11 @@ struct FirstPage: View {
                 let age = data.birthDate(babyID: babyID).flatMap { BabyAge(on: day, birthDate: $0) }
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
+                        // The whole photo, at its own shape (the parents' choice, 19 Nov 2026): at
+                        // most the column's width, and at most 70% of the screen's height, so the
+                        // title is still in sight under a tall photo.
                         MediaPicture(id: details.media.first, full: true, cornerRadius: 26)
-                            .frame(maxWidth: .infinity)
-                            .aspectRatio(1.15, contentMode: .fit)
+                            .frame(maxWidth: .infinity, maxHeight: pageHeight > 0 ? pageHeight * 0.7 : nil, alignment: .leading)
                             .accessibilityElement()
                             .accessibilityLabel(details.media.isEmpty ? "No photo" : "Photo of \(details.title)")
                         Text(details.title)
@@ -63,6 +66,7 @@ struct FirstPage: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
         .modifier(PageBar(embedded: embedded))
         .sheet(item: $editing) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in

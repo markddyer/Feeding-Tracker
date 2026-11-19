@@ -46,6 +46,9 @@ public enum EventField: String, Hashable, Sendable, Codable, CaseIterable {
     /// A first's removed photos and videos. Merged by joining both phones' lists, never by the
     /// later change (eng D10), so a removed item can't come back.
     case removedMedia
+    /// Where each of a first's photos sits in its square (D39), as one: the later change wins
+    /// whole (eng2 D5).
+    case crops
 
     /// The fields an event of `kind` has: the top-level ones, the note, and its own details. A new
     /// event is stamped with these only, so a feed's record holds no field an older app version
@@ -59,7 +62,7 @@ public enum EventField: String, Hashable, Sendable, Codable, CaseIterable {
         case .nappy: return shared.union([.nappy, .pooColour, .pooConsistency])
         case .growth: return shared.union([.weight, .length, .head])
         case .medicine: return shared.union([.medicine])
-        case .milestone: return shared.union([.title, .media, .removedMedia])
+        case .milestone: return shared.union([.title, .media, .removedMedia, .crops])
         default: return Set(allCases)
         }
     }
@@ -80,12 +83,12 @@ public protocol VersionedPayload: Codable, Sendable {
 /// A payload is written with the lowest version that holds its fields (`neededVersion`), not
 /// always with `currentVersion`. So a feed saved by this app is still version 1, and a phone on an
 /// older build still reads its sides and bottles; only a nappy, growth or medicine entry is
-/// version 2, and a first version 3, which an older build leaves unread and so can never save back
-/// without its details.
+/// version 2, a first version 3, and a first with a photo moved in its square version 4, which an
+/// older build leaves unread and so can never save back without its details.
 public struct EventPayload: VersionedPayload, Hashable {
     /// 1: feeds and pumping. 2 (17 Nov 2026): adds `nappy`, `growth` and `medicine`. 3 (18 Nov
-    /// 2026): adds `milestone`.
-    public static let currentVersion = 3
+    /// 2026): adds `milestone`. 4 (19 Nov 2026): adds the first's `crops`.
+    public static let currentVersion = 4
 
     public var v: Int
     /// Set for feeds.
@@ -120,10 +123,10 @@ public struct EventPayload: VersionedPayload, Hashable {
         v = neededVersion
     }
 
-    /// The lowest version that knows every detail set here: 3 with a first, 2 with a nappy,
-    /// growth or medicine, otherwise 1.
+    /// The lowest version that knows every detail set here: 4 with a first's crops, 3 with a
+    /// first, 2 with a nappy, growth or medicine, otherwise 1.
     public var neededVersion: Int {
-        if milestone != nil { return 3 }
+        if let milestone { return milestone.crops.isEmpty ? 3 : 4 }
         return nappy == nil && growth == nil && medicine == nil ? 1 : 2
     }
 

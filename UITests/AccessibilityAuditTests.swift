@@ -94,20 +94,22 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
-    /// The Journal, with made-up firsts: the line, a first's page, the editor, the Firsts list and
-    /// History with firsts in it.
+    /// The Journal, with made-up firsts: the line, a first's page, the editor (empty, and with a
+    /// photo in its square), the Firsts list and History with firsts in it.
     func testJournal() {
         let firsts = ["-sampleFirsts", "YES"]
         for look in ["automatic", "alwaysNight"] {
             audit(launch(firsts + ["-startTab", "journal"], look: look), "journal \(look)")
             audit(launch(firsts + ["-openScreen", "firstPage"], look: look), "first's page \(look)")
             audit(launch(firsts + ["-openScreen", "addFirst"], look: look), "add a first \(look)")
+            audit(launch(firsts + ["-openScreen", "editFirst"], look: look), "edit a first \(look)")
             audit(launch(firsts + ["-openScreen", "firstsList"], look: look), "firsts list \(look)")
             audit(launch(firsts + ["-openScreen", "history"], look: look), "history with firsts \(look)")
         }
         audit(launch(firsts + ["-startTab", "journal"], largeText: true), "journal large text")
         audit(launch(firsts + ["-openScreen", "firstPage"], largeText: true), "first's page large text")
         audit(launch(firsts + ["-openScreen", "addFirst"], largeText: true), "add a first large text")
+        audit(launch(firsts + ["-openScreen", "editFirst"], largeText: true), "edit a first large text")
         report()
     }
 

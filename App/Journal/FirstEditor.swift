@@ -41,7 +41,10 @@ struct FirstEditor: View {
     @State private var picked: MediaStore.Added?
     /// A photo taken with the camera here: kept in Photos too, after Save (D20).
     @State private var takenImage: UIImage?
+    /// Where each photo sits in its square on the line (D39), by media ID.
+    @State private var crops: [String: MediaCrop]
     @State private var pickerItem: PhotosPickerItem?
+    @State private var choosingPhoto = false
     /// The photo being made ready: one at a time, and a newer choice (or Discard) wins.
     @State private var importTask: Task<Void, Never>?
     @State private var importToken = UUID()
@@ -68,6 +71,7 @@ struct FirstEditor: View {
             _note = State(initialValue: "")
             _when = State(initialValue: Date())
             _photoID = State(initialValue: nil)
+            _crops = State(initialValue: [:])
         case .edit(let id):
             let snapshot = AppModel.shared.store.data.events[id]?.snapshot
             original = snapshot
@@ -75,6 +79,7 @@ struct FirstEditor: View {
             _note = State(initialValue: snapshot?.payload?.note ?? "")
             _when = State(initialValue: snapshot?.event.startedAt ?? Date())
             _photoID = State(initialValue: snapshot?.payload?.milestone?.media.first)
+            _crops = State(initialValue: snapshot?.payload?.milestone?.crops ?? [:])
         }
     }
 
@@ -93,9 +98,15 @@ struct FirstEditor: View {
                 || HouseholdData.cleanNote(note) != original.payload?.note
                 || when != original.event.startedAt
                 || photoID != originalMedia.first
+                || Self.moved(crops) != Self.moved(original.payload?.milestone?.crops ?? [:])
         }
         return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !note.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || picked != nil || whenTouched
+    }
+
+    /// The crops that move a photo off its middle.
+    private static func moved(_ crops: [String: MediaCrop]) -> [String: MediaCrop] {
+        crops.filter { $0.value != .middle }
     }
 
     /// Why Save is off, if it is.
@@ -215,46 +226,43 @@ struct FirstEditor: View {
 
     private var photoSection: some View {
         Section {
-            HStack(spacing: 14) {
-                Group {
-                    if photoID == nil && !working {
-                        // An empty slot: a hole in the tile, in the page colour, with "+".
-                        Text("+")
-                            .font(.system(size: 26, weight: .semibold, design: .rounded))
-                            .foregroundStyle(Theme.textMuted)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(Theme.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .accessibilityHidden(true)
-                    } else {
-                        MediaPicture(id: photoID, cornerRadius: 14)
+            if let photoID {
+                // The cover in its square, as the Journal's line shows it; a drag moves the photo
+                // inside it (D39).
+                VStack(alignment: .leading, spacing: 10) {
+                    CropSquare(id: photoID, crop: Binding {
+                        crops[photoID] ?? .middle
+                    } set: {
+                        crops[photoID] = $0
+                    })
+                    .frame(maxWidth: 280)
+                    .overlay {
+                        if working { ProgressView().tint(Theme.textMuted) }
                     }
+                    photoButtons
                 }
-                .frame(width: 66, height: 66)
-                .overlay {
-                    if working { ProgressView().tint(Theme.textMuted) }
-                }
-                VStack(alignment: .leading, spacing: 8) {
-                    PhotosPicker(photoID == nil ? "Choose from Photos" : "Choose another", selection: $pickerItem,
-                                 matching: .images, photoLibrary: .shared())
-                        .feedText(.smallButton)
-                        .foregroundStyle(Theme.text)
-                        .frame(minHeight: 44)
-                    if CameraPicker.isAvailable {
-                        Button("Take a photo") { tapCamera() }
-                            .feedText(.smallButton)
-                            .foregroundStyle(Theme.text)
-                            .frame(minHeight: 44)
-                            .buttonStyle(.plain)
+                .padding(.vertical, 6)
+            } else {
+                HStack(spacing: 14) {
+                    Group {
+                        if working {
+                            Theme.background.clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        } else {
+                            // An empty slot: a hole in the tile, in the page colour, with "+".
+                            Text("+")
+                                .font(.system(size: 26, weight: .semibold, design: .rounded))
+                                .foregroundStyle(Theme.textMuted)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .background(Theme.background, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .accessibilityHidden(true)
+                        }
                     }
-                    if photoID != nil {
-                        Button("Take the photo out") { removePhoto() }
-                            .feedText(.smallButton)
-                            .foregroundStyle(Theme.textMuted)
-                            .frame(minHeight: 44)
-                            .buttonStyle(.plain)
+                    .frame(width: 66, height: 66)
+                    .overlay {
+                        if working { ProgressView().tint(Theme.textMuted) }
                     }
+                    photoButtons
                 }
-                .disabled(working)
             }
         } header: {
             header("Photo")
@@ -262,7 +270,7 @@ struct FirstEditor: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let pickProblem {
                     Text(pickProblem).feedText(.subheadline).foregroundStyle(Theme.text)
-                } else {
+                } else if photoID == nil {
                     Text("A photo isn't needed: a first can be saved without one.").foregroundStyle(Theme.textMuted)
                 }
                 if cameraOff, let settings = URL(string: UIApplication.openSettingsURLString) {
@@ -274,6 +282,20 @@ struct FirstEditor: View {
             }
         }
         .listRowBackground(Theme.surface)
+    }
+
+    private var photoButtons: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            PhotoButton(title: photoID == nil ? "Choose from Photos" : "Choose another") { choosingPhoto = true }
+            if CameraPicker.isAvailable {
+                PhotoButton(title: "Take a photo") { tapCamera() }
+            }
+            if photoID != nil {
+                PhotoButton(title: "Take the photo out", muted: true) { removePhoto() }
+            }
+        }
+        .disabled(working)
+        .photosPicker(isPresented: $choosingPhoto, selection: $pickerItem, matching: .images, photoLibrary: .shared())
     }
 
     private var whenSection: some View {
@@ -442,7 +464,7 @@ struct FirstEditor: View {
             // the queue keeps the photo and waits for its first (a day at most).
             queue(eventID: id, now: now)
             let added = store.change {
-                $0.addMilestone(id: id, babyID: babyID, title: title, note: note, media: media, at: at, by: me,
+                $0.addMilestone(id: id, babyID: babyID, title: title, note: note, media: media, crops: crops, at: at, by: me,
                                 timeZoneID: TimeZone.current.identifier, now: now)
             }
             guard added != nil else {
@@ -456,7 +478,8 @@ struct FirstEditor: View {
             guard let original else { return }
             queue(eventID: id, now: now)
             let saved = store.change {
-                $0.editMilestone(id, from: original, title: title, note: note, media: media, at: at, by: me, now: now)
+                $0.editMilestone(id, from: original, title: title, note: note, media: media, crops: crops, at: at, by: me,
+                                 now: now)
             }
             guard saved else {
                 if let picked { AppModel.shared.media.unqueue(picked.id) }
@@ -511,6 +534,115 @@ struct IdeaButton: View {
                 .frame(minHeight: 44)
                 .background(fill, in: Capsule())
                 .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// The cover in Add and Edit (design review D39): the photo in its square, as the Journal's line
+/// shows it, and a drag moves the photo inside it. A square photo shows whole and can't move.
+/// VoiceOver says which part shows, and its actions move the photo a step.
+struct CropSquare: View {
+    let id: String
+    @Binding var crop: MediaCrop
+
+    @Environment(\.look) private var look
+    @State private var loaded: (id: String, image: UIImage)?
+    @State private var dragStart: MediaCrop?
+    @State private var side: CGFloat = 0
+
+    var body: some View {
+        let image = loaded.flatMap { $0.id == id ? $0.image : nil }
+        let size = image?.size ?? .zero
+        let movable = size.width > 0 && abs(size.width - size.height) > 1
+        VStack(alignment: .leading, spacing: 8) {
+            Theme.background
+                .overlay {
+                    if let image {
+                        CroppedImage(image: image, crop: crop).modifier(NightDimmed(look: look))
+                    }
+                }
+                .aspectRatio(1, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .contentShape(Rectangle())
+                .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { side = $0 }
+                .gesture(DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        guard movable, side > 0 else { return }
+                        let start = dragStart ?? crop
+                        if dragStart == nil { dragStart = crop }
+                        crop = start.dragged(dx: value.translation.width, dy: value.translation.height,
+                                             width: size.width, height: size.height, box: side)
+                    }
+                    .onEnded { _ in dragStart = nil })
+                .accessibilityElement()
+                .accessibilityLabel("Photo in its square")
+                .accessibilityValue(movable ? Self.describe(crop, width: size.width, height: size.height) : "The whole photo")
+                .accessibilityHint(movable ? "Drag to choose what shows on the Journal." : "")
+                .accessibilityActions {
+                    if movable {
+                        if size.height > size.width {
+                            Button("Show more of the top") { step(dy: 1, size: size) }
+                            Button("Show more of the bottom") { step(dy: -1, size: size) }
+                        } else {
+                            Button("Show more of the left") { step(dx: 1, size: size) }
+                            Button("Show more of the right") { step(dx: -1, size: size) }
+                        }
+                    }
+                }
+            if movable {
+                Text("Drag the photo to choose what shows in its square on the Journal.")
+                    .feedText(.subheadline)
+                    .foregroundStyle(Theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .task(id: id) {
+            let image = await MediaPicture.load(id, full: true)
+            guard !Task.isCancelled else { return }
+            loaded = image.map { (id, $0) }
+        }
+    }
+
+    /// One VoiceOver step: a tenth of the square.
+    private func step(dx: Double = 0, dy: Double = 0, size: CGSize) {
+        let box = max(side, 100)
+        crop = crop.clamped(width: size.width, height: size.height)
+            .dragged(dx: dx * box / 10, dy: dy * box / 10, width: size.width, height: size.height, box: box)
+    }
+
+    /// Which part of the photo shows, in words: along the way it can move.
+    static func describe(_ crop: MediaCrop, width: Double, height: Double) -> String {
+        let tall = height > width
+        let side = min(width, height)
+        let half = side / (tall ? height : width) / 2
+        let at = (tall ? crop.clamped(width: width, height: height).y : crop.clamped(width: width, height: height).x)
+        let range = 1 - 2 * half
+        let part = range > 0 ? (at - half) / range : 0.5
+        let (start, end) = tall ? ("top", "bottom") : ("left", "right")
+        switch part {
+        case ..<0.05: return "The \(start)"
+        case ..<0.4: return "Nearer the \(start)"
+        case ...0.6: return "The middle"
+        case ...0.95: return "Nearer the \(end)"
+        default: return "The \(end)"
+        }
+    }
+}
+
+/// A button under the photo: the whole 44-point row takes the tap, not just its words.
+private struct PhotoButton: View {
+    let title: String
+    var muted = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .feedText(.smallButton)
+                .foregroundStyle(muted ? Theme.textMuted : Theme.text)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }

@@ -304,7 +304,7 @@ struct JournalView: View {
         let layout = large ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
             : AnyLayout(HStackLayout(alignment: .top, spacing: 10))
         return layout {
-            MediaPicture(id: media.first)
+            MediaPicture(id: media.first, crop: media.first.flatMap { details?.crops[$0] } ?? .middle)
                 .frame(width: large ? nil : 104, height: large ? nil : 104)
                 .frame(maxWidth: large ? .infinity : nil)
                 .aspectRatio(1, contentMode: .fit)
