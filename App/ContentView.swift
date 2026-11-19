@@ -229,6 +229,8 @@ struct DevScreen: View {
             EventEditor(mode: .newPump, me: me, babyID: babyID)
         case "addFirst":
             FirstEditor(mode: .new(title: UserDefaults.standard.string(forKey: "firstTitle")), me: me, babyID: babyID) { _ in }
+        case "firstsList":
+            NavigationStack { FirstsListView(me: me, babyID: babyID, onUndo: { _ in }) }
         case "firstPage":
             NavigationStack {
                 FirstPage(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", me: me, babyID: babyID,

@@ -13,11 +13,17 @@ struct JournalView: View {
     private let model = AppModel.shared
     @State private var adding: FirstEditor.Mode?
     @State private var undo: UndoAction?
+    @State private var settingBirthDate = false
+    /// "Not now" on the birth-date row hides it on this phone (design review D14).
+    @AppStorage("journal.birthDateRowHidden") private var birthDateRowHidden = false
 
     /// A first's page.
     struct Route: Hashable {
         let id: String
     }
+
+    /// The Firsts list, from the top bar (D7, D42).
+    struct FirstsListRoute: Hashable {}
 
     var body: some View {
         let data = model.store.data
@@ -31,6 +37,12 @@ struct JournalView: View {
                     .feedText(.title)
                     .accessibilityAddTraits(.isHeader)
                     .padding(.bottom, 12)
+                if birth == nil && !birthDateRowHidden {
+                    birthDateRow
+                }
+                if let notice = allowanceNotice {
+                    noticeRow(notice)
+                }
                 if firsts.isEmpty {
                     emptyLine(birth: birth, today: today)
                 } else {
@@ -50,6 +62,27 @@ struct JournalView: View {
         .navigationDestination(for: Route.self) { route in
             FirstPage(id: route.id, me: me, babyID: babyID, onUndo: { undo = $0 })
         }
+        .navigationDestination(for: FirstsListRoute.self) { _ in
+            FirstsListView(me: me, babyID: babyID, onUndo: { undo = $0 })
+        }
+        .toolbar {
+            // Each has a title and a symbol, so the folded Duo can move them into its side bar (D7).
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: FirstsListRoute()) {
+                    Label("Firsts list", systemImage: "list.bullet")
+                }
+                .tint(Theme.text)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Button { settingBirthDate = true } label: { Label("Birth date", systemImage: "birthday.cake") }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                }
+                .tint(Theme.text)
+            }
+        }
+        .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
         .sheet(item: $adding) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
                 undo = JournalUndo.action(for: outcome, me: me)
@@ -61,6 +94,56 @@ struct JournalView: View {
             try? await Task.sleep(for: .seconds(max(0, expires.timeIntervalSinceNow)))
             if !Task.isCancelled { undo = nil }
         }
+    }
+
+    // MARK: Rows above the line
+
+    /// No birth date yet (D14): a soft row, never a pop-up.
+    private var birthDateRow: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Add the birth date to see the baby's age on each first.")
+                .feedText(.body)
+            HStack(spacing: 10) {
+                Button("Add") { settingBirthDate = true }
+                    .feedText(.smallButton)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 44)
+                    .background(Theme.background, in: Capsule())
+                Button("Not now") { birthDateRowHidden = true }
+                    .feedText(.smallButton)
+                    .foregroundStyle(Theme.textMuted)
+                    .padding(.horizontal, 8)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Theme.text)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.bottom, 14)
+    }
+
+    /// The household photo allowance at 80% or full (D41): said here only, never on Home.
+    private var allowanceNotice: String? {
+        guard let used = model.media.tally?.bytesUsed else { return nil }
+        let limit = model.store.data.photoAllowance
+        switch AllowanceLevel(used: used, limit: limit) {
+        case .fine: return nil
+        case .nearlyFull:
+            return "Photos have used \(JournalText.bytes(used)) of the household's \(JournalText.bytes(limit)). You can raise it in Settings."
+        case .full:
+            return "The photo allowance is full: new photos stay on this iPhone, and the words still go. Raise it in Settings, or delete photos."
+        }
+    }
+
+    private func noticeRow(_ text: String) -> some View {
+        Text(text)
+            .feedText(.subheadline)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .padding(.bottom, 14)
     }
 
     // MARK: The line

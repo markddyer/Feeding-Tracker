@@ -10,6 +10,9 @@ struct HistoryView: View {
     private let model = AppModel.shared
     @State private var editing: EventEditor.Mode?
     @State private var careEditing: CareEditor.Mode?
+    /// A first being deleted from here: it asks first (outside review O9, design review D15).
+    @State private var deletingFirst: String?
+    @State private var undo: UndoAction?
     /// Small buttons at the top show one kind only (settled with round two, 17 Nov 2026).
     @AppStorage("history.filter") private var filterName = HistoryFilter.all.rawValue
 
@@ -66,6 +69,33 @@ struct HistoryView: View {
                 EventEditor(mode: mode, me: me, babyID: model.baby?.name ?? "")
             }
         }
+        .navigationDestination(for: JournalView.Route.self) { route in
+            if let me = model.me {
+                FirstPage(id: route.id, me: me, babyID: model.baby?.name ?? "", onUndo: { undo = $0 })
+            }
+        }
+        .confirmationDialog(JournalText.deleteQuestion, isPresented: Binding {
+            deletingFirst != nil
+        } set: {
+            if !$0 { deletingFirst = nil }
+        }, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { deleteFirst() }
+            Button("Keep it", role: .cancel) { deletingFirst = nil }
+        } message: {
+            Text(JournalText.deleteWarning)
+        }
+        .safeAreaInset(edge: .bottom) {
+            if let undo {
+                UndoBanner(action: undo) { self.undo = nil }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+        }
+        .task(id: undo?.expiresAt) {
+            guard let expires = undo?.expiresAt else { return }
+            try? await Task.sleep(for: .seconds(max(0, expires.timeIntervalSinceNow)))
+            if !Task.isCancelled { undo = nil }
+        }
         .sheet(item: $careEditing) { mode in
             if let me = model.me {
                 CareEditor(mode: mode, me: me, babyID: model.baby?.name ?? "")
@@ -101,7 +131,39 @@ struct HistoryView: View {
         .accessibilityLabel("Show")
     }
 
+    /// A first's delete from here, with its question; held for Undo like the Journal's.
+    private func deleteFirst() {
+        guard let id = deletingFirst, let me = model.me else { return }
+        deletingFirst = nil
+        let title = model.store.data.events[id]?.snapshot.payload?.milestone?.title ?? "First"
+        let deleted = model.store.change { $0.deleteMilestone(id, by: me, now: Date()) }
+        if deleted { undo = JournalUndo.action(for: .deleted(id: id, title: title), me: me) }
+    }
+
+    @ViewBuilder
     private func row(_ stored: StoredEvent, zone: TimeZone, copy: String?) -> some View {
+        if stored.event.kind == .milestone {
+            firstRow(stored, zone: zone)
+        } else {
+            entryRow(stored, zone: zone, copy: copy)
+        }
+    }
+
+    /// A first: its row opens its page; a swipe deletes it after asking.
+    private func firstRow(_ stored: StoredEvent, zone: TimeZone) -> some View {
+        // The link sits under the row, so the row has no ">" of its own, like every other row.
+        FirstRow(snapshot: stored.snapshot, zone: zone, loggedBy: RowPerson(stored.event.loggedBy))
+            .background {
+                NavigationLink(value: JournalView.Route(id: stored.event.id)) { EmptyView() }.opacity(0)
+            }
+            .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens it. Swipe left to delete.")
+        .swipeActions(allowsFullSwipe: false) {
+            Button("Delete", role: .destructive) { deletingFirst = stored.event.id }
+        }
+    }
+
+    private func entryRow(_ stored: StoredEvent, zone: TimeZone, copy: String?) -> some View {
         let snapshot = stored.snapshot
         let event = snapshot.event
         let isFeed = event.kind == .feed || event.kind == .pump
@@ -138,7 +200,7 @@ struct HistoryView: View {
 
 /// Which kinds History shows.
 enum HistoryFilter: String, CaseIterable {
-    case all, feeds, sleep, nappies, medicine, growth
+    case all, feeds, sleep, nappies, medicine, growth, firsts
 
     var title: String {
         switch self {
@@ -148,17 +210,19 @@ enum HistoryFilter: String, CaseIterable {
         case .nappies: "Nappies"
         case .medicine: "Medicine"
         case .growth: "Growth"
+        case .firsts: "Firsts"
         }
     }
 
     var kinds: Set<EventKind> {
         switch self {
-        case .all: [.feed, .pump, .sleep, .nappy, .medicine, .growth]
+        case .all: [.feed, .pump, .sleep, .nappy, .medicine, .growth, .milestone]
         case .feeds: [.feed, .pump]
         case .sleep: [.sleep]
         case .nappies: [.nappy]
         case .medicine: [.medicine]
         case .growth: [.growth]
+        case .firsts: [.milestone]
         }
     }
 }

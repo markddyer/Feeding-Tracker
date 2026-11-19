@@ -697,6 +697,20 @@ struct MilestoneDateTests {
         #expect(data.events[id]?.event.startedAt == t0)
     }
 
+    @Test func theBirthDateIsSetOnTheBabysRecordKeepingTheName() throws {
+        var data = try withBirthDate("2026-11-10")
+        data.addMilestone(id: "smile", babyID: baby, title: "First smile", at: at(2026, 11, 15, 9, 0), by: parentA,
+                          timeZoneID: londonID, now: t0)
+        let refused = data.setBirthDate(date("2026-11-16"), babyID: baby, now: t0)
+        #expect(refused?.id == "smile")
+        #expect(data.birthDate(babyID: baby) == date("2026-11-10"))
+        #expect(data.setBirthDate(date("2026-11-08"), babyID: baby, now: t0) == nil)
+        #expect(data.birthDate(babyID: baby) == date("2026-11-08"))
+        let record = try #require(data.plainRecord(.baby, baby))
+        #expect(PayloadCoder.decode(BabyPayload.self, from: record.payload)?.name == "Baby")
+        #expect(data.plainRecordsToUpload().contains { $0.record.key == record.key })
+    }
+
     /// The birth date can't be set after a first; the refusal names the earliest one in the way.
     @Test func aBirthDateAfterAFirstNamesIt() throws {
         var data = HouseholdData()

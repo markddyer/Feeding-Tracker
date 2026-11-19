@@ -132,6 +132,23 @@ extension HouseholdData {
 
     // MARK: Changes
 
+    /// Sets or corrects the baby's birth date, on both phones (the Baby record). Refused while a
+    /// first is dated before it: that first is returned, so the refusal can name it. Every age is
+    /// worked out again from it, as none is stored.
+    @discardableResult
+    public mutating func setBirthDate(_ birthDate: PlainDate, babyID: String, now: Date) -> EventSnapshot? {
+        if let blocking = firstBefore(birthDate: birthDate, babyID: babyID) { return blocking }
+        guard let record = plainRecord(.baby, babyID) else { return nil }
+        var baby = PayloadCoder.decode(BabyPayload.self, from: record.payload) ?? BabyPayload(name: "Baby")
+        guard baby.birthDate != birthDate else { return nil }
+        baby.birthDate = birthDate
+        var changed = record
+        changed.payload = try? PayloadCoder.encode(baby)
+        changed.modifiedAt = now
+        put(changed)
+        return nil
+    }
+
     /// Adds a first at `at`, with its title, note and photos and videos (by ID), cut to the limits.
     /// Nil, and nothing saved, when the title is empty, the date is refused, or it has more than
     /// `MilestoneLimits.mediaItems` photos and videos.

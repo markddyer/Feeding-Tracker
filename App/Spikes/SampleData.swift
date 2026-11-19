@@ -200,9 +200,11 @@ enum SampleData {
             drawPicture(face: true, into: files, id: laugh)
             drawPicture(face: false, into: files, id: smile)
         }
+        // `-sampleNoBirthDate YES`: the same firsts with no birth date (months, no ages).
+        let birthDate: PlainDate? = UserDefaults.standard.bool(forKey: "sampleNoBirthDate") ? nil : born
         store.change { data in
             data.put(PlainRecord(type: .baby, name: "sample-baby", modifiedAt: now,
-                                 payload: try? PayloadCoder.encode(BabyPayload(name: "Baby", birthDate: born))))
+                                 payload: try? PayloadCoder.encode(BabyPayload(name: "Baby", birthDate: birthDate))))
             data.addMilestone(id: "sample-first-cuddle", babyID: "sample-baby", title: "First cuddle", at: day(0, 15),
                               by: me, timeZoneID: zone.identifier, now: now)
             data.addMilestone(id: "sample-first-trip", babyID: "sample-baby", title: "First trip out", media: ["sample-photo-coming"],

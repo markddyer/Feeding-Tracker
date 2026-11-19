@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = FeedingStyle.breastAndBottle.rawValue
     @AppStorage(LookSetting.storageKey) private var lookSetting = LookSetting.automatic.rawValue
     @State private var colourTaps = 0
+    @State private var settingBirthDate = false
 
     var body: some View {
         let settings = model.store.data.householdSettings
@@ -106,6 +107,8 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.surface)
 
+            journalSection
+
             Section {
                 Text("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
                     .feedText(.subheadline)
@@ -122,6 +125,82 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .sensoryFeedback(.selection, trigger: colourTaps)
+    }
+
+    /// Settings › Journal (design review D41), for both phones: the birth date, the household photo
+    /// allowance (how much is used, and a change of limit), and whether photos sharing is working.
+    @ViewBuilder
+    private var journalSection: some View {
+        let data = model.store.data
+        let babyID = model.baby?.name ?? ""
+        let today = PlainDate(Date(), in: data.householdSettings.timeZone)
+        let limit = data.photoAllowance
+        let used = model.media.tally?.bytesUsed
+        Section {
+            Button { settingBirthDate = true } label: {
+                HStack {
+                    Text("Birth date")
+                    Spacer(minLength: 8)
+                    Text(data.birthDate(babyID: babyID).map { JournalText.date($0, today: today) } ?? "Not set")
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+            .foregroundStyle(Theme.text)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Photo allowance")
+                    Spacer(minLength: 8)
+                    Text(used.map { "\(JournalText.bytes($0)) of \(JournalText.bytes(limit))" } ?? JournalText.bytes(limit))
+                        .feedText(.subheadline)
+                        .foregroundStyle(Theme.textMuted)
+                }
+                if let used {
+                    ProgressView(value: Double(min(used, limit)), total: Double(max(limit, 1)))
+                        .tint(Theme.textMuted)
+                        .accessibilityHidden(true)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            Picker("Change the allowance", selection: Binding {
+                limit
+            } set: { bytes in
+                model.store.change { $0.setPhotoAllowance(bytes, now: Date()) }
+            }) {
+                ForEach(Self.allowances(including: limit), id: \.self) { Text(JournalText.bytes($0)).tag($0) }
+            }
+            .tint(Theme.textMuted)
+            HStack {
+                Text("Photos sharing")
+                Spacer(minLength: 8)
+                Text(photosSharing).foregroundStyle(Theme.textMuted)
+            }
+            .accessibilityElement(children: .combine)
+        } header: {
+            header("Journal · both phones")
+        } footer: {
+            Text("Photos and videos of firsts use the iCloud storage of the parent who shares the household. Feeds always come first.")
+                .foregroundStyle(Theme.textMuted)
+        }
+        .listRowBackground(Theme.surface)
+        .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
+    }
+
+    /// 1, 2, 5 or 10 GB, and the household's own if it is another.
+    static func allowances(including current: Int64) -> [Int64] {
+        let steps: [Int64] = [1, 2, 5, 10].map { $0 * 1_000_000_000 }
+        return steps.contains(current) ? steps : (steps + [current]).sorted()
+    }
+
+    /// "On", "Waiting", or "Removing access to photos" (outside voice OE7).
+    private var photosSharing: String {
+        let media = model.media
+        if media.removingAccess { return "Removing access to photos" }
+        switch media.shareState {
+        case .ready: return media.otherParentWaiting ? "Waiting for the other phone" : "On"
+        case .waiting: return "Waiting"
+        case .settingUp: return "Setting up"
+        case .off: return AppConfig.photosEnabled ? "Off" : "Not in this app yet"
+        }
     }
 
     /// Six colours, each showing this parent's initial. The other parent's colour shows their

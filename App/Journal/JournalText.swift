@@ -72,6 +72,11 @@ enum JournalText {
         return "\(used.formatted()) / \(limit.formatted())"
     }
 
+    /// "312 MB", "1 GB", as iPhone counts storage.
+    static func bytes(_ count: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: count, countStyle: .file)
+    }
+
     /// What a photo picked from the phone couldn't do.
     static func refusal(_ refusal: MediaStore.Refusal) -> String {
         switch refusal {
