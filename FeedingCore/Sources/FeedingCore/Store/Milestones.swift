@@ -284,6 +284,9 @@ extension HouseholdData {
         if title != before.title { milestone.title = title }
         if let crops {
             for item in Set(crops.keys).union(before.crops.keys) where crops[item] != before.crops[item] {
+                // Never a place for a photo this first doesn't hold, such as one picked and then
+                // replaced in the editor (Codex review of the crop work).
+                if crops[item] != nil, !milestone.media.contains(item) { continue }
                 milestone.crops[item] = crops[item]
             }
         }

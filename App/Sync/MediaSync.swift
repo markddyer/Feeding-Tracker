@@ -160,6 +160,8 @@ final class MediaSync {
     private let household: HouseholdSync
     private let files: MediaFiles?
     private let defaults: UserDefaults
+    /// The upload queue's own file (task T17): written at once and checked, as Save counts on it.
+    private let queueFile: URL?
     @ObservationIgnored private var running: Task<Void, Never>?
     @ObservationIgnored private var runAgain = false
     @ObservationIgnored private var enginesFetching = 0
@@ -171,28 +173,43 @@ final class MediaSync {
     /// The request in flight, so a fetch starting can stop a download at once.
     @ObservationIgnored private var inFlight: (isDownload: Bool, cancel: () -> Void)?
 
-    init(store: HouseholdStore, household: HouseholdSync, files: MediaFiles?, defaults: UserDefaults) {
+    init(store: HouseholdStore, household: HouseholdSync, files: MediaFiles?, defaults: UserDefaults, queueFile: URL?) {
         self.store = store
         self.household = household
         self.files = files
         self.defaults = defaults
-        uploads = defaults.data(forKey: Keys.uploads).flatMap { try? JSONDecoder().decode([MediaUpload].self, from: $0) } ?? []
+        self.queueFile = queueFile
+        if let queueFile, let saved = try? Data(contentsOf: queueFile),
+           let loaded = try? JSONDecoder().decode([MediaUpload].self, from: saved) {
+            uploads = loaded
+        } else {
+            // Builds before 19 Nov 2026 kept the queue in the app's settings, which reach the disk
+            // a moment later (Codex review of the crop and safety work): read once, then the file.
+            uploads = defaults.data(forKey: Keys.uploads).flatMap { try? JSONDecoder().decode([MediaUpload].self, from: $0) } ?? []
+        }
         // A refusal is tried again once per launch.
         for index in uploads.indices where uploads[index].pause == .refused { uploads[index].pause = nil }
     }
 
     // MARK: Calls from the rest of the app
 
-    /// Queues an item whose file and thumbnail `MediaStore` has put in `MediaFiles`.
-    func add(_ upload: MediaUpload) {
-        guard !uploads.contains(where: { $0.id == upload.id }) else { return }
+    /// Queues an item whose file and thumbnail `MediaStore` has put in `MediaFiles`. False, and
+    /// nothing queued, when the queue couldn't be written to this phone: Save then stops before
+    /// the first is saved, so a first never names a photo that isn't queued (task T17).
+    @discardableResult
+    func add(_ upload: MediaUpload) -> Bool {
+        guard !uploads.contains(where: { $0.id == upload.id }) else { return true }
         var upload = upload
         if upload.binding == nil, let zone = photosZone, let me = household.memberID?.rawValue {
             upload.binding = Self.binding(me: me, zone: zone)
         }
         uploads.append(upload)
-        saveUploads()
+        guard saveUploads() else {
+            uploads.removeAll { $0.id == upload.id }
+            return false
+        }
         kick()
+        return true
     }
 
     /// Forgets an item that was never sent (its first's add was undone): off the queue, and its
@@ -588,16 +605,28 @@ final class MediaSync {
     /// change), and names it. One taken out is dropped. One whose first isn't here waits, as the
     /// household file may be filling again from iCloud; after a day with the file whole, it was an
     /// add that was undone, and it is dropped.
-    private enum Readiness { case ready, wait, drop }
+    /// This is also what keeps a photo safe if the app stops between Save's two writes (task T17):
+    /// the queue is written before the first, so a queued photo with no first yet waits, and a
+    /// first never names a photo that isn't queued.
+    enum Readiness { case ready, wait, drop }
 
     private func readiness(_ item: MediaUpload, now: Date = Date()) -> Readiness {
-        guard let stored = store.data.events[item.eventID], let first = stored.snapshot.payload?.milestone else {
-            let undone = !store.data.isWaitingForICloud(now: now) && now.timeIntervalSince(item.queuedAt) > 86_400
+        Self.readiness(item, stored: store.data.events[item.eventID], waitingForICloud: store.data.isWaitingForICloud(now: now),
+                       now: now)
+    }
+
+    nonisolated static func readiness(_ item: MediaUpload, stored: StoredEvent?, waitingForICloud: Bool, now: Date) -> Readiness {
+        guard let stored, let first = stored.snapshot.payload?.milestone else {
+            let undone = !waitingForICloud && now.timeIntervalSince(item.queuedAt) > 86_400
             return undone ? .drop : .wait
         }
         if let until = stored.uploadNotBefore, until > now { return .wait }
         if first.removedMedia.contains(item.id) { return .drop }
-        return first.media.contains(item.id) ? .ready : .wait
+        if first.media.contains(item.id) { return .ready }
+        // An edit that never reached the file (the app stopped between Save's two writes): a day
+        // later, with the file whole, it isn't coming.
+        let stale = !waitingForICloud && now.timeIntervalSince(item.queuedAt) > 86_400
+        return stale ? .drop : .wait
     }
 
     private func sendUploads(_ zone: PhotosZone, files: MediaFiles, binding: String) async throws {
@@ -987,8 +1016,21 @@ final class MediaSync {
         static let account = "mediaAccount"
     }
 
-    private func saveUploads() {
-        defaults.set(try? JSONEncoder().encode(uploads), forKey: Keys.uploads)
+    @discardableResult
+    private func saveUploads() -> Bool {
+        guard let encoded = try? JSONEncoder().encode(uploads) else { return false }
+        guard let queueFile else {
+            defaults.set(encoded, forKey: Keys.uploads)
+            return true
+        }
+        do {
+            try encoded.write(to: queueFile, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            SyncLog.add("media: couldn't save the queue: \(type(of: error))")
+            return false
+        }
+        if defaults.object(forKey: Keys.uploads) != nil { defaults.removeObject(forKey: Keys.uploads) }
+        return true
     }
 
     private var savedIndex: [String: IndexEntry] {

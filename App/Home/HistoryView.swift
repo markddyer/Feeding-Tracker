@@ -12,6 +12,8 @@ struct HistoryView: View {
     @State private var careEditing: CareEditor.Mode?
     /// A first being deleted from here: it asks first (outside review O9, design review D15).
     @State private var deletingFirst: String?
+    /// A first's delete that couldn't be written to this phone (task T17).
+    @State private var deleteProblem: String?
     @State private var undo: UndoAction?
     /// Small buttons at the top show one kind only (settled with round two, 17 Nov 2026).
     @AppStorage("history.filter") private var filterName = HistoryFilter.all.rawValue
@@ -23,12 +25,8 @@ struct HistoryView: View {
         // first says so (the user's choice, 15 Nov 2026).
         let pairs = data.duplicatePairs(babyID: model.baby?.name ?? "")
         let copyOf = Dictionary(pairs.map { ($0.kept, $0.duplicate) }, uniquingKeysWith: { first, _ in first })
-        let hidden = Set(pairs.map(\.duplicate))
         let filter = HistoryFilter(rawValue: filterName) ?? .all
-        let events = data.events.values
-            .filter { filter.kinds.contains($0.event.kind) && $0.event.deletedAt == nil }
-            .filter { !hidden.contains($0.event.id) }
-            .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
+        let events = filter.entries(in: data, hidden: Set(pairs.map(\.duplicate)))
         let days = Dictionary(grouping: events) { PlainDate($0.event.startedAt, in: zone) }
         let today = PlainDate(Date(), in: zone)
         List {
@@ -83,6 +81,15 @@ struct HistoryView: View {
             Button("Keep it", role: .cancel) { deletingFirst = nil }
         } message: {
             Text(JournalText.deleteWarning)
+        }
+        .alert("Not deleted", isPresented: Binding {
+            deleteProblem != nil
+        } set: {
+            if !$0 { deleteProblem = nil }
+        }) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(deleteProblem ?? "")
         }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 8) {
@@ -140,7 +147,12 @@ struct HistoryView: View {
         guard let id = deletingFirst, let me = model.me else { return }
         deletingFirst = nil
         let title = model.store.data.events[id]?.snapshot.payload?.milestone?.title ?? "First"
-        let deleted = model.store.change { $0.deleteMilestone(id, by: me, now: Date()) }
+        // Checked, as in the Journal: a delete this phone couldn't write isn't shown or sent.
+        let (deleted, onPhone) = model.store.changeChecked { $0.deleteMilestone(id, by: me, now: Date()) }
+        guard onPhone else {
+            deleteProblem = FirstEditor.notOnPhone
+            return
+        }
         if deleted { UndoCenter.shared.show(JournalUndo.action(for: .deleted(id: id, title: title), me: me)) }
     }
 
@@ -228,6 +240,14 @@ enum HistoryFilter: String, CaseIterable {
         case .growth: [.growth]
         case .firsts: [.milestone]
         }
+    }
+
+    /// What History shows with this filter, newest first: the entries of its kinds that aren't
+    /// deleted, with a feed logged on both phones shown once (`hidden`: each pair's copy).
+    func entries(in data: HouseholdData, hidden: Set<String>) -> [StoredEvent] {
+        data.events.values
+            .filter { kinds.contains($0.event.kind) && $0.event.deletedAt == nil && !hidden.contains($0.event.id) }
+            .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
     }
 }
 

@@ -547,3 +547,49 @@ struct FeedsBackTests {
         #expect(refilled([feed(feedStart)]).hasFeedsBack(plannedFrom: [:], now: feedStart + 600))
     }
 }
+
+/// Eng D6 (task T11): what the journal must leave as it was. A delete of a feed, a pumping
+/// session, a sleep, a nappy, a growth entry or a medicine goes to iCloud at once; only a first's
+/// delete waits for its 10-second Undo.
+@Suite("Kept as before: deletes")
+struct DeletesKeptAsBeforeTests {
+    let start = at(2026, 11, 19, 9, 0)
+
+    /// Every kind, added and already in iCloud.
+    func oneOfEach() -> (data: HouseholdData, ids: [EventKind: String]) {
+        var data = HouseholdData()
+        var ids: [EventKind: String] = [:]
+        ids[.feed] = data.startFeed(babyID: baby, side: .left, by: parentA, timeZoneID: "Europe/London", now: start)
+        ids[.pump] = data.add(kind: .pump, babyID: baby, startedAt: start, payload: EventPayload(pump: PumpDetails(side: .both)),
+                              by: parentA, timeZoneID: "Europe/London", now: start)
+        ids[.sleep] = data.startSleep(babyID: baby, startedAt: start, by: parentA, timeZoneID: "Europe/London", now: start)
+        ids[.nappy] = data.addNappy(babyID: baby, wee: true, poo: false, at: start, by: parentA,
+                                    timeZoneID: "Europe/London", now: start)
+        ids[.growth] = data.addGrowth(babyID: baby, GrowthDetails(weightGrams: 4_200), at: start, by: parentA,
+                                      timeZoneID: "Europe/London", now: start)
+        ids[.medicine] = data.addMedicine(babyID: baby, MedicineDetails(name: "Vitamin D"), at: start, by: parentA,
+                                          timeZoneID: "Europe/London", now: start)
+        ids[.milestone] = data.addMilestone(babyID: baby, title: "First smile", media: ["m1"], at: start, by: parentA,
+                                            timeZoneID: "Europe/London", now: start)
+        for stored in data.eventsToUpload(now: .distantFuture) {
+            data.didUploadEvent(stored.event.id, sentRevision: stored.localRevision, systemFields: Data([1]),
+                                serverCreatedAt: stored.event.createdAt)
+        }
+        return (data, ids)
+    }
+
+    @Test func everyDeleteButAFirstsIsSentAtOnce() throws {
+        var (data, ids) = oneOfEach()
+        #expect(ids.count == 7)
+        #expect(data.eventsToUpload(now: .distantFuture).isEmpty)
+        let deleteAt = start.addingTimeInterval(3_600)
+        for (_, id) in ids {
+            let deleted = data.delete(id, by: parentA, now: deleteAt)
+            #expect(deleted)
+        }
+        let waiting = Set(data.eventsToUpload(now: deleteAt).map(\.event.kind))
+        #expect(waiting == [.feed, .pump, .sleep, .nappy, .growth, .medicine])
+        let afterUndo = Set(data.eventsToUpload(now: deleteAt.addingTimeInterval(HouseholdData.undoWindow + 0.1)).map(\.event.kind))
+        #expect(afterUndo == [.feed, .pump, .sleep, .nappy, .growth, .medicine, .milestone])
+    }
+}

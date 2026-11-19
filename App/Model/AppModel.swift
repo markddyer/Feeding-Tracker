@@ -48,7 +48,9 @@ final class AppModel {
         store = HouseholdStore()
         sync = HouseholdSync(store: store)
         let defaults = UserDefaults(suiteName: AppConfig.appGroupID) ?? .standard
-        media = MediaSync(store: store, household: sync, files: MediaFiles.appGroup(), defaults: defaults)
+        let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConfig.appGroupID)
+        media = MediaSync(store: store, household: sync, files: MediaFiles.appGroup(), defaults: defaults,
+                          queueFile: group?.appendingPathComponent("media-uploads.json"))
         reconciler = Reconciler(store: store, sync: sync, defaults: defaults)
         // Photos move only when the household's own sync lets them: a fetch running stops a
         // download, and a send or fetch ending lets them go on (eng D3, D9).

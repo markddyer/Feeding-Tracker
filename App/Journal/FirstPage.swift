@@ -108,34 +108,46 @@ private struct PageBar: ViewModifier {
     }
 }
 
-/// The Undo bar after Save, Delete or taking a photo out (design review D15).
+/// The Undo bar after Save, Delete or taking a photo out (design review D15). An Undo is saved
+/// with the checked write (task T17): if this phone can't write it, nothing changes, no photo is
+/// removed, and the bar says so with Undo to try again while the hold lasts.
 enum JournalUndo {
     @MainActor
     static func action(for outcome: FirstEditor.Outcome, me: MemberID) -> UndoAction? {
         let model = AppModel.shared
         switch outcome {
         case .added(let id, let title, let photo):
-            return UndoAction(message: JournalText.added(title)) {
-                let neverSent = model.store.change { data -> Bool in
+            return checked(JournalText.added(title)) {
+                let (neverSent, onPhone) = model.store.changeChecked { data -> Bool in
                     if data.undoAdd(id, now: Date()) { return true }
                     data.deleteMilestone(id, by: me, now: Date())
                     return false
                 }
-                // A first that never left the phone takes its photo with it. One already sent
-                // is deleted instead, and its photo goes by the delete's own rules.
-                if neverSent, let photo { model.media.forget(photo) }
+                // A first that never left the phone takes its photo with it, once that is saved.
+                // One already sent is deleted instead, and its photo goes by the delete's rules.
+                if onPhone, neverSent, let photo { model.media.forget(photo) }
+                return onPhone
             }
         case .deleted(let id, let title):
-            return UndoAction(message: JournalText.deleted(title)) {
-                guard model.sync.mayUndo(id) else { return }
-                model.store.change { $0.undoHeld(id, by: me, now: Date()) }
+            return checked(JournalText.deleted(title)) {
+                guard model.sync.mayUndo(id) else { return true }
+                return model.store.changeChecked { $0.undoHeld(id, by: me, now: Date()) }.saved
             }
         case .saved(let id, let photoRemoved):
             guard photoRemoved else { return nil }
-            return UndoAction(message: JournalText.photoRemoved) {
-                guard model.sync.mayUndo(id) else { return }
-                model.store.change { $0.undoHeld(id, by: me, now: Date()) }
+            return checked(JournalText.photoRemoved) {
+                guard model.sync.mayUndo(id) else { return true }
+                return model.store.changeChecked { $0.undoHeld(id, by: me, now: Date()) }.saved
             }
+        }
+    }
+
+    /// An Undo that, if it couldn't be saved on this phone, shows a bar to try again.
+    @MainActor
+    private static func checked(_ message: String, _ undo: @escaping @MainActor () -> Bool) -> UndoAction {
+        UndoAction(message: message) {
+            guard !undo() else { return }
+            UndoCenter.shared.show(checked("Couldn't undo on this phone. Try again", undo))
         }
     }
 }

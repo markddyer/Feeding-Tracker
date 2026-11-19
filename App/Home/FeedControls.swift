@@ -3,6 +3,8 @@ import SwiftUI
 
 /// Something the last tap did that Undo can take back, for 10 seconds.
 struct UndoAction {
+    /// Which bar this is, so closing it never closes a newer one shown by its own Undo.
+    let id = UUID()
     let message: String
     let expiresAt: Date
     let perform: @MainActor () -> Void

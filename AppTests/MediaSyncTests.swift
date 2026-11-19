@@ -50,12 +50,12 @@ struct MediaSyncTests {
         let household = HouseholdSync(store: store)
         let item = MediaUpload(id: "media-1", eventID: "event-1", byteSize: 2_345_678, payload: Data([1, 2]),
                                queuedAt: Date(timeIntervalSince1970: 1_794_650_000), pause: nil, binding: "_parentA|__defaultOwner__")
-        let first = MediaSync(store: store, household: household, files: nil, defaults: defaults)
+        let first = MediaSync(store: store, household: household, files: nil, defaults: defaults, queueFile: nil)
         first.add(item)
         first.add(MediaUpload(id: "media-2", eventID: "event-1", byteSize: 10, payload: nil, queuedAt: item.queuedAt,
                               pause: .refused, binding: "_parentA|__defaultOwner__"))
         first.stop()
-        let again = MediaSync(store: store, household: household, files: nil, defaults: defaults)
+        let again = MediaSync(store: store, household: household, files: nil, defaults: defaults, queueFile: nil)
         #expect(again.uploads.map(\.id) == ["media-1", "media-2"])
         #expect(again.uploads.first == item)
         #expect(again.uploads.last?.pause == nil)

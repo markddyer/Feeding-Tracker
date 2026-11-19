@@ -5,6 +5,13 @@ import XCTest
 /// `-only-testing:FeedingDevUITests/CropFlowTests`.
 @MainActor
 final class CropFlowTests: XCTestCase {
+    /// These tests change the app's data: never on a real phone, where it is a family's own.
+    override func setUpWithError() throws {
+        #if !targetEnvironment(simulator)
+        throw XCTSkip("Simulator only: this test deletes and changes entries.")
+        #endif
+    }
+
     private func launch(fresh: Bool) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-sampleData", "YES", "-sampleDataFresh", fresh ? "YES" : "NO", "-sampleFirsts", "YES",

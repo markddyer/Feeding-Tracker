@@ -178,6 +178,16 @@ struct FirstEditor: View {
                 CameraPicker { image in startImport { try await makeCopy(ofTaken: image) } }
                     .ignoresSafeArea()
             }
+            // A Save or Delete that didn't happen says so where it can't be missed; the form stays.
+            .alert("Not saved", isPresented: Binding {
+                saveProblem != nil
+            } set: {
+                if !$0 { saveProblem = nil }
+            }) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(saveProblem ?? "")
+            }
             .confirmationDialog(JournalText.deleteQuestion, isPresented: $confirmingDelete, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) { delete() }
                 Button("Keep it", role: .cancel) {}
@@ -313,8 +323,8 @@ struct FirstEditor: View {
         } header: {
             header("When")
         } footer: {
-            if let shown = saveProblem ?? dateProblem {
-                Text(shown).feedText(.subheadline).foregroundStyle(Theme.text)
+            if let dateProblem {
+                Text(dateProblem).feedText(.subheadline).foregroundStyle(Theme.text)
             }
         }
         .listRowBackground(Theme.surface)
@@ -406,7 +416,11 @@ struct FirstEditor: View {
     /// The new photo, its camera picture (if taken here) and its suggested date go in together;
     /// the one before goes. A date the parent set stays.
     private func use(_ added: MediaStore.Added, taken: UIImage?) {
-        if let previous = picked { AppModel.shared.media.forget(previous.id) }
+        if let previous = picked {
+            // The photo replaced goes, and its place in the square with it.
+            crops[previous.id] = nil
+            AppModel.shared.media.forget(previous.id)
+        }
         picked = added
         photoID = added.id
         takenImage = taken
@@ -421,7 +435,10 @@ struct FirstEditor: View {
     }
 
     private func removePhoto() {
-        if let picked { AppModel.shared.media.forget(picked.id) }
+        if let picked {
+            crops[picked.id] = nil
+            AppModel.shared.media.forget(picked.id)
+        }
         picked = nil
         photoID = nil
         takenImage = nil
@@ -457,34 +474,48 @@ struct FirstEditor: View {
         // Step 1 changes only the cover: the rest of the list stays as it is.
         let rest = Array(originalMedia.dropFirst())
         let media = photoID == originalMedia.first ? originalMedia : (photoID.map { [$0] } ?? []) + rest
+        // Only the places of photos this first will hold.
+        let crops = crops.filter { media.contains($0.key) }
         switch mode {
         case .new:
             let id = UUID().uuidString
             // The photo is queued first, then the first saved: if the app stops between the two,
-            // the queue keeps the photo and waits for its first (a day at most).
-            queue(eventID: id, now: now)
-            let added = store.change {
+            // the queue keeps the photo and waits for its first (a day at most). A queue that
+            // can't be written stops Save here, so no first names a photo that isn't queued.
+            guard queue(eventID: id, now: now) else {
+                saveProblem = Self.notOnPhone
+                return
+            }
+            // Written to this phone before it counts as saved (task T17).
+            let (added, onPhone) = store.changeChecked {
                 $0.addMilestone(id: id, babyID: babyID, title: title, note: note, media: media, crops: crops, at: at, by: me,
                                 timeZoneID: TimeZone.current.identifier, now: now)
             }
-            guard added != nil else {
+            guard added != nil, onPhone else {
                 if let picked { AppModel.shared.media.unqueue(picked.id) }
-                saveProblem = dateProblem ?? "This first couldn't be saved. Check the date."
+                saveProblem = onPhone ? (dateProblem ?? "This first couldn't be saved. Check the date.") : Self.notOnPhone
                 return
             }
             finishSave()
             onDone(.added(id: id, title: HouseholdData.cleanTitle(title), photo: picked?.id))
         case .edit(let id):
             guard let original else { return }
-            queue(eventID: id, now: now)
-            let saved = store.change {
+            guard queue(eventID: id, now: now) else {
+                saveProblem = Self.notOnPhone
+                return
+            }
+            let (saved, onPhone) = store.changeChecked {
                 $0.editMilestone(id, from: original, title: title, note: note, media: media, crops: crops, at: at, by: me,
                                  now: now)
             }
-            guard saved else {
+            guard saved, onPhone else {
                 if let picked { AppModel.shared.media.unqueue(picked.id) }
-                saveProblem = data.events[id]?.event.deletedAt != nil
-                    ? "This first was deleted on the other phone." : (dateProblem ?? "This first couldn't be saved.")
+                if !onPhone {
+                    saveProblem = Self.notOnPhone
+                } else {
+                    saveProblem = data.events[id]?.event.deletedAt != nil
+                        ? "This first was deleted on the other phone." : (dateProblem ?? "This first couldn't be saved.")
+                }
                 return
             }
             finishSave()
@@ -493,11 +524,16 @@ struct FirstEditor: View {
         dismiss()
     }
 
-    /// A photo picked here goes into the upload queue, behind the feeds.
-    private func queue(eventID: String, now: Date) {
-        guard let picked else { return }
-        AppModel.shared.media.add(MediaUpload(id: picked.id, eventID: eventID, byteSize: picked.byteSize,
-                                              payload: try? PayloadCoder.encode(picked.details), queuedAt: now, pause: nil))
+    /// The app's words when a change couldn't be written to this phone.
+    static let notOnPhone = "Couldn't save on this phone. Nothing was changed. Try again, or free up some space."
+
+    /// A photo picked here goes into the upload queue, behind the feeds. False when the queue
+    /// couldn't be written to this phone.
+    private func queue(eventID: String, now: Date) -> Bool {
+        guard let picked else { return true }
+        return AppModel.shared.media.add(MediaUpload(id: picked.id, eventID: eventID, byteSize: picked.byteSize,
+                                                     payload: try? PayloadCoder.encode(picked.details), queuedAt: now,
+                                                     pause: nil))
     }
 
     /// Saved: the photo is no longer a draft, and one taken here goes to Photos too (asked now,
@@ -509,9 +545,14 @@ struct FirstEditor: View {
 
     private func delete() {
         guard case .edit(let id) = mode else { return }
-        cleanUp()
-        let deleted = AppModel.shared.store.change { $0.deleteMilestone(id, by: me, now: Date()) }
+        let (deleted, onPhone) = AppModel.shared.store.changeChecked { $0.deleteMilestone(id, by: me, now: Date()) }
+        guard onPhone else {
+            // Nothing was deleted: the form stays as it was, a new photo with it.
+            saveProblem = Self.notOnPhone
+            return
+        }
         guard deleted else { return }
+        cleanUp()
         onDone(.deleted(id: id, title: original?.payload?.milestone?.title ?? "First"))
         dismiss()
     }
@@ -547,12 +588,16 @@ struct CropSquare: View {
     @Binding var crop: MediaCrop
 
     @Environment(\.look) private var look
-    @State private var loaded: (id: String, image: UIImage)?
-    @State private var dragStart: MediaCrop?
+    @State private var loaded: (key: String, image: UIImage)?
+    /// The drag under way: where it started, and the crop then. A new drag starts somewhere else,
+    /// so a drag the system cancelled never leaves the next one starting from an old crop.
+    @State private var drag: (origin: CGPoint, start: MediaCrop)?
     @State private var side: CGFloat = 0
 
     var body: some View {
-        let image = loaded.flatMap { $0.id == id ? $0.image : nil }
+        // Asked again when this photo's file arrives (`MediaSync.fileVersions`).
+        let key = "\(id)|\(AppModel.shared.media.fileVersions[id] ?? 0)"
+        let image = loaded.flatMap { $0.key == key ? $0.image : nil }
         let size = image?.size ?? .zero
         let movable = size.width > 0 && abs(size.width - size.height) > 1
         VStack(alignment: .leading, spacing: 8) {
@@ -560,21 +605,25 @@ struct CropSquare: View {
                 .overlay {
                     if let image {
                         CroppedImage(image: image, crop: crop).modifier(NightDimmed(look: look))
+                    } else {
+                        // Not on this phone yet: the tile with "On its way", and nothing to drag.
+                        MediaPicture(id: id)
                     }
                 }
                 .aspectRatio(1, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .contentShape(Rectangle())
                 .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { side = $0 }
+                // Only a photo that can move takes the drag; any other leaves the form to scroll.
                 .gesture(DragGesture(minimumDistance: 0)
                     .onChanged { value in
-                        guard movable, side > 0 else { return }
-                        let start = dragStart ?? crop
-                        if dragStart == nil { dragStart = crop }
+                        guard side > 0 else { return }
+                        if drag?.origin != value.startLocation { drag = (value.startLocation, crop) }
+                        guard let start = drag?.start else { return }
                         crop = start.dragged(dx: value.translation.width, dy: value.translation.height,
                                              width: size.width, height: size.height, box: side)
                     }
-                    .onEnded { _ in dragStart = nil })
+                    .onEnded { _ in drag = nil }, isEnabled: movable)
                 .accessibilityElement()
                 .accessibilityLabel("Photo in its square")
                 .accessibilityValue(movable ? Self.describe(crop, width: size.width, height: size.height) : "The whole photo")
@@ -597,10 +646,10 @@ struct CropSquare: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .task(id: id) {
+        .task(id: key) {
             let image = await MediaPicture.load(id, full: true)
             guard !Task.isCancelled else { return }
-            loaded = image.map { (id, $0) }
+            loaded = image.map { (key, $0) }
         }
     }
 

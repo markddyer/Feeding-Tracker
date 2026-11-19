@@ -30,13 +30,19 @@ final class UndoCenter {
         expiry?.cancel()
         action = nil
     }
+
+    /// Closes the bar only if it is still `id`'s: an Undo that couldn't be saved shows a new bar.
+    func clear(ifStill id: UUID) {
+        guard action?.id == id else { return }
+        clear()
+    }
 }
 
 /// The bar, when there is one.
 struct UndoCenterBar: View {
     var body: some View {
         if let action = UndoCenter.shared.action {
-            UndoBanner(action: action) { UndoCenter.shared.clear() }
+            UndoBanner(action: action) { UndoCenter.shared.clear(ifStill: action.id) }
         }
     }
 }

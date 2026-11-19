@@ -19,9 +19,15 @@ final class HouseholdStore {
     /// False when a newer app version wrote the file: it must never be overwritten.
     @ObservationIgnored private var canSave = true
 
-    init() {
+    convenience init() {
         let folder = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: AppConfig.appGroupID)
-        fileURL = folder?.appendingPathComponent("household.json")
+        self.init(fileURL: folder?.appendingPathComponent("household.json"))
+    }
+
+    /// The store kept in `fileURL`. Tests pass a stand-in file, and `alarmsSet` so the real
+    /// App Group's alarm list is never read.
+    init(fileURL: URL?, alarmsSet: (() -> Bool)? = nil) {
+        self.fileURL = fileURL
         guard let fileURL else {
             problem = "The app's shared folder is missing, so nothing can be saved."
             canSave = false
@@ -33,7 +39,7 @@ final class HouseholdStore {
                 // Step 0 (CEO review D18): what a newer build wrote and this one can't read is kept.
                 let kept = loaded.keptEvents.count + loaded.keptPlainRecords.count + loaded.keptParts.count
                 if kept > 0 { SyncLog.add("file: kept \(kept) entries this build can't read") }
-            } else if Self.alarmsWereSet() {
+            } else if (alarmsSet ?? Self.alarmsWereSet)() {
                 // No file, yet alarms were set from one: it went missing. Wait for iCloud as for
                 // an unreadable file, so no alert already set is cancelled (Codex review of T3 and T4).
                 SyncLog.add("file: missing, with alarms set; waiting for iCloud")
@@ -74,6 +80,30 @@ final class HouseholdStore {
         onLocalChange?()
         onDataChange?()
         return result
+    }
+
+    /// A change the parent is told is saved only once it is on this phone (the Journal's Save,
+    /// eng OV3, task T17): the file is written first. If the write fails, the change is put back,
+    /// nothing is sent, and `saved` is false, so the form stays open and says so. A change that
+    /// changes nothing counts as saved. Feeds keep `change`, which never holds a feed back.
+    func changeChecked<T>(_ body: (inout HouseholdData) -> T) -> (result: T, saved: Bool) {
+        let before = data
+        let result = body(&data)
+        guard data != before else { return (result, true) }
+        guard canSave, let fileURL else {
+            data = before
+            return (result, false)
+        }
+        do {
+            try HouseholdFile.save(data, to: fileURL, options: .completeFileProtectionUntilFirstUserAuthentication)
+        } catch {
+            data = before
+            SyncLog.add("file: a first couldn't be saved on this phone; put back: \(type(of: error))")
+            return (result, false)
+        }
+        onLocalChange?()
+        onDataChange?()
+        return (result, true)
     }
 
     /// A change that came from sync. It is saved, but doesn't start another upload by itself.

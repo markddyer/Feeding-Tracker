@@ -906,6 +906,16 @@ struct MediaCropTests {
         #expect(b.events[id]?.changedFields == [.crops])
     }
 
+    /// A crop for a photo the first never held (one picked, moved and replaced in the editor) is
+    /// never saved, so it can't make the first version 4 for nothing.
+    @Test func aCropForAPhotoTheFirstDoesntHoldIsNotSaved() throws {
+        var (a, _, id) = try twoPhones()
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["draft": MediaCrop(x: 0.5, y: 0.2)],
+                     at: t0, by: parentA, now: t0 + 30)
+        #expect(details(a, id)?.crops == [:])
+        #expect(a.events[id]?.snapshot.payload?.v == 3)
+    }
+
     @Test func takingAPhotoOutDropsItsCrop() throws {
         var (a, _, id) = try twoPhones()
         a.saveEditor(id, title: "First smile", media: ["m1", "m2"],
@@ -916,16 +926,25 @@ struct MediaCropTests {
     }
 
     /// Eng2 D5 A: the crops merge as one field. Both phones, offline, move a different photo:
-    /// the later change wins whole, and the other photo goes back to its last synced place.
-    @Test func cropsOnBothPhonesAtOnceTheLaterWinsWhole() throws {
+    /// the later change wins whole, and the other photo goes back to its last synced place. Both
+    /// ways round, so the phone whose own change is later keeps it too.
+    @Test(arguments: [true, false])
+    func cropsOnBothPhonesAtOnceTheLaterWinsWhole(_ aIsLater: Bool) throws {
         var (a, b, id) = try twoPhones()
-        a.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m1": MediaCrop(x: 0.5, y: 0.4)],
-                     at: t0, by: parentA, now: t0 + 60)
-        b.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m2": MediaCrop(x: 0.3, y: 0.5)],
-                     at: t0, by: parentB, now: t0 + 90)
+        let cropA = MediaCrop(x: 0.5, y: 0.4), cropB = MediaCrop(x: 0.3, y: 0.5)
+        a.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m1": cropA],
+                     at: t0, by: parentA, now: t0 + (aIsLater ? 90 : 60))
+        b.saveEditor(id, title: "First smile", media: ["m1", "m2"], crops: ["m2": cropB],
+                     at: t0, by: parentB, now: t0 + (aIsLater ? 60 : 90))
         let fromB = sent(&b, id, tag: 2)
         a.receiveEvent(fromB, systemFields: Data([2]))
-        #expect(details(a, id)?.crops == ["m2": MediaCrop(x: 0.3, y: 0.5)])
+        let winner = aIsLater ? ["m1": cropA] : ["m2": cropB]
+        #expect(details(a, id)?.crops == winner)
         #expect(details(a, id)?.media == ["m1", "m2"])
+        // Once A sends, B ends with the same.
+        if aIsLater {
+            b.receiveEvent(sent(&a, id, tag: 3), systemFields: Data([3]))
+            #expect(details(b, id)?.crops == winner)
+        }
     }
 }
