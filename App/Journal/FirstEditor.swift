@@ -156,6 +156,12 @@ struct FirstEditor: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            // On the form itself, once: on the photo section it was attached to each of its parts,
+            // and one closed the picker as another opened it (a parent's report, 19 Nov 2026).
+            .photosPicker(isPresented: $choosingPhoto, selection: $pickerItems,
+                          maxSelectionCount: max(1, MilestoneLimits.mediaItems - items.count),
+                          // The order tapped is the order kept: the first tapped is the cover.
+                          selectionBehavior: .ordered, matching: .any(of: [.images, .videos]), photoLibrary: .shared())
             .foregroundStyle(Theme.text)
             .background(Theme.background.ignoresSafeArea())
             .navigationTitle(screenTitle)
@@ -273,14 +279,15 @@ struct FirstEditor: View {
         Section {
             if items.isEmpty {
                 HStack(spacing: 14) {
-                    emptySlot.frame(width: 66, height: 66)
+                    // The square takes a tap too, with the same choices as the words beside it.
+                    addSlot(side: 66)
                     photoButtons
                 }
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 10) {
                         ForEach(Array(items.enumerated()), id: \.element) { index, id in slot(id, index: index) }
-                        if items.count < MilestoneLimits.mediaItems { addSlot }
+                        if items.count < MilestoneLimits.mediaItems { addSlot(side: 62) }
                     }
                     if let shown = selectedItem, let index = items.firstIndex(of: shown) {
                         // The chosen photo in its square, as the Journal's line shows a cover; a
@@ -326,10 +333,6 @@ struct FirstEditor: View {
             }
         }
         .listRowBackground(Theme.surface)
-        .photosPicker(isPresented: $choosingPhoto, selection: $pickerItems,
-                      maxSelectionCount: max(1, MilestoneLimits.mediaItems - items.count),
-                      // The order tapped is the order kept: the first tapped is the cover.
-                      selectionBehavior: .ordered, matching: .any(of: [.images, .videos]), photoLibrary: .shared())
     }
 
     /// One slot: the photo in its square, "Cover" on the first; a tap shows it large below.
@@ -374,16 +377,18 @@ struct FirstEditor: View {
         }
     }
 
-    /// The "+" slot: Choose from Photos, or Take a photo.
-    private var addSlot: some View {
+    /// The "+" square: Choose from Photos, or Take a photo or video. The whole square takes the tap.
+    private func addSlot(side: CGFloat) -> some View {
         Menu {
             Button("Choose from Photos") { choosingPhoto = true }
             if CameraPicker.isAvailable { Button("Take a photo or video") { tapCamera() } }
         } label: {
-            emptySlot.frame(width: 62, height: 62)
+            emptySlot
+                .frame(width: side, height: side)
+                .contentShape(Rectangle())
         }
         .disabled(working)
-        .accessibilityLabel("Add a photo")
+        .accessibilityLabel("Add a photo or video")
     }
 
     /// An empty slot: a hole in the tile, in the page colour, with "+" (or the ring while a photo

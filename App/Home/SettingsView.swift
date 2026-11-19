@@ -123,6 +123,9 @@ struct SettingsView: View {
             .listRowBackground(Theme.surface)
         }
         .scrollContentBackground(.hidden)
+        // On the list itself, once: on the Journal section it was attached to each of its parts,
+        // and one closed the screen as another opened it (found with the photo picker, 19 Nov 2026).
+        .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: model.baby?.name ?? "") }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
         // The big Fredoka title is the first row; "Settings" stays the screen's name.
@@ -187,7 +190,6 @@ struct SettingsView: View {
                 .foregroundStyle(Theme.textMuted)
         }
         .listRowBackground(Theme.surface)
-        .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
     }
 
     /// 1, 2, 5 or 10 GB, and the household's own if it is another.
