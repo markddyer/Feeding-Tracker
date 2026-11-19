@@ -24,8 +24,10 @@ struct MediaPicture: View {
         let key = "\(id ?? "-")|\(full)|\(id.map { AppModel.shared.media.fileVersions[$0] ?? 0 } ?? 0)"
         let image = loaded.flatMap { $0.key == key ? $0.image : nil }
             ?? loaded.flatMap { $0.key.hasPrefix("\(id ?? "-")|\(full)|") ? $0.image : nil }
-        ZStack {
-            Theme.surface
+        // The tile takes the size it is given; the photo fills it from the middle and is cut to it.
+        // The photo never sets the size: a tall photo in a ZStack made the tile tall too, and it
+        // spilled over the rows around it.
+        Theme.surface.overlay {
             if let image {
                 Image(uiImage: image)
                     .resizable()

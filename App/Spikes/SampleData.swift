@@ -197,8 +197,10 @@ enum SampleData {
         let files = MediaFiles.appGroup()
         let laugh = "sample-photo-laugh", smile = "sample-photo-smile"
         if let files {
-            drawPicture(face: true, into: files, id: laugh)
-            drawPicture(face: false, into: files, id: smile)
+            // One wide and one tall, as phone photos are, so a tile that lets a photo set its own
+            // size shows at once.
+            drawPicture(face: true, width: 1200, height: 900, into: files, id: laugh)
+            drawPicture(face: false, width: 900, height: 1200, into: files, id: smile)
         }
         // `-sampleNoBirthDate YES`: the same firsts with no birth date (months, no ages).
         let birthDate: PlainDate? = UserDefaults.standard.bool(forKey: "sampleNoBirthDate") ? nil : born
@@ -219,18 +221,21 @@ enum SampleData {
     }
 
     /// A simple drawn picture (a face, or a sky and a hill), as the mockups' drawings.
-    private static func drawPicture(face: Bool, into files: MediaFiles, id: String) {
-        let size = 900
-        guard let context = CGContext(data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+    private static func drawPicture(face: Bool, width: Int, height: Int, into files: MediaFiles, id: String) {
+        guard let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                       space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
         else { return }
-        let s = CGFloat(size) / 120
+        let side = min(width, height)
+        let s = CGFloat(side) / 120
+        // The drawing sits in the middle square; the background and the ground fill the whole picture.
+        let middle = { context.translateBy(x: CGFloat(width - side) / 2, y: CGFloat(height - side) / 2) }
         func colour(_ hex: Int) -> CGColor {
             CGColor(red: CGFloat((hex >> 16) & 255) / 255, green: CGFloat((hex >> 8) & 255) / 255, blue: CGFloat(hex & 255) / 255, alpha: 1)
         }
         if face {
-            context.setFillColor(colour(0xF6C9A8)); context.fill(CGRect(x: 0, y: 0, width: size, height: size))
-            context.setFillColor(colour(0x9CC3E6)); context.fill(CGRect(x: 0, y: 0, width: 120 * s, height: 28 * s))
+            context.setFillColor(colour(0xF6C9A8)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.setFillColor(colour(0x9CC3E6)); context.fill(CGRect(x: 0, y: 0, width: CGFloat(width), height: 28 * s))
+            middle()
             context.setFillColor(colour(0xFBE3CF)); context.fillEllipse(in: CGRect(x: 30 * s, y: 32 * s, width: 60 * s, height: 60 * s))
             context.setFillColor(colour(0x5A3A2A))
             context.fillEllipse(in: CGRect(x: 47 * s, y: 63 * s, width: 6 * s, height: 6 * s))
@@ -240,9 +245,10 @@ enum SampleData {
             context.addQuadCurve(to: CGPoint(x: 72 * s, y: 54 * s), control: CGPoint(x: 60 * s, y: 42 * s))
             context.strokePath()
         } else {
-            context.setFillColor(colour(0xCFE6F7)); context.fill(CGRect(x: 0, y: 0, width: size, height: size))
+            context.setFillColor(colour(0xCFE6F7)); context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+            context.setFillColor(colour(0x9BC98A)); context.fill(CGRect(x: 0, y: 0, width: CGFloat(width), height: 34 * s))
+            middle()
             context.setFillColor(colour(0xF7D774)); context.fillEllipse(in: CGRect(x: 80 * s, y: 82 * s, width: 24 * s, height: 24 * s))
-            context.setFillColor(colour(0x9BC98A)); context.fill(CGRect(x: 0, y: 0, width: 120 * s, height: 34 * s))
             context.setFillColor(colour(0xE79A7E)); context.fill(CGRect(x: 34 * s, y: 28 * s, width: 40 * s, height: 22 * s))
         }
         guard let image = context.makeImage() else { return }
