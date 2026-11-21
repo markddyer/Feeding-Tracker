@@ -12,6 +12,13 @@ colors:
   on-primary: "#3A1A0E"
   track: "#FFE0BD"
   window: "#FFC9A8"
+  # The window bar's other parts (the users' choice B, 21 Nov 2026)
+  wait: "#9DB4CC"
+  wait-tint: "#D3DEE9"
+  backup: "#CF6248"
+  backup-tint: "#FBDCCB"
+  backup-stripe: "#EFA791"
+  on-backup: "#3A1A0E"
   breast: "#F07C8F"
   breast-mark: "#D2465F"
   breast-tint: "#FFDDE3"
@@ -82,6 +89,12 @@ colors:
   on-primary-night: "#120A06"
   track-night: "#231B15"
   window-night: "#4A3022"
+  wait-night: "#5B6675"
+  wait-tint-night: "#1B2128"
+  backup-night: "#93483A"
+  backup-tint-night: "#2E1F1A"
+  backup-stripe-night: "#5A2E26"
+  on-backup-night: "#E8D6C2"
   breast-night: "#A85A68"
   breast-tint-night: "#22151A"
   bottle-night: "#4A7299"
@@ -206,7 +219,7 @@ components:
 **Reference sites:** https://reeoo.com/app-screenshot/lilsense-3am-baby-tracker/, https://apps.apple.com/us/app/id6772457183, https://apps.apple.com/app/id1512238725, https://apps.apple.com/app/id1384785720, https://huckleberrycare.com
 
 **Key characteristics:**
-- The time since the last feed started is the biggest thing on the home screen, inside a ring.
+- The time since the last feed started is the biggest thing on the home screen, with the window bar under it in the same tile.
 - Every fact sits in its own tinted tile, with space between tiles. No sentences where a picture will do.
 - Each kind of feed has a colour and a shape, so it reads at night and without colour.
 - One big button at the bottom (Start feed, or Finish), reachable by thumb.
@@ -223,7 +236,7 @@ The approved mockup (day and 3am) is `chosen-look.html`, kept outside the repo i
 **Rules:**
 - Kind colours: pink is breast, blue is bottle, green is pumping. Each has three tokens. `*-tint` fills a tile or row. The plain token (`breast`, `bottle`, `pump`) fills a big area such as the selected side button. `*-mark` draws small shapes, chart bars and lines, because it is deep enough to read on the light tiles (3:1 or better). At night the plain night token does both jobs.
 - Parent colours: each parent picks a colour in Settings ("Your colour") from six: `parent-1` (sunflower) and `parent-2` (teal), the defaults, then `lavender`, `plum`, `caramel` and `stone`. They are stored by name in the Member record ("sunflower", "teal", "lavender", "plum", "caramel", "stone"). They mark who did each entry and who is on each night. Use `on-*` for the initial on an avatar. None is red or green, a feed colour or the coral button. Each also has a deeper `*-mark` shade (design 5A, 20 Nov 2026) for the "who does what" dots and bars and the chosen parent in an editor: 3:1 or better on `surface` and `sleep-tint`, every pair told apart, with the initial inside in `on-parent-mark`.
-- The window: `track` is the empty bar and ring; `primary` fills the time so far; `window` shades the feeding window (and, striped, the stretch up to the backup alarm).
+- The window bar (the users' choice B, 21 Nov 2026, `hero-bar-20261121/round2-colours.html`): each part has its own colour, pale while still to come and full once the time has passed it. The wait before the window is misty blue (`wait-tint`, then `wait`), the feeding window coral (`window`, then `primary`), the stretch up to the backup alarm terracotta (`backup-stripe` stripes on `backup-tint`, then `backup`). The misty blue is greyer and paler than the bottle's blue (15 or more apart in colour, both looks). No red and no green: green is pumping, and red would read as a warning about the baby. `track` is left for empty tracks elsewhere (chart grid lines, the watch's bar).
 - `notice` is only for problems with the app (sync failed). It is a muted orange, never red, and never says anything about the baby.
 - Baths (20 Nov 2026) have a water-blue of their own (`bath`, `bath-mark`, `bath-tint`), told apart from the bottle's blue and the teal parent colour by the colour test.
 - Sleep and nappies (17 Nov 2026) use the same three jobs: periwinkle is sleep (`sleep`, `sleep-mark`, `sleep-tint`); yellow is wee (`wee`, `wee-mark`) and brown is poo (`poo`, `poo-mark`), both on one `nappy-tint`. Medicine and growth have no colour of their own: their shapes use `text-muted`.
@@ -258,7 +271,7 @@ At night every weight drops one or two steps (see the table), so fewer pixels li
 
 - One column on the phone and on the folded Duo (382 and 385 pt). A 16 pt gutter. Tiles are 10-12 pt apart.
 - **Four tabs**: Home, History and Graphs (the user's choice, 16 Nov 2026), and Journal (the milestones journal, `07-milestones-journal.md`), in the system tab bar (on the folded Duo, iOS puts it in the bar down the right-hand side). The chosen tab is in `text`, not coral. Settings is the gear at the top of Home.
-- Home, top to bottom: greeting and name, an ask card if one is waiting, the "Last night" line (each morning until 12:00), the hero tile (ring and main time), the window bar, two tiles side by side (Next side; Last feed), the 24-hour tile (chart and three totals), the Nights tile (the week's rota and "I'll take it"). Start feed and the three small buttons are pinned to the bottom; the rest scrolls behind them.
+- Home, top to bottom: greeting and name, an ask card if one is waiting, the "Last night" line (each morning until 12:00), the hero tile (the main time, with the window bar under it), two tiles side by side (Next side; Last feed), the 24-hour tile (chart and three totals), the Nights tile (the week's rota and "I'll take it"). Start feed and the three small buttons are pinned to the bottom; the rest scrolls behind them.
 - During a feed the bottom holds Left / Right / Bottle (three equal buttons) and, below them, "Stop · discard" (150 pt wide) beside a wider Finish.
 - Unfolded Duo (594 pt and wider): the left column is the operating column (hero, window, next side, last feed and the buttons); the right column holds the 24-hour tile, the Nights tile and the recent feeds. The big buttons stay at the bottom of the left column, away from the fold.
 - Leading alignment everywhere. Nothing is centred except labels inside buttons.
@@ -278,7 +291,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
   - Pumping: two drops, drawn as a SwiftUI `Shape`.
   - Sleep: a crescent moon. Wee: one drop. Poo: a soft swirl. Both: the drop and the swirl side by side. Medicine: a spoon. Growth: a line going up. On the Lock Screen's Sleep and nappy widget, Fell asleep is a closed eye and Woke up an open eye (the users' ask, 17 Nov 2026: the words didn't fit). All are SwiftUI `Shape`s in `Shared/FeedShapes.swift`.
   - The shape appears on every chip, row, button and chart key for that kind. A chip shows the shape and the number ("◐ 12m", "bottle 30 ml"), so letters such as "L" and "R" are not needed.
-- The ring: 11 pt stroke, round caps, `track` behind, `primary` for the time so far (or the breast colour during a feed, with the current side's half-moon in the middle).
+- No ring on the phone (the users' choice C, 21 Nov 2026): the window bar shows how far through the window the time is. During a feed, the side being fed (its half-moon) or the bottle sits at the right of the timer, 40 pt, in its `*-mark` colour.
 
 ## Components
 
@@ -295,7 +308,8 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
   - **Double tap** presses the main coral button (Start feed, Finish, Save), never "Finish for Sam".
   - **The watch face** draws the pieces in its own colours: the Lock Screen widget's words, a ring with "1:40", and Start feed, a bottle with "Start" under it. A tap on Start feed opens "Formula or expressed?" on a bottle-only watch: the same label and two coral buttons, "Feed from 05:12" above them, and a soft "Not now" lower down. Once "Who breastfeeds?" names the other parent, it asks "Start a feed" with a third button, "Breastfeed (Sam)", and the watch's main screen has it under the two bottles (design DD15 and 4B, 20 Nov 2026); the double tap stays on the bottle. A bottle-only phone's Start feed offers the same three. While this parent's feed runs, Start feed becomes a stopwatch with the feed's timer ("12:34", kept running by the watch), and a tap finishes the feed and opens the amount; during the other parent's feed it shows their timer and a tap only opens the app on "Finish for Sam" (the user's choices, 16 Nov 2026).
 - **Amount wheel** (a bottle's ml, added 16 Nov 2026): the iOS wheel, every 5 ml from 5 to 300 ml, in the `background` colour on the panel, amounts in SF Pro Rounded. Turning it saves nothing: "Save 30 ml" does (the word in Fredoka, the amount in SF Pro Rounded).
-- **Window bar** (the users' choice B, 21 Nov 2026, from `window-bar-20261121/round1.html` in the gstack design folder): first one line in words, the words that matter bold and the times after them muted: "Window opens in 20m · at 16:10" (minutes rounded up), "In the feeding window · alert at 17:10", "Window closed at 17:10 · backup alarm 17:40"; with alerts off, "· until 17:10 · alerts off". Then the bar, 14 pt tall, in parts 3 pt apart, each as long as its time: after the feed on `track`, the feeding window on `window`, and, with alerts on, a short part up to the backup alarm striped in `window` on `track` (never narrower than 26 pt). Parts done are `primary`; the part now is in fills with `primary` up to now; a 20 pt dot ringed in `text` on `background` marks now. Under each part its name in `small` (`text` for the part now is in, `text-muted` for the others) and its times in `smallButton`: "Last feed 14:10", "Feeding window 🔔 15:10–17:10", "Backup 17:40", each starting where its part starts (the last one ending at the bar's end), pushed apart when they would touch and one under another when the row is too narrow. VoiceOver reads it as one sentence. Facts only: "opens", "alert at", "closed at", "backup alarm"; never "due", "missed" or "overdue". The watch's small bar is unchanged.
+- **Hero tile** (the users' choice C, 21 Nov 2026, from `hero-bar-20261121/round1.html` in the gstack design folder): "Last feed" in `subheadline`, then the main time with "ago, at 14:10" beside it on its baseline (under it when the row is too narrow), then the window bar, all in the one tile. During a feed: "Feeding now", the timer, "started 18:02", and the side's half-moon (or the bottle) at the right; the tile takes the feed's tint and the bar is hidden. VoiceOver reads the tile as one element: "Last feed started 1 hour 40 minutes ago, at 14:10", then the bar's sentences.
+- **Window bar** (the line in words from the users' choice B, the thick bar from choice C, both 21 Nov 2026; `window-bar-20261121/round1.html` and `hero-bar-20261121/round1.html` in the gstack design folder): first one line in words, the words that matter bold and the times after them muted: "Window opens in 20m · at 16:10" (minutes rounded up), "In the feeding window · alert at 17:10", "Window closed at 17:10 · backup alarm 17:40"; with alerts off, "· until 17:10 · alerts off". Then one thick bar, 34 pt tall (it grows with the text size, up to 52 pt), in parts 3 pt apart, each as long as its time: the wait after the feed, the feeding window, and, with alerts on, a short part up to the backup alarm, striped while still to come (never narrower than 40 pt). The bar's two ends are fully round; the inner corners are 8 pt. Each part fills with its full colour (`wait`, `primary`, `backup`) up to now, and the edge is now: there is no dot. "Feeding window" is written inside its part in `chip` ("Window", or nothing, when it doesn't fit), and a bell inside the backup's, in `text`, or, where the time has reached them, `on-primary` (the name, 4.5:1 or better) and `on-backup` (the bell, an icon, 3:1 or better). Under the bar, in `smallButton`, the window's times ("15:10–17:10") and the backup alarm's ("17:40"), each starting where its part starts (the last one ending at the bar's end), pushed apart when they would touch and one under another when the row is too narrow. The last feed's time is not repeated under the bar. Facts only: "opens", "alert at", "closed at", "backup alarm"; never "due", "missed" or "overdue". The watch's small bar is unchanged.
 - **24-hour chart:** one strip (22 pt tall, `chart-strip`, with no line round it) across the last 24 hours. Each feed is a block from when it started to when it ended (to now while it runs), at least 3 pt wide, coloured by kind (`*-mark`; bottle above breast for a feed with both), with a key of shapes. Feeds close together sit side by side and touch only if they really overlapped. Under it, three totals: feeds, at the breast, ml from bottles.
 - **Nights row:** seven days, each with the on-duty parent's initial in their colour. Tonight has a ring round it. Then "Sam's on tonight" and an "I'll take it" pill.
 - **History row:** tinted by kind, time on the left, chips in the middle, on the right the big picture of who did it (design DD12) and, a little lower, a small one of the other parent when they logged it or finished it (7B: at most two). "Finished by" only when the end was set as Finish was tapped. VoiceOver: "Done by Sam, logged by Alex". An entry logged on both phones shows once, with "Logged on both phones"; "They were two" shows both again.
@@ -319,7 +333,7 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 
 - Do: put every time, duration and amount in SF Pro Rounded with fixed-width digits.
 - Do: give each kind of feed its shape as well as its colour, everywhere it appears.
-- Do: show facts as pictures first (ring, bar, chart, shapes, avatars) and keep words to labels.
+- Do: show facts as pictures first (bar, chart, shapes, avatars) and keep words to labels.
 - Do: check contrast and Dynamic Type (up to the largest accessibility size) on every screen, in both looks.
 - Do: keep the night look dim: no white, no bright fills, thinner letters, fades only.
 - Don't: use "due", "missed", "overdue" or "should", or show targets, scores or red/green verdicts.
@@ -333,9 +347,9 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 
 - **Approach:** gentle by day, still at night.
 - **Easing:** enter ease-out, exit ease-out, move ease-in-out.
-- **Duration:** micro 80 ms (button press), short 200 ms (chips appearing), medium 300 ms (ring and bar changes, the day/night cross-fade).
+- **Duration:** micro 80 ms (button press), short 200 ms (chips appearing), medium 300 ms (bar changes, the day/night cross-fade).
 - **Night:** fades only, no movement, haptics in place of animation. Respect Reduce Motion at all times. One exception the parents accepted (5B, 20 Nov 2026): the Undo card's 10-second line moves at night too.
-- **The one authored moment:** when a feed is logged, the ring empties and starts again from zero with a soft haptic. At night, the haptic only.
+- **The one authored moment:** when a feed is logged, a soft haptic, and the bar starts again from empty. At night, the haptic only.
 
 ## App icon
 - **The baby's head on coral**, chosen on 17 Nov 2026 "for now": the sleeping baby's face from the icon rounds, with its curl, on `primary` coral that is a little lighter at the top. Picture N on colour G in round six (`app-icon-20261116/feeding-icon-choices.html` in the gstack design folder).
@@ -367,3 +381,4 @@ Flat. No shadows, glows, gradients or blur. Depth comes from tint: background, t
 | 2026-11-21 | The dashed outline only for a worked-out "got up" | Found while building: the first build dashed every worked-out "done by" too, and with old entries that meant nearly every picture in History. Design 7A names "got up" only; a "done by" starts as who logged it by the agreed rule, so it is not a guess. |
 | 2026-11-21 | A tap on a graph opens its own page | Parent A asked to see "the information behind" each graph, such as timings. From `graph-taps-20261121/round1.html` (gstack design folder) the parents chose C (each graph its own page, opened on the day tapped) over a list sliding up (A) or a bubble first (B), and the lists as drawn, with the change since the last weight. |
 | 2026-11-21 | The window bar in words and parts | Parent A found the bar hard to read: "Feeding window 10:25" sat under the coral part, not the window; the window's shade looked like the empty bar and the coral covered it; nothing showed the last feed or what follows the bell. From `window-bar-20261121/round1.html` (gstack design folder) the parents chose B (one line in words, the bar in named parts with the backup alarm) over A (a marked ruler) and C (a clock timeline). The ring stays. |
+| 2026-11-21 | The ring goes; one thick bar in the top tile | On the phone, Parent A found the bar still needed work, and the ring and the bar said the same thing ("not both needed"; the 15 Nov row said to revisit). From `hero-bar-20261121/round1.html` (gstack design folder) the parents chose C (one thick bar in the top tile, "Feeding window" written inside it, no dot: the coral's edge is now) over A (a thinner bar with a taller window part and names under it) and B (the same with nothing under it). The window stays easy to see after the coral passes it, and "Last feed" is said once. Then, finding it "monotone", the parents chose colours for the parts from `hero-bar-20261121/round2-colours.html`: B (misty blue, coral, terracotta) over A (honey, coral, terracotta) and C (soft lilac, coral, terracotta). |

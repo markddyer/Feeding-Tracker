@@ -13,6 +13,8 @@ struct DesignTokensTests {
         ("background", Theme.background), ("surface", Theme.surface), ("text", Theme.text),
         ("text-muted", Theme.textMuted), ("primary", Theme.primary), ("on-primary", Theme.onPrimary),
         ("track", Theme.track), ("window", Theme.window),
+        ("wait", Theme.wait), ("wait-tint", Theme.waitTint), ("backup", Theme.backup),
+        ("backup-tint", Theme.backupTint), ("backup-stripe", Theme.backupStripe), ("on-backup", Theme.onBackup),
         ("breast", Theme.breast), ("breast-mark", Theme.breastMark), ("breast-tint", Theme.breastTint),
         ("bottle", Theme.bottle), ("bottle-mark", Theme.bottleMark), ("bottle-tint", Theme.bottleTint),
         ("pump", Theme.pump), ("pump-mark", Theme.pumpMark), ("pump-tint", Theme.pumpTint),
@@ -215,6 +217,27 @@ struct DesignTokensTests {
         #expect(Self.ratio(Theme.textMuted, Theme.bathTint, look) >= 4.5, "muted text on the bath tile")
         #expect(Self.difference(Theme.bathMark, Theme.bottleMark, look) >= 15, "bath against bottle")
         #expect(Self.difference(Theme.bathMark, ParentColour.teal.mark, look) >= 15, "bath against teal")
+    }
+
+    /// The window bar's parts (the users' choice B, 21 Nov 2026): each told apart from the next,
+    /// the misty blue from the bottle's blue, the empty parts seen on the tile better than `track`
+    /// was, and the words and the bell on them readable.
+    @Test(arguments: [Look.day, .night])
+    func windowBarPartsDiffer(_ look: Look) {
+        #expect(Self.difference(Theme.wait, Theme.primary, look) >= 15, "wait against the window")
+        #expect(Self.difference(Theme.primary, Theme.backup, look) >= 15, "window against the backup")
+        #expect(Self.difference(Theme.wait, Theme.bottle, look) >= 15, "wait against the bottle")
+        #expect(Self.difference(Theme.wait, Theme.bottleMark, look) >= 15, "wait against the bottle's mark")
+        #expect(Self.difference(Theme.wait, Theme.sleep, look) >= 15, "wait against sleep")
+        for (part, name) in [(Theme.waitTint, "wait"), (Theme.backupTint, "backup")] {
+            #expect(Self.difference(part, Theme.surface, look) > Self.difference(Theme.track, Theme.surface, look),
+                    "\(name) still to come, on the tile")
+        }
+        #expect(Self.ratio(Theme.text, Theme.window, look) >= 4.5, "the window's name, still to come")
+        #expect(Self.ratio(Theme.onPrimary, Theme.primary, look) >= 4.5, "the window's name, passed")
+        #expect(Self.ratio(Theme.text, Theme.backupStripe, look) >= 3, "the bell on the stripes")
+        #expect(Self.ratio(Theme.text, Theme.backupTint, look) >= 3, "the bell between the stripes")
+        #expect(Self.ratio(Theme.onBackup, Theme.backup, look) >= 3, "the bell, passed")
     }
 
     /// The side being fed fills with the breast colour, with large letters (3:1 is the rule for

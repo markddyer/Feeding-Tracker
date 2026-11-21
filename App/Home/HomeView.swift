@@ -2,7 +2,7 @@ import FeedingCore
 import SwiftUI
 
 /// The home screen (`docs/planning/05-visual-redesign.md`, "Home"): a greeting and the baby's
-/// name, the time since the last feed started inside its ring, the window bar, the next side and
+/// name, the time since the last feed started with the window bar under it, the next side and
 /// the last feed, the last 24 hours as a chart, and the row of nights. The feed buttons are pinned
 /// at the bottom. Facts only: no targets, no verdicts.
 struct HomeView: View {
@@ -30,7 +30,7 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     SyncProblemBanner()
                     GreetingHeader(facts: facts)
-                    // Above the ring: it waits for an answer. It goes once answered.
+                    // Above the top tile: it waits for an answer. It goes once answered.
                     if case .askedOfMe(let ask) = facts.askStatus {
                         AskCard(ask: ask, facts: facts, me: me, onUndo: { undo = $0 })
                     }
@@ -41,10 +41,6 @@ struct HomeView: View {
                     HeroTile(facts: facts)
                     if let feed = facts.feedInProgress {
                         ThisFeedTile(feed: feed)
-                    }
-                    if facts.feedInProgress == nil, let window = facts.window {
-                        WindowBar(facts: facts, window: window)
-                            .padding(.vertical, 4)
                     }
                     // Sleep and Nappy above Next side and Last feed (the users' choice A, 17 Nov
                     // 2026); Medicine under them (K).
@@ -264,15 +260,14 @@ struct HomeFacts {
         return (last, by)
     }
 
-    /// How far through the window the time since the last feed is, from 0 to 1.
-    var windowProgress: Double {
-        guard let lastFeedStart else { return 0 }
-        return min(1, max(0, now.timeIntervalSince(lastFeedStart) / settings.window.closesAfter))
-    }
-
     /// The feeding window from the last feed's start, once there is a feed.
     var window: FeedWindow? {
         lastFeedStart.map { FeedWindow(lastFeedStart: $0, settings: settings.window) }
+    }
+
+    /// Where now is against that window, for the bar in the top tile.
+    var windowSteps: WindowSteps? {
+        window.map { WindowSteps(window: $0, settings: settings.window, now: now) }
     }
 
     /// The latest feed that has finished.
@@ -372,13 +367,13 @@ struct GreetingHeader: View {
     }
 }
 
-/// The ring and the main time: the biggest thing on the screen.
+/// The top tile: the time since the last feed started, the biggest thing on the screen, with the
+/// window bar under it (the users' choice C, 21 Nov 2026: the bar took the ring's place). During
+/// a feed: its timer, with the side being fed (or the bottle) beside it, and no bar.
 struct HeroTile: View {
     let facts: HomeFacts
     @Environment(\.look) private var look
-    @Environment(\.dynamicTypeSize) private var typeSize
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
-    @ScaledMetric(relativeTo: .largeTitle) private var ringSize: CGFloat = 104
 
     private var running: RunningFeed? {
         facts.feedInProgress.map { RunningFeed($0, bottleOnly: feedingStyle == FeedingStyle.bottleOnly.rawValue) }
@@ -386,59 +381,60 @@ struct HeroTile: View {
 
     var body: some View {
         let running = running
-        let layout = typeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
-            : AnyLayout(HStackLayout(alignment: .center, spacing: 16))
-        let ring = min(ringSize, 150)
-        layout {
-            // During a feed the ring takes the feed's colour, with the side being fed (or the
-            // bottle) in the middle.
-            WindowRing(progress: facts.windowProgress, colour: running?.colour ?? Theme.primary,
-                       track: running == nil ? Theme.track : Theme.background)
-                .overlay {
-                    if let mark = running?.centre {
-                        FeedMarkView(mark, size: ring * 0.3, relativeTo: .largeTitle)
-                    }
-                }
-                .frame(width: ring, height: ring)
-                .accessibilityHidden(true)
-            words
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(running?.tint ?? Theme.surface, in: RoundedRectangle(cornerRadius: Radius.hero))
+        content(running)
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(running?.tint ?? Theme.surface, in: RoundedRectangle(cornerRadius: Radius.hero))
     }
 
     private var strong: Font.Weight { look == .night ? .semibold : .bold }
 
     @ViewBuilder
-    private var words: some View {
+    private func content(_ running: RunningFeed?) -> some View {
         if let feed = facts.feedInProgress, let running {
             let kinds = running.bottleKinds.map { "\($0) · " } ?? ""
             let by = feed.event.loggedBy == facts.me ? "" : " by \(facts.displayName(feed.event.loggedBy))"
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Feeding now").feedText(.subheadline).foregroundStyle(Theme.textMuted)
-                Text(feed.event.startedAt, style: .timer)
-                    .feedText(.mainTime)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text("\(kinds)started \(Text(facts.clock(feed.event.startedAt)).fontWeight(strong))\(by)")
-                    .feedText(.subheadline).foregroundStyle(Theme.textMuted)
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Feeding now").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                    Text(feed.event.startedAt, style: .timer)
+                        .feedText(.mainTime)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.6)
+                    Text("\(kinds)started \(Text(facts.clock(feed.event.startedAt)).fontWeight(strong))\(by)")
+                        .feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let mark = running.centre {
+                    FeedMarkView(mark, size: 40, relativeTo: .largeTitle)
+                        .accessibilityHidden(true)
+                }
             }
             .accessibilityElement(children: .combine)
         } else if let start = facts.lastFeedStart {
             let elapsed = facts.now.timeIntervalSince(start)
+            let steps = facts.windowSteps
             VStack(alignment: .leading, spacing: 4) {
                 Text("Last feed").feedText(.subheadline).foregroundStyle(Theme.textMuted)
-                Text(HomeText.elapsed(elapsed))
-                    .feedText(.mainTime)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
-                Text("ago, at \(Text(facts.clock(start)).fontWeight(strong))")
-                    .feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                // "1h 40m ago, at 13:22" on one line, or the time over the rest when it won't fit.
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        mainTime(elapsed)
+                        ago(start)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        mainTime(elapsed)
+                        ago(start)
+                    }
+                }
+                if let steps {
+                    WindowBar(steps: steps, clock: facts.clock)
+                        .padding(.top, 10)
+                }
             }
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Last feed started \(HomeText.spokenElapsed(elapsed)) ago, at \(facts.clock(start))")
+            .accessibilityLabel("Last feed started \(HomeText.spokenElapsed(elapsed)) ago, at \(facts.clock(start)). "
+                                + (steps?.spoken(facts.clock) ?? ""))
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 Text("No feeds logged yet").feedText(.title)
@@ -446,30 +442,17 @@ struct HeroTile: View {
             }
         }
     }
-}
 
-/// The ring round the time: how far through the window it is. `track` behind, `primary` for the
-/// time so far, 11 point round-ended line (DESIGN.md, "Shapes").
-struct WindowRing: View {
-    let progress: Double
-    var colour: Color = Theme.primary
-    var track: Color = Theme.track
-    @Environment(\.look) private var look
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private func mainTime(_ elapsed: TimeInterval) -> some View {
+        Text(HomeText.elapsed(elapsed))
+            .feedText(.mainTime)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+    }
 
-    var body: some View {
-        ZStack {
-            Circle().stroke(track, lineWidth: 11)
-            Circle()
-                .trim(from: 0, to: progress)
-                .stroke(colour, style: StrokeStyle(lineWidth: 11, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-        }
-        // Keeps the line inside the frame.
-        .padding(5.5)
-        // When a feed starts, the ring empties and starts again (DESIGN.md, "Motion"). Still at
-        // night and with Reduce Motion: the button's haptic marks it instead.
-        .animation(look == .night || reduceMotion ? nil : .easeInOut(duration: 0.3), value: progress)
+    private func ago(_ start: Date) -> some View {
+        Text("ago, at \(Text(facts.clock(start)).fontWeight(strong).foregroundStyle(Theme.text))")
+            .feedText(.subheadline).foregroundStyle(Theme.textMuted)
     }
 }
 

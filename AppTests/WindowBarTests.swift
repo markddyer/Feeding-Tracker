@@ -4,8 +4,9 @@ import SwiftUI
 import Testing
 @testable import FeedingDev
 
-/// The feeding window bar (the users' choice B, 21 Nov 2026): the line in words, the parts, where
-/// now sits, and the labels' places. Facts only: never "due", "missed" or "overdue".
+/// The feeding window bar in Home's top tile (the users' choices B and C, 21 Nov 2026): the line in
+/// words, the parts, how full each is, and the times' places. Facts only: never "due", "missed" or
+/// "overdue".
 @Suite("Window bar")
 struct WindowBarTests {
     let feed = Date(timeIntervalSince1970: 1_795_000_000)
@@ -76,7 +77,6 @@ struct WindowBarTests {
         let late = steps(after: 400)
         #expect(late.parts.allSatisfy { late.filled($0) == 1 })
         #expect(late.currentPart == .backup)
-        #expect(late.nowX(width: 300) == 300)
     }
 
     /// The parts fill the bar's width, with their gaps, and the backup's short stretch keeps a
@@ -90,9 +90,22 @@ struct WindowBarTests {
         let tiny = try #require(steps(after: 100, short).frames(width: 300).last)
         #expect(tiny.width >= 26)
         #expect(abs(tiny.x + tiny.width - 300) < 0.01)
-        // Now sits inside its part: 100 of the first part's 120 minutes.
-        let first = frames[0]
-        #expect(abs(steps(after: 100).nowX(width: 300) - (first.x + first.width * 100 / 120)) < 0.01)
+        // The thick bar keeps room for the backup's bell.
+        let thick = try #require(steps(after: 100).frames(width: 300, minimum: WindowBar.minimumPart).last)
+        #expect(thick.width >= WindowBar.minimumPart)
+        #expect(abs(thick.x + thick.width - 300) < 0.01)
+    }
+
+    /// The last feed's time is in the tile, over the bar, so only the window and the backup have
+    /// times under it; VoiceOver hears the last feed from the tile, not again from the bar.
+    @Test func onlyTheWindowAndTheBackupHaveTimesUnderTheBar() {
+        let on = steps(after: 100)
+        #expect(on.labelled.map(\.kind) == [.window, .backup])
+        #expect(on.label(.window, clock).time == "\(at(120))–\(at(240))")
+        #expect(on.label(.backup, clock).time == at(270))
+        #expect(steps(after: 100, FeedWindowSettings(alertsEnabled: false)).labelled.map(\.kind) == [.window])
+        #expect(on.spoken(clock).hasPrefix("Feeding window \(at(120)) to \(at(240))."))
+        #expect(!on.spoken(clock).contains("Last feed"))
     }
 
     @Test func theLabelsSitAtTheirPartsOrStack() throws {

@@ -13,13 +13,25 @@ enum Theme {
     static let surface = Color(day: 0xFFE6C7, night: 0x1C1612)
     static let text = Color(day: 0x3A2A1E, night: 0xE8D6C2)
     static let textMuted = Color(day: 0x745F4E, night: 0x978472)
-    /// The coral main button, and the time so far on the ring and the bar.
+    /// The coral main button, and the feeding window on the bar once the time has reached it.
     static let primary = Color(day: 0xFF8E6E, night: 0xB9714F)
     static let onPrimary = Color(day: 0x3A1A0E, night: 0x120A06)
-    /// The empty part of the ring and the window bar.
+    /// An empty track: chart grid lines, an empty ring round a photo, the watch's bar.
     static let track = Color(day: 0xFFE0BD, night: 0x231B15)
-    /// The shaded feeding window on the bar.
+    /// The feeding window on the bar, still to come.
     static let window = Color(day: 0xFFC9A8, night: 0x4A3022)
+
+    // The window bar's other parts (the users' choice B, 21 Nov 2026, `hero-bar-20261121/
+    // round2-colours.html`): the wait before the window misty blue, the stretch up to the backup
+    // alarm terracotta. Each is pale (`Tint`) while still to come and full once the time has passed.
+    static let wait = Color(day: 0x9DB4CC, night: 0x5B6675)
+    static let waitTint = Color(day: 0xD3DEE9, night: 0x1B2128)
+    static let backup = Color(day: 0xCF6248, night: 0x93483A)
+    /// The backup part still to come: `backupStripe` stripes on `backupTint`.
+    static let backupTint = Color(day: 0xFBDCCB, night: 0x2E1F1A)
+    static let backupStripe = Color(day: 0xEFA791, night: 0x5A2E26)
+    /// The bell on a full backup part.
+    static let onBackup = Color(day: 0x3A1A0E, night: 0xE8D6C2)
 
     // Kinds of feed: the plain colour fills big areas, `Mark` draws small shapes and chart bars,
     // `Tint` fills tiles and rows. At night the plain colour does the mark's job too.
