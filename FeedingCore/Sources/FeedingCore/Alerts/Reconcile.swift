@@ -59,6 +59,22 @@ public func reconcile(
     me: Me,
     now: Date
 ) -> [DesiredAlert] {
+    let alerts = everyAlert(events: events, settings: settings, roster: roster, pendingChanges: pendingChanges, me: me,
+                            now: now)
+    let future = alerts.filter { $0.fireDate > now }
+    return separatingAlarmMinutes(future).sorted { ($0.fireDate, $0.key) < ($1.fireDate, $1.key) }
+}
+
+/// Every alert the rules give for the latest feeds at `now`, past and future: `reconcile` keeps
+/// the future ones, `passedAlerts` the others.
+func everyAlert(
+    events: [Event],
+    settings: HouseholdSettings,
+    roster: DutyRoster,
+    pendingChanges: [PendingChange],
+    me: Me,
+    now: Date
+) -> [DesiredAlert] {
     // The acknowledgement rule: while a change this phone made is unconfirmed, this phone alerts
     // as if on duty, using the stricter of the old and new settings.
     let myPending = pendingChanges.filter { $0.madeBy == me.id && $0.acknowledgedAt == nil }
@@ -99,8 +115,25 @@ public func reconcile(
         addInStyle(.loudAlarm, .backup, at: window.closesAt.addingTimeInterval(effective.window.backupAfterClose))
     }
 
-    let future = alerts.filter { $0.fireDate > now }
-    return separatingAlarmMinutes(future).sorted { ($0.fireDate, $0.key) < ($1.fireDate, $1.key) }
+    return alerts
+}
+
+/// `reconcile`'s alerts whose time has passed by `now`: the same rules, left out of `reconcile`.
+/// A change (a feed's start moved earlier, a feed deleted, a shorter window) can move an alert that
+/// had not gone off yet to a time already past; `catchUpAlerts` then sets it off at once instead
+/// of dropping it (the users' choice A, 21 Nov 2026: when unsure, alert too much).
+public func passedAlerts(
+
+    events: [Event],
+    settings: HouseholdSettings,
+    roster: DutyRoster,
+    pendingChanges: [PendingChange],
+    me: Me,
+    now: Date
+
+) -> [DesiredAlert] {
+    everyAlert(events: events, settings: settings, roster: roster, pendingChanges: pendingChanges, me: me, now: now)
+        .filter { $0.fireDate <= now }
 }
 
 /// Decides whether, and how, this phone alerts at a given moment, for the alerts that depend on

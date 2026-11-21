@@ -281,34 +281,6 @@ struct FeedControls: View {
     }
 }
 
-/// Which questions the details panel still asks. Each choice goes once it is made, so a second
-/// tap can't log the same side or bottle twice. Anything more is added in History.
-struct DetailChoices: Equatable {
-    /// Sides not logged yet.
-    let sides: [BreastSide]
-    /// Kinds of bottle not logged yet.
-    let milks: [MilkKind]
-    /// Bottles still waiting for their amount.
-    let unmeasured: [Bottle]
-
-    init(_ details: FeedDetails, bottleOnly: Bool) {
-        let loggedSides = Set(details.breast.map(\.side))
-        let loggedMilks = Set(details.bottles.map(\.milk))
-        unmeasured = details.bottles.filter { $0.ml == nil }
-        if bottleOnly {
-            // One bottle, chosen at Start feed or here, then its amount.
-            sides = []
-            milks = details.bottles.isEmpty ? MilkKind.allCases : []
-        } else {
-            sides = BreastSide.allCases.filter { !loggedSides.contains($0) }
-            milks = MilkKind.allCases.filter { !loggedMilks.contains($0) }
-        }
-    }
-
-    /// Nothing left to ask, so the panel closes by itself.
-    var isComplete: Bool { sides.isEmpty && milks.isEmpty && unmeasured.isEmpty }
-}
-
 /// After Finish, or after logging a finished feed: add sides and bottles, and bottle amounts.
 struct FeedDetailsPanel: View {
     let feed: EventSnapshot

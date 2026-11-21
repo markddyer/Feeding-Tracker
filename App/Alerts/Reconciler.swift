@@ -115,6 +115,10 @@ final class Reconciler {
             planned = store.data
             let desired = reconcile(events: planned.allEvents, settings: state.settings, roster: roster,
                                     pendingChanges: state.pendingChanges, me: me, now: now)
+            // Alerts a change moved into the past before they went off: the scheduler sets them
+            // off at once if this phone still had them set for later (`catchUpAlerts`).
+            let passed = passedAlerts(events: planned.allEvents, settings: state.settings, roster: roster,
+                                      pendingChanges: state.pendingChanges, me: me, now: now)
             let events = planned.allEvents
             let babies = Set(events.filter(\.isLiveFeed).map(\.babyID))
             let latest = Dictionary(uniqueKeysWithValues: babies.compactMap { baby in
@@ -135,7 +139,7 @@ final class Reconciler {
                 await scheduler.silenceAll()
             } else {
                 await scheduler.apply(desired, latestFeedStarts: latest, now: now, timeZone: state.settings.timeZone,
-                                      keepExisting: waiting)
+                                      keepExisting: waiting, passed: passed)
             }
             alerts = silenced ? [] : desired
             lastRunAt = Date()
