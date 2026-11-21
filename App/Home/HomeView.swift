@@ -34,6 +34,10 @@ struct HomeView: View {
                     if case .askedOfMe(let ask) = facts.askStatus {
                         AskCard(ask: ask, facts: facts, me: me, onUndo: { undo = $0 })
                     }
+                    // Each morning until 12:00: last night, as a handover (X3, DD4).
+                    if let night = lastNight(at: context.date) {
+                        LastNightLine(night: night, zone: model.store.data.householdSettings.timeZone)
+                    }
                     HeroTile(facts: facts)
                     if let feed = facts.feedInProgress {
                         ThisFeedTile(feed: feed)
@@ -145,6 +149,20 @@ struct HomeView: View {
         default: break
         }
         #endif
+    }
+
+    /// Last night, from its end until 12:00. Feeding Dev's `-homeLastNight YES` shows the night
+    /// before at any hour, for screenshots.
+    private func lastNight(at now: Date) -> LastNight? {
+        let who = model.store.data.whoDidIt(babyID: babyID, now: now)
+        #if FEEDING_DEV
+        if UserDefaults.standard.bool(forKey: "homeLastNight") {
+            let today = PlainDate(now, in: model.store.data.householdSettings.timeZone)
+            let night = who.night(today.adding(days: -1))
+            if !night.items.isEmpty { return night }
+        }
+        #endif
+        return who.lastNight()
     }
 
     /// Feeding Dev only: launch with `-homeAtBottom YES` to open the page scrolled to its end,

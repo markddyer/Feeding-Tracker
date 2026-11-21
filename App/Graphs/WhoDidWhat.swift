@@ -300,7 +300,7 @@ private struct NightsSection: View {
 }
 
 /// One line of a night in the Day view (1A): its time, what it was, and who.
-private struct NightLine: View {
+struct NightLine: View {
     let item: ShareItem
     let sides: ShareSides
     let zone: TimeZone

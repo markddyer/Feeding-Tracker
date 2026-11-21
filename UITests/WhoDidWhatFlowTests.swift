@@ -1,8 +1,8 @@
 import XCTest
 
 /// The "who did what" page (`09-who-does-what.md`, X2, DD10, D1 A): a parent's number opens the
-/// list behind it, with as many rows as the number says, and a row opens its editor (Feeding Dev,
-/// simulator only). Run with the FeedingDevAudit scheme:
+/// list behind it, with as many rows as the number says; a row opens its editor, and giving the
+/// entry to the other parent there takes it off the list (DD8) (Feeding Dev, simulator only). Run with the FeedingDevAudit scheme:
 /// `-only-testing:FeedingDevUITests/WhoDidWhatFlowTests`.
 @MainActor
 final class WhoDidWhatFlowTests: XCTestCase {
@@ -31,6 +31,7 @@ final class WhoDidWhatFlowTests: XCTestCase {
             .min { $0.frame.minY < $1.frame.minY }
         guard let number else { return XCTFail("no parent's number under Nappies") }
         let count = Int(number.label.split(separator: " ").last ?? "") ?? -1
+        let parent = String(number.label.split(separator: " ").first ?? "")
         XCTAssertGreaterThan(count, 0, "the sample day has nappies for this parent: \(number.label)")
         for _ in 0..<4 where !number.isHittable { app.swipeUp() }
         number.tap()
@@ -46,5 +47,15 @@ final class WhoDidWhatFlowTests: XCTestCase {
 
         rows.firstMatch.tap()
         XCTAssertTrue(app.buttons["Save"].waitForExistence(timeout: 3), "a row opens its editor")
+
+        // "Who did it" in the editor (DD8): give it to the other parent, and the list follows.
+        let other = app.buttons.matching(NSPredicate(format: "label IN %@ AND label != %@", ["Sam", "Alex"], parent)).firstMatch
+        XCTAssertTrue(other.waitForExistence(timeout: 3), "both parents are offered")
+        for _ in 0..<4 where !other.isHittable { app.swipeUp() }
+        other.tap()
+        app.buttons["Save"].tap()
+        let fewer = NSPredicate(format: "count == %d", count - 1)
+        expectation(for: fewer, evaluatedWith: rows)
+        waitForExpectations(timeout: 5)
     }
 }

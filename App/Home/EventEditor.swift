@@ -22,6 +22,10 @@ struct EventEditor: View {
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
     @State private var draft: EventSnapshot
     @State private var finished: Bool
+    /// A parent tapped in "Who did it" (DD8); nil until then.
+    @State private var pickedDoneBy: MemberID?
+    /// Who the entry counted for when the editor opened (nil for a new one).
+    private let storedDoneBy: WhoDidIt.Answer?
     /// The bottle whose amount wheel is open.
     @State private var openBottle: String?
     private let original: EventSnapshot
@@ -45,6 +49,11 @@ struct EventEditor: View {
         original = snapshot
         _draft = State(initialValue: snapshot)
         _finished = State(initialValue: snapshot.event.endedAt != nil)
+        if case .edit(let id) = mode {
+            storedDoneBy = AppModel.shared.store.data.whoDidIt(babyID: babyID, now: now).doneBy(id)
+        } else {
+            storedDoneBy = nil
+        }
     }
 
     private static func blank(_ kind: EventKind, babyID: String, me: MemberID, now: Date) -> EventSnapshot {
@@ -70,6 +79,7 @@ struct EventEditor: View {
                     }
                     bottlesSection
                 }
+                whoSection
                 if case .edit(let id) = mode, let copy = copy(of: id) {
                     loggedTwiceSection(id: id, copy: copy)
                 }
@@ -333,6 +343,28 @@ struct EventEditor: View {
         }
     }
 
+    /// "Who did it" (DD8): a parent's choice, else the saved one, else the starting rule on the
+    /// details as they are now (a breastfeed counts for who breastfeeds).
+    @ViewBuilder
+    private var whoSection: some View {
+        let sides = ShareSides.current()
+        if sides.right != nil {
+            let shown = pickedDoneBy.map { WhoDidIt.Answer(member: $0, saved: true) }
+                ?? (storedDoneBy?.saved == true ? storedDoneBy
+                    : WhoDidIt.answer(for: draft, breastfeeder: AppModel.shared.store.data.breastfeeder))
+            Section {
+                WhoDidItPicker(sides: sides, shown: shown) { pickedDoneBy = $0 }
+            } header: {
+                header(EditorWhoText.doneBy)
+            } footer: {
+                Text(EditorWhoText.loggedBy(RowPerson(draft.event.loggedBy).name))
+                    .feedText(.subheadline)
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .listRowBackground(Theme.surface)
+        }
+    }
+
     // MARK: Saving
 
     private func save(_ lastChange: ((inout EventSnapshot) -> Void)? = nil) {
@@ -345,14 +377,17 @@ struct EventEditor: View {
         case .newFeed, .newPump:
             store.change {
                 $0.add(kind: final.event.kind, babyID: babyID, startedAt: final.event.startedAt, endedAt: final.event.endedAt,
-                       payload: final.payload ?? EventPayload(), by: me, timeZoneID: TimeZone.current.identifier, now: Date())
+                       payload: final.payload ?? EventPayload(), by: me, doneBy: pickedDoneBy,
+                       timeZoneID: TimeZone.current.identifier, now: Date())
             }
         case .edit(let id):
             let changed = EventSnapshot.changedFields(from: original, to: final)
+            let doer = pickedDoneBy
             store.change {
                 $0.edit(id, by: me, now: Date()) { current in
                     for field in changed { current.copy(field, from: final) }
                 }
+                if let doer { $0.setDoneBy(id, to: doer, by: me, now: Date()) }
             }
         }
         dismiss()

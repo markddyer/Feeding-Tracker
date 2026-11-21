@@ -19,6 +19,12 @@ struct CareEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft: EventSnapshot
     @State private var running: Bool
+    /// A parent tapped in "Settled by" / "Who did it", or "Got up" (DD8); nil until then.
+    @State private var pickedDoneBy: MemberID?
+    @State private var pickedGotUp: MemberID?
+    /// Who the entry counted for, and who got up, when the editor opened.
+    private let storedDoneBy: WhoDidIt.Answer?
+    private let storedGotUp: WhoDidIt.Answer?
     /// The growth fields as typed: kilograms and centimetres.
     @State private var weightText: String
     @State private var lengthText: String
@@ -44,6 +50,14 @@ struct CareEditor: View {
         original = snapshot
         _draft = State(initialValue: snapshot)
         _running = State(initialValue: snapshot.event.kind == .sleep && snapshot.event.endedAt == nil)
+        if case .edit(let id) = mode, snapshot.event.kind.countsAsWork {
+            let who = AppModel.shared.store.data.whoDidIt(babyID: babyID, now: now)
+            storedDoneBy = who.doneBy(id)
+            storedGotUp = who.gotUp(sleep: id)
+        } else {
+            storedDoneBy = nil
+            storedGotUp = nil
+        }
         let growth = snapshot.payload?.growth
         // Three decimals only when the weight needs them ("3.853"), so nothing is rounded away.
         shownWeight = growth?.weightGrams.map { $0 % 10 == 0 ? String(format: "%.2f", Double($0) / 1000)
@@ -74,6 +88,7 @@ struct CareEditor: View {
                 case .growth: growthSection
                 default: EmptyView()
                 }
+                whoSection
                 Section {
                     TextField("Optional", text: Binding {
                         draft.payload?.note ?? ""
@@ -111,6 +126,7 @@ struct CareEditor: View {
     private var title: String {
         switch kind {
         case .sleep: "Sleep"
+        case .bath: "Bath"
         case .nappy: "Nappy"
         case .medicine: "Medicine"
         case .growth: mode == .newGrowth ? "Add a measurement" : "Growth"
@@ -263,6 +279,39 @@ struct CareEditor: View {
         Text(title).feedText(.label).foregroundStyle(Theme.textMuted)
     }
 
+    /// "Who did it" (DD8): for a sleep, "Settled by" and, once it has ended, "Got up". A parent's
+    /// choice, else the saved one, else the starting rule. A sleep ended here counts for this
+    /// phone's parent until another is chosen, as on Home.
+    @ViewBuilder
+    private var whoSection: some View {
+        let sides = ShareSides.current()
+        if draft.event.kind.countsAsWork, sides.right != nil {
+            let doneBy = pickedDoneBy.map { WhoDidIt.Answer(member: $0, saved: true) }
+                ?? (storedDoneBy?.saved == true ? storedDoneBy
+                    : WhoDidIt.answer(for: draft, breastfeeder: AppModel.shared.store.data.breastfeeder))
+            Section {
+                WhoDidItPicker(sides: sides, shown: doneBy) { pickedDoneBy = $0 }
+            } header: {
+                header(kind == .sleep ? EditorWhoText.settledBy : EditorWhoText.doneBy)
+            } footer: {
+                Text(EditorWhoText.loggedBy(RowPerson(draft.event.loggedBy).name))
+                    .feedText(.subheadline)
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .listRowBackground(Theme.surface)
+            if kind == .sleep, !running {
+                let gotUp = pickedGotUp.map { WhoDidIt.Answer(member: $0, saved: true) }
+                    ?? (original.event.endedAt == nil ? WhoDidIt.Answer(member: me, saved: true) : storedGotUp)
+                Section {
+                    WhoDidItPicker(sides: sides, shown: gotUp) { pickedGotUp = $0 }
+                } header: {
+                    header(EditorWhoText.gotUp)
+                }
+                .listRowBackground(Theme.surface)
+            }
+        }
+    }
+
     // MARK: Saving
 
     private func save(_ lastChange: ((inout EventSnapshot) -> Void)? = nil) {
@@ -287,10 +336,15 @@ struct CareEditor: View {
             }
         case .edit(let id):
             let changed = EventSnapshot.changedFields(from: original, to: final)
+            let doer = pickedDoneBy
+            let riser = final.event.endedAt == nil ? nil : pickedGotUp
             store.change {
                 $0.edit(id, by: me, now: Date()) { current in
                     for field in changed { current.copy(field, from: final) }
                 }
+                if let doer { $0.setDoneBy(id, to: doer, by: me, now: Date()) }
+                // After the edit, so it is given for the sleep's ending as saved.
+                if let riser { $0.setGotUp(id, to: riser, by: me, now: Date()) }
             }
         }
         dismiss()

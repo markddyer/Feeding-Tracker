@@ -119,6 +119,23 @@ enum ShareText {
 
     static let swipeHint = "Swipe left or right to change the day."
 
+    /// Home's morning line (DD4, 3A).
+    static let lastNight = "Last night"
+
+    static func slept(_ seconds: TimeInterval) -> String { "Slept \(time(seconds))" }
+
+    /// "Last night: 3 feeds, 2 nappies, 2 wake-ups. Slept 6 hours 40 minutes." (3A)
+    static func spokenLastNight(_ night: LastNight) -> String {
+        func count(_ kind: ShareKind, _ one: String, _ many: String) -> String? {
+            let n = night.items.filter { $0.kind == kind }.count
+            return n == 0 ? nil : "\(n) \(n == 1 ? one : many)"
+        }
+        let parts = [count(.nightFeeds, "feed", "feeds"), count(.nightNappies, "nappy", "nappies"),
+                     count(.gotUpAtNight, "wake-up", "wake-ups")].compactMap { $0 }
+        let slept = night.sleptSeconds > 0 ? " Slept \(HomeText.spokenElapsed(night.sleptSeconds))." : ""
+        return "Last night: \(parts.joined(separator: ", ")).\(slept)"
+    }
+
     /// The list's number for VoiceOver: "7 entries", "3h 40m in all".
     static func listCount(_ tally: ShareTally, kind: ShareKind, time: Bool) -> String {
         if time { return "\(self.time(tally.seconds)) in all" }

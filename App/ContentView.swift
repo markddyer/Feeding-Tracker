@@ -296,7 +296,7 @@ struct AlarmSpikeHooks: ViewModifier {
 }
 
 /// Feeding Dev only: one screen opened straight away, for screenshots. Launch with
-/// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping`, `editLastFeed`,
+/// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping`, `editLastFeed`, `editLastSleep`,
 /// `addFirst` (with `-firstTitle "First smile"` to fill What happened) or `firstPage` (with
 /// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`),
 /// or the move's two screens, `moveOut` and `moveIn` (`08-going-live.md`).
@@ -341,6 +341,12 @@ struct DevScreen: View {
             NavigationStack {
                 FirstPage(id: UserDefaults.standard.string(forKey: "firstID") ?? "sample-first-smile", me: me, babyID: babyID)
             }
+        case "editLastSleep":
+            // The last sleep that has ended, for its "Settled by" and "Got up".
+            let last = AppModel.shared.store.data.visibleSnapshots(babyID: babyID)
+                .filter { $0.event.kind == .sleep && $0.event.endedAt != nil && $0.event.babyID == babyID }
+                .max { $0.event.startedAt < $1.event.startedAt }
+            CareEditor(mode: .edit(id: last?.id ?? ""), me: me, babyID: babyID)
         case "editLastFeed":
             let last = AppModel.shared.store.data.visibleSnapshots(babyID: babyID)
                 .filter { $0.event.isLiveFeed && $0.event.babyID == babyID }

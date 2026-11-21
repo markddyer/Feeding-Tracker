@@ -140,6 +140,11 @@ public struct WhoDidIt: Sendable {
         public var member: MemberID
         /// A parent chose it (true), or it was worked out (false: History draws it dashed, 7A).
         public var saved: Bool
+
+        public init(member: MemberID, saved: Bool) {
+            self.member = member
+            self.saved = saved
+        }
     }
 
     /// Everything the page counts, oldest first.

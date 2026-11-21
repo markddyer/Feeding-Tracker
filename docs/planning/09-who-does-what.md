@@ -865,7 +865,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship. Tasks T1 to 
   - Surfaced by: spec review round 1; outside finding 8
   - Files: FeedingCore/Sources/FeedingCore/Store/HouseholdMove.swift, FeedingCore/Tests/FeedingCoreTests/HouseholdMoveTests.swift
   - Verify: `swift test --package-path FeedingCore`
-- [ ] **T5 (P1, human: ~1d / CC: ~45min)** — App — "Done by" in the editors and add-later screens; "Got up" in the sleep editor
+- [x] **T5 (P1, human: ~1d / CC: ~45min)** — App — "Done by" in the editors and add-later screens; "Got up" in the sleep editor (built 21 Nov 2026: `WhoDidItPicker` in `EventEditor` and `CareEditor`; the tap test gives an entry to the other parent and the list follows)
   - Surfaced by: R2, R3; spec review round 1
   - Files: App/Home/EventEditor.swift, App/Home/CareEditor.swift, the Earlier feed and Pumping screens (to be determined)
   - Verify: app build; a tap test that changes "done by"
@@ -873,7 +873,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship. Tasks T1 to 
   - Surfaced by: X1, X5; "Which Undo bars get the swap"
   - Files: App/Home/FeedControls.swift, App/Home/CareTiles.swift, App/Home/CareText.swift, Shared/FeedShapes.swift
   - Verify: tap test: log, swap, Undo
-- [ ] **T7 (P1, human: ~2d / CC: ~1.5h)** — App — the shared screen and "Who breastfeeds?"
+- [x] **T7 (P1, human: ~2d / CC: ~1.5h)** — App — the shared screen and "Who breastfeeds?" (built 21 Nov 2026, see DT3 and DT7)
   - Surfaced by: R1, R2; DS1
   - Files: App/Graphs/ (new view), App/Graphs/GraphText.swift, App/Home/SettingsView.swift
   - Verify: simulator with `-sampleData YES`; accessibility audit; the five Duo widths
@@ -881,7 +881,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship. Tasks T1 to 
   - Surfaced by: X2; outside finding 7
   - Files: App/Home/HistoryView.swift, App/Home/FeedRows.swift
   - Verify: tap test: each number equals its list's length and time
-- [ ] **T9 (P1, human: ~1d / CC: ~45min)** — App — the "Last night" card on Home
+- [x] **T9 (P1, human: ~1d / CC: ~45min)** — App — the "Last night" card on Home (built 21 Nov 2026 as DT4's line, `App/Home/LastNightLine.swift`)
   - Surfaced by: X3, R3
   - Files: App/Home/HomeView.swift
   - Verify: simulator at 07:30 and 12:01 with sample data
@@ -1108,7 +1108,7 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: Passes 1, 2, 4, 6
   - Files: App/Graphs/ (new views), App/Graphs/GraphText.swift
   - Verify: simulator with `-sampleData YES -sampleWeek 30` at each range, day and night; the five Duo widths
-- [ ] **DT4 (P1, human: ~4h / CC: ~25min)** — Home's morning line as shapes in order, with its sheet
+- [x] **DT4 (P1, human: ~4h / CC: ~25min)** — Home's morning line as shapes in order, with its sheet (built 21 Nov 2026; Feeding Dev shows it at any hour with `-homeLastNight YES`)
   - Surfaced by: D4, 3A
   - Files: App/Home/HomeView.swift
   - Verify: simulator at 07:30 and 12:01; VoiceOver sentence
@@ -1120,7 +1120,7 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: D12, 7A, 7B
   - Files: App/Home/FeedRows.swift, App/Home/CareEditor.swift
   - Verify: VoiceOver reads "done by Sam, logged by Alex"
-- [ ] **DT7 (P2, human: ~3h / CC: ~20min)** — "Who breastfeeds?" sheet once per phone, and its Settings row (the sheet and the page's quiet line built 21 Nov 2026; the Settings row is still to do)
+- [x] **DT7 (P2, human: ~3h / CC: ~20min)** — "Who breastfeeds?" sheet once per phone, and its Settings row (built 21 Nov 2026; the Settings row is under "Both phones", shown once the other parent has joined)
   - Surfaced by: D11, 2A
   - Files: App/Home/SettingsView.swift, App/Graphs/ (the page)
   - Verify: tap test: Not now, then the quiet line; answer, then it goes

@@ -116,6 +116,8 @@ struct SettingsView: View {
             }
             .listRowBackground(Theme.surface)
 
+            breastfeederSection
+
             journalSection
 
             moveSection
@@ -148,6 +150,36 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .sensoryFeedback(.selection, trigger: colourTaps)
+    }
+
+    /// "Who breastfeeds?" (DD11): asked once on the "Who did what" page, changed here.
+    @ViewBuilder
+    private var breastfeederSection: some View {
+        let sides = ShareSides.current()
+        if sides.right != nil {
+            Section {
+                Picker(ShareText.breastfeederQuestion, selection: Binding<Breastfeeder?> {
+                    AppModel.shared.store.data.breastfeeder
+                } set: { answer in
+                    guard let answer else { return }
+                    AppModel.shared.store.change { $0.setBreastfeeder(answer, now: Date()) }
+                }) {
+                    if AppModel.shared.store.data.breastfeeder == nil {
+                        Text("Not set").tag(Breastfeeder?.none)
+                    }
+                    ForEach([sides.left, sides.right].compactMap { $0 }, id: \.self) { member in
+                        Text(sides.name(member)).tag(Breastfeeder?.some(.member(member)))
+                    }
+                    Text(ShareText.nobody).tag(Breastfeeder?.some(.nobody))
+                }
+            } header: {
+                header("Both phones")
+            } footer: {
+                Text(ShareText.breastfeederExplained)
+                    .foregroundStyle(Theme.textMuted)
+            }
+            .listRowBackground(Theme.surface)
+        }
     }
 
     /// Settings › Journal (design review D41), for both phones: the birth date, the household photo
