@@ -75,11 +75,7 @@ struct FirstsListView: View {
             }
         }
         .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: babyID) }
-        .safeAreaInset(edge: .bottom) {
-            UndoCenterBar()
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-        }
+        .undoCenterCard()
     }
 }
 

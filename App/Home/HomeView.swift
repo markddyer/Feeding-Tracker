@@ -46,7 +46,7 @@ struct HomeView: View {
                     // 2026); Medicine under them (K).
                     sleepAndNappy(facts)
                     sideAndLastFeed(facts)
-                    MedicineTile(facts: facts, log: log) { editingMedicines = true }
+                    medicineAndBath(facts)
                     // On the unfolded Duo these two are in the second column instead.
                     if !secondColumnShowing {
                         DayTile(facts: facts)
@@ -67,12 +67,7 @@ struct HomeView: View {
                 withAnimation { scroll.scrollTo(edge: .top) }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                VStack(spacing: 8) {
-                    if let undo, undo.expiresAt > context.date {
-                        UndoBanner(action: undo, onChangeTime: { timeChange = $0 }) { self.undo = nil }
-                    }
-                    FeedControls(facts: facts, me: me, babyID: babyID, onUndo: { undo = $0 })
-                }
+                FeedControls(facts: facts, me: me, babyID: babyID, onUndo: { undo = $0 })
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
@@ -82,6 +77,10 @@ struct HomeView: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
+        // The Undo card, at the top (DD7).
+        .undoCard(undo, onChangeTime: { timeChange = $0 }) { shown in
+            if undo?.id == shown.id { undo = nil }
+        }
         .task { openDevSheet() }
         .sheet(item: $timeChange) { change in
             ChangeTimeSheet(change: change, me: me, zone: model.store.data.householdSettings.timeZone)
@@ -107,6 +106,21 @@ struct HomeView: View {
         }
     }
 
+    /// Medicine and Bath side by side (design D6: Bath half-width beside Medicine), stacked at the
+    /// accessibility sizes. With no medicines listed, Bath alone.
+    @ViewBuilder
+    private func medicineAndBath(_ facts: HomeFacts) -> some View {
+        if facts.data.medicines.isEmpty {
+            BathTile(facts: facts, log: log)
+        } else {
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(TileRow(shares: [1, 1]))
+            layout {
+                MedicineTile(facts: facts, log: log) { editingMedicines = true }
+                BathTile(facts: facts, log: log)
+            }
+        }
+    }
+
     /// Feeding Dev only: launch with `-homeSheet pooDetails` (the poo's colour and consistency,
     /// for the last nappy), `changeTime` (Change time, for the last nappy) or `medicines` (the
     /// medicine list), for screenshots.
@@ -122,6 +136,13 @@ struct HomeView: View {
             editingMedicines = true
         default:
             break
+        }
+        // `-homeUndo nappy` (or `wokeUp`, `bath`): one quick log at launch, to see its Undo card.
+        switch UserDefaults.standard.string(forKey: "homeUndo") {
+        case "nappy": log.nappy(wee: true, poo: false)
+        case "wokeUp": log.wokeUp()
+        case "bath": log.bath()
+        default: break
         }
         #endif
     }

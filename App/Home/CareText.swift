@@ -47,6 +47,9 @@ enum CareText {
         "\(nappyKind(wee: wee, poo: poo).capitalizedFirst) logged"
     }
 
+    /// What the Undo card says after Bath (X5).
+    static let bathLogged = "Bath logged"
+
     static func colourName(_ colour: PooColour) -> String {
         switch colour {
         case .brown: "Brown"

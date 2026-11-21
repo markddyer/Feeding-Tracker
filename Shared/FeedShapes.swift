@@ -134,6 +134,27 @@ struct SpoonShape: Shape {
     }
 }
 
+/// A bath tub (X5, design D6): a rim, a rounded basin, two feet and a tap.
+struct TubShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        let g = Grid24(rect)
+        var lines = Path()
+        lines.move(to: g.q(3, 11))
+        lines.addLine(to: g.q(21, 11))
+        lines.move(to: g.q(7.5, 18.5))
+        lines.addLine(to: g.q(6.8, 20.8))
+        lines.move(to: g.q(16.5, 18.5))
+        lines.addLine(to: g.q(17.2, 20.8))
+        lines.move(to: g.q(6, 11))
+        lines.addLine(to: g.q(6, 6.2))
+        lines.addQuadCurve(to: g.q(9.6, 5.6), control: g.q(6, 4.2))
+        var path = lines.strokedPath(StrokeStyle(lineWidth: g.r(2.2), lineCap: .round, lineJoin: .round))
+        let basin = CGRect(x: g.q(4.6, 11).x, y: g.q(4.6, 11).y, width: g.r(14.8), height: g.r(8))
+        path.addPath(Path(roundedRect: basin, cornerRadii: RectangleCornerRadii(bottomLeading: g.r(4), bottomTrailing: g.r(4))))
+        return path
+    }
+}
+
 /// A line going up, for growth.
 struct GrowthShape: Shape {
     func path(in rect: CGRect) -> Path {

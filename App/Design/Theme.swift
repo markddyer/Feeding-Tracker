@@ -85,6 +85,22 @@ enum Theme {
     static let onStone = Color(day: 0x3A1A0E, night: 0xE8D6C2)
     static let stoneTint = Color(day: 0xE6E4E2, night: 0x151513)
 
+    // "Who does what" (09-who-does-what.md, design 5A, 20 Nov 2026): each parent colour's deeper
+    // "mark" shade for the dots and bars, 3:1 or better on the tiles, with the parent's initial
+    // inside in `onParentMark`. Dimmer than text at night, but never under 3:1.
+    static let parent1Mark = Color(day: 0x906400, night: 0xA47300)
+    static let parent2Mark = Color(day: 0x2D786B, night: 0x34897B)
+    static let lavenderMark = Color(day: 0x76629D, night: 0x8770B4)
+    static let plumMark = Color(day: 0x9F5189, night: 0xB55D9C)
+    static let caramelMark = Color(day: 0x985E3F, night: 0xAE6C48)
+    static let stoneMark = Color(day: 0x706C66, night: 0x807B74)
+    static let onParentMark = Color(day: 0xFFF4E2, night: 0x120A06)
+
+    // Baths (X5, design D6): a water-blue of their own.
+    static let bath = Color(day: 0x3FA3B8, night: 0x3B7480)
+    static let bathMark = Color(day: 0x1F7F92, night: 0x3B7480)
+    static let bathTint = Color(day: 0xDDF3F6, night: 0x0E1C1F)
+
     /// Problems with the app only, such as sync failing. A muted orange, never red, and never
     /// about the baby.
     static let notice = Color(day: 0xE07A2F, night: 0xA0582A)

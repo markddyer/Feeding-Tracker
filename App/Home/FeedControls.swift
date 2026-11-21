@@ -1,59 +1,38 @@
 import FeedingCore
 import SwiftUI
 
-/// Something the last tap did that Undo can take back, for 10 seconds.
+/// Something the last tap did that Undo can take back, for 10 seconds. Shown as `UndoCard`.
 struct UndoAction {
-    /// Which bar this is, so closing it never closes a newer one shown by its own Undo.
+    /// Which card this is, so closing it never closes a newer one shown by its own Undo.
     let id = UUID()
     let message: String
     let expiresAt: Date
     let perform: @MainActor () -> Void
     /// A quick log (a sleep, a nappy, a medicine) also offers Change time, for a tap made late.
     var changeTime: TimeChange?
-    /// False for a bar that only tells (Undo can't happen): it shows OK instead of Undo.
+    /// False for a card that only tells (Undo can't happen): it shows OK instead of Undo.
     var canUndo = true
+    /// Who did it, with one tap to swap it to the other parent (X1, design D5).
+    var swap: UndoSwap?
 
-    init(message: String, changeTime: TimeChange? = nil, perform: @escaping @MainActor () -> Void) {
+    init(message: String, changeTime: TimeChange? = nil, swap: UndoSwap? = nil, perform: @escaping @MainActor () -> Void) {
         self.message = message
         expiresAt = Date().addingTimeInterval(HouseholdData.undoWindow)
         self.changeTime = changeTime
+        self.swap = swap
         self.perform = perform
     }
 }
 
-struct UndoBanner: View {
-    let action: UndoAction
-    var onChangeTime: ((TimeChange) -> Void)?
-    let dismiss: () -> Void
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Text(action.message)
-                .feedText(.subheadline)
-                .lineLimit(2)
-                .minimumScaleFactor(0.85)
-            Spacer(minLength: 4)
-            if let change = action.changeTime, let onChangeTime {
-                Button("Change time") {
-                    onChangeTime(change)
-                    dismiss()
-                }
-                .feedText(.smallButton)
-                .foregroundStyle(Theme.text)
-                .frame(minHeight: 44)
-            }
-            Button(action.canUndo ? "Undo" : "OK") {
-                if action.canUndo { action.perform() }
-                dismiss()
-            }
-            .feedText(.smallButton)
-            .foregroundStyle(Theme.text)
-            .frame(minHeight: 44)
-        }
-        .padding(.horizontal, 18)
-        .frame(minHeight: 48)
-        .background(Theme.surface, in: Capsule())
-    }
+/// The "who did it" picture on the Undo card (X1, design D5): Wee, Poo, Both, Fell asleep, Woke
+/// up, Given and Bath. Lock Screen, Control Center and watch taps have no card; their entries are
+/// fixed in the editor.
+struct UndoSwap {
+    /// The entry it changes: the one logged, or the first sleep a Woke up ended (the swap then
+    /// changes every sleep of that wake-up, `HouseholdData.setGotUp`).
+    let eventID: String
+    /// Woke up swaps who got up, not who settled the baby (R3).
+    var gotUp = false
 }
 
 /// The big buttons at the bottom of the home screen. Ordinary buttons in the content, pinned to

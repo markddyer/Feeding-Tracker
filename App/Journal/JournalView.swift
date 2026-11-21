@@ -213,6 +213,7 @@ struct JournalView: View {
         }
         .safeAreaInset(edge: .bottom) { bottom }
         .background(Theme.background.ignoresSafeArea())
+        .undoCenterCard()
         .frame(maxWidth: twoColumns ? width / 2 : .infinity)
     }
 
@@ -433,7 +434,6 @@ struct JournalView: View {
 
     private var bottom: some View {
         VStack(spacing: 8) {
-            UndoCenterBar()
             if !addInBar {
             Button { adding = .new(title: nil) } label: {
                 HStack(spacing: 9) {

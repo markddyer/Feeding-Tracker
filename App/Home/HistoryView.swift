@@ -91,22 +91,11 @@ struct HistoryView: View {
         } message: {
             Text(deleteProblem ?? "")
         }
-        .safeAreaInset(edge: .bottom) {
-            VStack(spacing: 8) {
-                if let undo {
-                    UndoBanner(action: undo) { self.undo = nil }
-                }
-                // A first's Undo, from here or from its page.
-                UndoCenterBar()
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
+        // The Undo card at the top (DD7), and a first's Undo, from here or from its page.
+        .undoCard(undo) { shown in
+            if undo?.id == shown.id { undo = nil }
         }
-        .task(id: undo?.expiresAt) {
-            guard let expires = undo?.expiresAt else { return }
-            try? await Task.sleep(for: .seconds(max(0, expires.timeIntervalSinceNow)))
-            if !Task.isCancelled { undo = nil }
-        }
+        .undoCenterCard()
         .sheet(item: $careEditing) { mode in
             if let me = model.me {
                 CareEditor(mode: mode, me: me, babyID: model.baby?.name ?? "")

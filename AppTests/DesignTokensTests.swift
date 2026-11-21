@@ -28,6 +28,10 @@ struct DesignTokensTests {
         ("plum", Theme.plum), ("on-plum", Theme.onPlum), ("plum-tint", Theme.plumTint),
         ("caramel", Theme.caramel), ("on-caramel", Theme.onCaramel), ("caramel-tint", Theme.caramelTint),
         ("stone", Theme.stone), ("on-stone", Theme.onStone), ("stone-tint", Theme.stoneTint),
+        ("parent-1-mark", Theme.parent1Mark), ("parent-2-mark", Theme.parent2Mark), ("lavender-mark", Theme.lavenderMark),
+        ("plum-mark", Theme.plumMark), ("caramel-mark", Theme.caramelMark), ("stone-mark", Theme.stoneMark),
+        ("on-parent-mark", Theme.onParentMark),
+        ("bath", Theme.bath), ("bath-mark", Theme.bathMark), ("bath-tint", Theme.bathTint),
         ("notice", Theme.notice),
     ]
 
@@ -164,6 +168,53 @@ struct DesignTokensTests {
         for colour in ParentColour.allCases {
             #expect(Self.ratio(colour.onFill, colour.fill, look) >= 4.5, "\(colour.title)")
         }
+    }
+
+    /// Perceived colour difference (CIE76, in Lab): 15 or more reads as a different colour at a
+    /// glance, so two parents' parts, or a bath and a bottle, are told apart by colour too.
+    static func difference(_ first: Color, _ second: Color, _ look: Look) -> Double {
+        func lab(_ rgb: UInt32) -> (Double, Double, Double) {
+            func linear(_ value: UInt32) -> Double {
+                let v = Double(value & 0xFF) / 255
+                return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+            }
+            let (r, g, b) = (linear(rgb >> 16), linear(rgb >> 8), linear(rgb))
+            let x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+            let y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+            let z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+            func f(_ t: Double) -> Double { t > 0.008856 ? pow(t, 1.0 / 3) : 7.787 * t + 16.0 / 116 }
+            return (116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z)))
+        }
+        let (a, b) = (lab(hex(first, look)), lab(hex(second, look)))
+        return ((a.0 - b.0) * (a.0 - b.0) + (a.1 - b.1) * (a.1 - b.1) + (a.2 - b.2) * (a.2 - b.2)).squareRoot()
+    }
+
+    /// "Who does what" dots and bars (design 5A): each parent's mark on the tiles it sits on, the
+    /// initial inside it, and every two parents' marks told apart.
+    @Test(arguments: [Look.day, .night])
+    func parentMarksStandOutAndDiffer(_ look: Look) {
+        for colour in ParentColour.allCases {
+            #expect(Self.ratio(colour.mark, Theme.surface, look) >= 3, "\(colour.title) mark on surface")
+            #expect(Self.ratio(colour.mark, Theme.sleepTint, look) >= 3, "\(colour.title) mark on sleep-tint")
+            #expect(Self.ratio(Theme.onParentMark, colour.mark, look) >= 4.5, "the initial on \(colour.title)")
+        }
+        for (index, first) in ParentColour.allCases.enumerated() {
+            for second in ParentColour.allCases.dropFirst(index + 1) {
+                #expect(Self.difference(first.mark, second.mark, look) >= 15, "\(first.title) against \(second.title)")
+            }
+        }
+    }
+
+    /// Bath's water-blue (design D6): its tub on its tile and on the surface, the words on its tile,
+    /// and told apart from the bottle's blue and the teal parent.
+    @Test(arguments: [Look.day, .night])
+    func bathStandsOutAndDiffers(_ look: Look) {
+        #expect(Self.ratio(Theme.bathMark, Theme.bathTint, look) >= 3, "tub on its tile")
+        #expect(Self.ratio(Theme.bathMark, Theme.surface, look) >= 3, "tub on the surface")
+        #expect(Self.ratio(Theme.text, Theme.bathTint, look) >= 7, "text on the bath tile")
+        #expect(Self.ratio(Theme.textMuted, Theme.bathTint, look) >= 4.5, "muted text on the bath tile")
+        #expect(Self.difference(Theme.bathMark, Theme.bottleMark, look) >= 15, "bath against bottle")
+        #expect(Self.difference(Theme.bathMark, ParentColour.teal.mark, look) >= 15, "bath against teal")
     }
 
     /// The side being fed fills with the breast colour, with large letters (3:1 is the rule for

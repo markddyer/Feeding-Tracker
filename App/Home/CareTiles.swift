@@ -43,7 +43,8 @@ struct CareLog {
         // A sleep already runs (logged on the other phone a moment ago): nothing to log or undo.
         guard store.data.sleepInProgress(babyID: babyID, now: now) == nil else { return }
         let id = store.change { $0.startSleep(babyID: babyID, startedAt: at, by: me, timeZoneID: zoneID, now: now) }
-        onUndo(UndoAction(message: "Fell asleep logged", changeTime: TimeChange(ids: [id], field: .start, title: "Fell asleep", at: at)) {
+        onUndo(UndoAction(message: "Fell asleep logged", changeTime: TimeChange(ids: [id], field: .start, title: "Fell asleep", at: at),
+                          swap: UndoSwap(eventID: id)) {
             removeNew(id)
         })
     }
@@ -55,7 +56,9 @@ struct CareLog {
         let ended = store.change { $0.endSleep(babyID: babyID, at: at, by: me, now: now) }
         guard !ended.isEmpty else { return }
         let me = me
-        onUndo(UndoAction(message: "Woke up logged", changeTime: TimeChange(ids: ended, field: .end, title: "Woke up", at: at)) {
+        // The swap changes who got up for this wake-up, every sleep it ended (R3).
+        onUndo(UndoAction(message: "Woke up logged", changeTime: TimeChange(ids: ended, field: .end, title: "Woke up", at: at),
+                          swap: UndoSwap(eventID: ended[0], gotUp: true)) {
             AppModel.shared.store.change { data in
                 for sleep in before where ended.contains(sleep.id) {
                     data.edit(sleep.id, by: me, now: Date()) { $0.event.endedAt = nil }
@@ -71,7 +74,7 @@ struct CareLog {
         let id = store.change { $0.addNappy(babyID: babyID, wee: wee, poo: poo, by: me, timeZoneID: zoneID, now: now) }
         let title = CareText.nappyKind(wee: wee, poo: poo).capitalizedFirst
         onUndo(UndoAction(message: CareText.nappyLogged(wee: wee, poo: poo),
-                          changeTime: TimeChange(ids: [id], field: .start, title: title, at: now)) {
+                          changeTime: TimeChange(ids: [id], field: .start, title: title, at: now), swap: UndoSwap(eventID: id)) {
             removeNew(id)
         })
         return id
@@ -80,7 +83,20 @@ struct CareLog {
     func medicine(_ name: String) {
         let now = Date()
         let id = store.change { $0.addMedicine(babyID: babyID, MedicineDetails(name: name), by: me, timeZoneID: zoneID, now: now) }
-        onUndo(UndoAction(message: "\(name) logged", changeTime: TimeChange(ids: [id], field: .start, title: name, at: now)) {
+        onUndo(UndoAction(message: "\(name) logged", changeTime: TimeChange(ids: [id], field: .start, title: name, at: now),
+                          swap: UndoSwap(eventID: id)) {
+            removeNew(id)
+        })
+    }
+
+    /// A bath, logged at once (X5): it never ends a running sleep.
+    func bath() {
+        let now = Date()
+        let id = store.change {
+            $0.add(kind: .bath, babyID: babyID, startedAt: now, payload: EventPayload(), by: me, timeZoneID: zoneID, now: now)
+        }
+        onUndo(UndoAction(message: CareText.bathLogged, changeTime: TimeChange(ids: [id], field: .start, title: "Bath", at: now),
+                          swap: UndoSwap(eventID: id)) {
             removeNew(id)
         })
     }
@@ -296,22 +312,66 @@ struct MedicineTile: View {
         .accessibilityLabel("Change the medicine list")
     }
 
+    /// One medicine: its name, when it was last given, and Given. Side by side when they fit on
+    /// one line; otherwise (half width beside Bath, design D6, or large text) Given goes under.
     private func row(_ name: String) -> some View {
         let last = facts.data.lastGiven(name, babyID: facts.babyID, now: facts.now)
         let zone = facts.settings.timeZone
-        return HStack(spacing: 10) {
-            FeedMarkView(.medicine, size: 18, relativeTo: .body)
+        let when = last.map { "Last \(CareText.lastGiven($0, now: facts.now, in: zone))" } ?? "Not logged yet"
+        let given = PillButton("Given") { log.medicine(name) }
+            .accessibilityLabel("\(name) given")
+            .accessibilityHint("Logs it now")
+        func words(oneLine: Bool) -> some View {
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).feedText(.body).fontWeight(.semibold).lineLimit(2)
-                Text(last.map { "Last \(CareText.lastGiven($0, now: facts.now, in: zone))" } ?? "Not logged yet")
-                    .feedText(.small)
-                    .foregroundStyle(Theme.textMuted)
+                Text(name).feedText(.body).fontWeight(.semibold).lineLimit(oneLine ? 1 : 3)
+                Text(when).feedText(.small).foregroundStyle(Theme.textMuted).lineLimit(oneLine ? 1 : 3)
             }
+            .fixedSize(horizontal: oneLine, vertical: false)
             .accessibilityElement(children: .combine)
-            Spacer(minLength: 6)
-            PillButton("Given") { log.medicine(name) }
-                .accessibilityLabel("\(name) given")
-                .accessibilityHint("Logs it now")
+        }
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                FeedMarkView(.medicine, size: 18, relativeTo: .body)
+                words(oneLine: true)
+                Spacer(minLength: 6)
+                given
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .top, spacing: 10) {
+                    FeedMarkView(.medicine, size: 18, relativeTo: .body)
+                    words(oneLine: false)
+                }
+                given
+            }
+        }
+    }
+}
+
+/// Baths (X5, design D6): the tub in its own water-blue on its own tile, when the last bath was,
+/// and one Bath button that logs it at once with the Undo card. Beside Medicine on Home.
+struct BathTile: View {
+    let facts: HomeFacts
+    let log: CareLog
+
+    var body: some View {
+        let last = facts.data.allEvents
+            .filter { $0.kind == .bath && $0.deletedAt == nil && $0.babyID == facts.babyID && $0.startedAt <= facts.now }
+            .map(\.startedAt).max()
+        let zone = facts.settings.timeZone
+        Tile(label: "Bath", tint: Theme.bathTint) {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    FeedMarkView(.bath, size: 22, relativeTo: .body)
+                    Text(last.map { "Last \(CareText.lastGiven($0, now: facts.now, in: zone))" } ?? "Not logged yet")
+                        .feedText(.small)
+                        .foregroundStyle(Theme.textMuted)
+                        .lineLimit(2)
+                }
+                .accessibilityElement(children: .combine)
+                PillButton("Bath") { log.bath() }
+                    .accessibilityLabel("Bath given")
+                    .accessibilityHint("Logs it now")
+            }
         }
     }
 }

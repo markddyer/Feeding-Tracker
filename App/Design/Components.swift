@@ -303,6 +303,19 @@ enum ParentColour: String, CaseIterable {
         case .stone: Theme.stoneTint
         }
     }
+
+    /// The deeper shade for "who does what" dots and bars, with `Theme.onParentMark` for the
+    /// initial inside (design 5A).
+    var mark: Color {
+        switch self {
+        case .sunflower: Theme.parent1Mark
+        case .teal: Theme.parent2Mark
+        case .lavender: Theme.lavenderMark
+        case .plum: Theme.plumMark
+        case .caramel: Theme.caramelMark
+        case .stone: Theme.stoneMark
+        }
+    }
 }
 
 /// A parent's initial in their colour: who logged a feed, who is on each night.

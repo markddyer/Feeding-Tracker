@@ -189,11 +189,7 @@ private struct PageBar: ViewModifier {
                 .navigationTitle("First")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar(removing: .title)
-                .safeAreaInset(edge: .bottom) {
-                    UndoCenterBar()
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                }
+                .undoCenterCard()
         }
     }
 }

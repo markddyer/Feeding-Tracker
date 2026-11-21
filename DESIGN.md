@@ -59,6 +59,19 @@ colors:
   stone: "#9A948C"
   on-stone: "#3A1A0E"
   stone-tint: "#E6E4E2"
+  # Each parent colour's deeper "mark" shade, for the "who does what" dots and bars (design 5A,
+  # 20 Nov 2026): 3:1 or better on surface and sleep-tint, with the initial inside in on-parent-mark
+  parent-1-mark: "#906400"
+  parent-2-mark: "#2D786B"
+  lavender-mark: "#76629D"
+  plum-mark: "#9F5189"
+  caramel-mark: "#985E3F"
+  stone-mark: "#706C66"
+  on-parent-mark: "#FFF4E2"
+  # Baths (X5, design D6): a water-blue of its own, told apart from the bottle and teal
+  bath: "#3FA3B8"
+  bath-mark: "#1F7F92"
+  bath-tint: "#DDF3F6"
   notice: "#E07A2F"
   # Night look
   background-night: "#0A0807"
@@ -106,6 +119,16 @@ colors:
   stone-night: "#615D58"
   on-stone-night: "#E8D6C2"
   stone-tint-night: "#151513"
+  parent-1-mark-night: "#A47300"
+  parent-2-mark-night: "#34897B"
+  lavender-mark-night: "#8770B4"
+  plum-mark-night: "#B55D9C"
+  caramel-mark-night: "#AE6C48"
+  stone-mark-night: "#807B74"
+  on-parent-mark-night: "#120A06"
+  bath-night: "#3B7480"
+  bath-mark-night: "#3B7480"
+  bath-tint-night: "#0E1C1F"
   notice-night: "#A0582A"
 typography:
   display:

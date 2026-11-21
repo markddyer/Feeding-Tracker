@@ -18,7 +18,7 @@ final class UndoCenter {
         self.action = action
         expiry?.cancel()
         guard let action else { return }
-        AccessibilityNotification.Announcement("\(action.message). Undo is available.").post()
+        // The card itself reads it out when it comes (`UndoCard`).
         expiry = Task { [weak self] in
             try? await Task.sleep(for: .seconds(max(0, action.expiresAt.timeIntervalSinceNow)))
             guard !Task.isCancelled else { return }
@@ -38,11 +38,9 @@ final class UndoCenter {
     }
 }
 
-/// The bar, when there is one.
-struct UndoCenterBar: View {
-    var body: some View {
-        if let action = UndoCenter.shared.action {
-            UndoBanner(action: action) { UndoCenter.shared.clear(ifStill: action.id) }
-        }
+extension View {
+    /// The Journal's Undo, as the Undo card at the top of the screen in front (DD7).
+    func undoCenterCard() -> some View {
+        undoCard(UndoCenter.shared.action) { UndoCenter.shared.clear(ifStill: $0.id) }
     }
 }

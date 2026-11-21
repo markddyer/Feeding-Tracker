@@ -869,7 +869,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship. Tasks T1 to 
   - Surfaced by: R2, R3; spec review round 1
   - Files: App/Home/EventEditor.swift, App/Home/CareEditor.swift, the Earlier feed and Pumping screens (to be determined)
   - Verify: app build; a tap test that changes "done by"
-- [ ] **T6 (P1, human: ~1d / CC: ~45min)** — App — the Undo bar swap and the Bath button
+- [x] **T6 (P1, human: ~1d / CC: ~45min)** — App — the Undo bar swap and the Bath button
   - Surfaced by: X1, X5; "Which Undo bars get the swap"
   - Files: App/Home/FeedControls.swift, App/Home/CareTiles.swift, App/Home/CareText.swift, Shared/FeedShapes.swift
   - Verify: tap test: log, swap, Undo
@@ -1096,11 +1096,11 @@ Nights row's naming of nights by their evening, and the bottle-only "Formula or 
 
 These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same screens).
 
-- [ ] **DT1 (P1, human: ~4h / CC: ~20min)** — Design tokens — the six parent "mark" shades (day and night) and the Bath colours, with tests
+- [x] **DT1 (P1, human: ~4h / CC: ~20min)** — Design tokens — the six parent "mark" shades (day and night) and the Bath colours, with tests
   - Surfaced by: 5A, D6
   - Files: App/Design/Theme.swift, DESIGN.md, the app's Theme colour tests (AppTests)
   - Verify: the colour tests pass (3:1 marks on `surface` and `sleep-tint`, initials 4.5:1, every parent pair and Bath against bottle and teal told apart)
-- [ ] **DT2 (P1, human: ~1d / CC: ~45min)** — Undo card — every Undo bar to the top, bigger, with ×, in system glass, with the swap picture
+- [x] **DT2 (P1, human: ~1d / CC: ~45min)** — Undo card — every Undo bar to the top, bigger, with ×, in system glass, with the swap picture
   - Surfaced by: D5, D7, 5B
   - Files: App/Home/FeedControls.swift, App/Home/HomeView.swift, App/Home/HistoryView.swift, App/Journal/JournalView.swift
   - Verify: tap tests (`HistoryDeleteFlowTests` and the others that use Undo) updated and passing; the audit at large text
