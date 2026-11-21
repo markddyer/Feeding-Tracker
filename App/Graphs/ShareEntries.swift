@@ -82,7 +82,8 @@ struct ShareEntriesList: View {
     }
 
     private func chips(_ sides: ShareSides) -> [String] {
-        let member = request.others ? "Other" : request.member.map { sides.name($0) }
+        // A list from a bar has every parent's entries: "Everyone".
+        let member = request.others ? "Other" : request.member.map { sides.name($0) } ?? "Everyone"
         return ShareText.chips(member: member, kind: ShareText.kindTitle(request.kind, time: request.time, alone: true),
                                range: request.rangeTitle)
     }

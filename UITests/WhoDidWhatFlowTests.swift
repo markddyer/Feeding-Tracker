@@ -62,4 +62,55 @@ final class WhoDidWhatFlowTests: XCTestCase {
         XCTAssertTrue(newCount.firstMatch.waitForExistence(timeout: 5), "the count follows")
         XCTAssertEqual(rows.count, count, "the changed row stays in the open list")
     }
+
+    /// With no `range`, the page opens on whatever this phone last showed.
+    private func launch(_ range: String?, dayOffset: Int? = nil) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-sampleData", "YES", "-sampleDataFresh", "YES", "-sampleWeek", "YES",
+                               "-setup.disclaimerSeen", "YES", "-setup.inviteOffered", "YES",
+                               "-setup.permissionsAsked", "YES", "-setup.feedingStyle", "breastAndBottle",
+                               "-share.breastfeederAsked", "YES", "-openScreen", "whoDidWhat"]
+            + (range.map { ["-share.range", $0] } ?? [])
+            + (dayOffset.map { ["-share.dayOffset", String($0)] } ?? [])
+        app.launch()
+        return app
+    }
+
+    /// A tap on a bar (or its heading) opens everyone's entries for that line (the users' choice B,
+    /// 21 Nov 2026): as many rows as the line's total, under an "Everyone" chip.
+    func testABarOpensEveryonesList() {
+        let app = launch("day", dayOffset: 1)
+        let bar = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Nappies, '")).firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 8), "the Nappies bar is a button")
+        // "Nappies, 3: Sam 2, Alex 1": the total is the number before the colon.
+        let total = Int(bar.label.dropFirst("Nappies, ".count).prefix { $0.isNumber }) ?? -1
+        XCTAssertGreaterThan(total, 0, "the sample day has nappies: \(bar.label)")
+        for _ in 0..<4 where !bar.isHittable { app.swipeUp() }
+        bar.tap()
+
+        XCTAssertTrue(app.staticTexts["Everyone"].waitForExistence(timeout: 3), "the Everyone chip")
+        let rows = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Done by'"))
+        XCTAssertEqual(rows.count, total, "every parent's entries, as many as the total")
+        let list = XCTAttachment(screenshot: app.screenshot())
+        list.name = "Everyone's list behind a bar"
+        list.lifetime = .keepAlways
+        add(list)
+    }
+
+    /// On 7 days, a tap on a night's dots opens that night in the Day view.
+    func testANightOpensInTheDayView() {
+        // A `-share.range` launch setting would pin the range, so the page couldn't switch: pick
+        // 7 days with a tap instead.
+        let app = launch(nil)
+        let week = app.buttons["7 days"]
+        XCTAssertTrue(week.waitForExistence(timeout: 8))
+        week.tap()
+        let night = app.buttons.matching(NSPredicate(format: "label CONTAINS ' night: '")).firstMatch
+        XCTAssertTrue(night.waitForExistence(timeout: 8), "each night is a button")
+        let weekday = String(night.label.prefix { $0 != " " })
+        night.tap()
+        XCTAssertTrue(app.buttons["Day before"].waitForExistence(timeout: 3), "the Day view, with its arrows")
+        let shown = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label == 'Yesterday' OR label == 'Today'", weekday))
+        XCTAssertTrue(shown.firstMatch.waitForExistence(timeout: 3), "the night tapped: \(weekday)")
+    }
 }

@@ -155,7 +155,10 @@ struct WhoDidWhatPage: View {
                         }
                     } else {
                         let nights = NightsSection(pageRange: pageRange, who: who, facts: facts, night: night, today: today,
-                                                   range: range, zone: zone, sides: sides)
+                                                   range: range, zone: zone, sides: sides) { evening in
+                            dayOffset = max(0, today.days(since: evening))
+                            rangeName = SharePageRange.day.rawValue
+                        }
                         let bars = WhoDidWhatSection(facts: facts, range: range, rangeTitle: rangeTitle(pageRange, day, today, zone),
                                                      sides: sides)
                         if width >= 594 - 32 {
@@ -258,6 +261,8 @@ private struct NightsSection: View {
     let range: ShareRange
     let zone: TimeZone
     let sides: ShareSides
+    /// Opens a night in the Day view.
+    let openNight: (PlainDate) -> Void
 
     var body: some View {
         switch pageRange {
@@ -274,7 +279,8 @@ private struct NightsSection: View {
         case .week:
             Tile(label: "Nights · who got up") {
                 VStack(alignment: .leading, spacing: 12) {
-                    NightsDots(who: who, evenings: (0..<7).map { today.adding(days: $0 - 6) }, zone: zone, sides: sides)
+                    NightsDots(who: who, evenings: (0..<7).map { today.adding(days: $0 - 6) }, zone: zone, sides: sides,
+                               onPick: openNight)
                     bars(alone: false)
                 }
             }
@@ -336,6 +342,9 @@ struct NightsDots: View {
     let evenings: [PlainDate]
     let zone: TimeZone
     let sides: ShareSides
+    /// On the page, a tap on a night opens it in the Day view (the users' choice, 21 Nov 2026). The
+    /// Graphs tile leaves it nil: a tap there opens the page.
+    var onPick: ((PlainDate) -> Void)?
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .caption) private var dot: CGFloat = 17
 
@@ -344,39 +353,61 @@ struct NightsDots: View {
         if typeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(evenings, id: \.self) { evening in
-                    Text(ShareText.spokenNight(evening, counts: counts(wakeUps[evening] ?? []), in: zone))
-                        .feedText(.small)
+                    pickable(evening, label: ShareText.spokenNight(evening, counts: counts(wakeUps[evening] ?? []), in: zone)) {
+                        Text(ShareText.spokenNight(evening, counts: counts(wakeUps[evening] ?? []), in: zone))
+                            .feedText(.small)
+                            .frame(maxWidth: .infinity, minHeight: onPick == nil ? 0 : 44, alignment: .leading)
+                    }
                 }
             }
         } else {
             HStack(alignment: .bottom, spacing: 4) {
                 ForEach(evenings, id: \.self) { evening in
                     let items = (wakeUps[evening] ?? []).sorted { $0.at < $1.at }
-                    VStack(spacing: 3) {
-                        ForEach(items.reversed()) { item in
-                            Text(String(sides.name(item.member).prefix(1)).uppercased())
-                                .font(.system(size: dot * 0.55, weight: .bold, design: .rounded))
-                                .foregroundStyle(Theme.onParentMark)
-                                .frame(width: dot, height: dot)
-                                .background(sides.mark(item.member), in: Circle())
-                                .overlay {
-                                    if !item.saved {
-                                        // A worked-out "got up" (7A).
-                                        Circle().strokeBorder(Theme.text, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                    pickable(evening, label: ShareText.spokenNight(evening, counts: counts(items), in: zone)) {
+                        VStack(spacing: 3) {
+                            ForEach(items.reversed()) { item in
+                                Text(String(sides.name(item.member).prefix(1)).uppercased())
+                                    .font(.system(size: dot * 0.55, weight: .bold, design: .rounded))
+                                    .foregroundStyle(Theme.onParentMark)
+                                    .frame(width: dot, height: dot)
+                                    .background(sides.mark(item.member), in: Circle())
+                                    .overlay {
+                                        if !item.saved {
+                                            // A worked-out "got up" (7A).
+                                            Circle().strokeBorder(Theme.text, style: StrokeStyle(lineWidth: 1, dash: [2, 2]))
+                                        }
                                     }
-                                }
+                            }
+                            Text(ShareText.shortNight(evening, in: zone))
+                                .feedText(.small)
+                                .foregroundStyle(Theme.textMuted)
+                                .padding(.top, 2)
                         }
-                        Text(ShareText.shortNight(evening, in: zone))
-                            .feedText(.small)
-                            .foregroundStyle(Theme.textMuted)
-                            .padding(.top, 2)
+                        .frame(maxWidth: .infinity, minHeight: onPick == nil ? 0 : 44, alignment: .bottom)
                     }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(ShareText.spokenNight(evening, counts: counts(items), in: zone))
                 }
             }
             .frame(minHeight: dot * 3 + 24, alignment: .bottom)
+        }
+    }
+
+    /// A night as a button when the page can open it, read as one sentence either way.
+    @ViewBuilder
+    private func pickable(_ evening: PlainDate, label: String, @ViewBuilder content: () -> some View) -> some View {
+        if let onPick {
+            Button { onPick(evening) } label: {
+                content().contentShape(Rectangle())
+            }
+            .buttonStyle(PressStyle())
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(label)
+            .accessibilityHint("Shows that night")
+            .accessibilityAddTraits(.isButton)
+        } else {
+            content()
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(label)
         }
     }
 
@@ -417,7 +448,8 @@ private struct WhoDidWhatSection: View {
 /// A shared bar (DD2): the kind's shape and name, the household's total on the right, one bar
 /// split in the parents' mark colours (16 points tall, a 2-point gap, round ends) with a grey
 /// "Other" part when needed (2D), and under it each parent's number, each its own button that opens
-/// the list behind it (X2, 6B). A zero is printed, and the bar is then one colour (2C).
+/// the list behind it (X2, 6B). A zero is printed, and the bar is then one colour (2C). A tap on
+/// the heading or the bar opens everyone's list for the line.
 struct ShareBar: View {
     let kind: ShareKind
     let title: String
@@ -436,20 +468,30 @@ struct ShareBar: View {
         let total = facts.total(kind)
         let value: (ShareTally) -> Double = { time ? $0.seconds : Double($0.count) }
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                FeedMarkView(Self.mark(kind), size: 16, relativeTo: .body)
-                Text(title).feedText(.body).fontWeight(.semibold)
-                Spacer(minLength: 4)
-                Text(ShareText.number(total, kind: kind, time: time))
-                    .feedText(.body)
-                    .fontWeight(.semibold)
-                    .monospacedDigit()
+            // The heading and the bar are one button: everyone's entries for this line, each with
+            // who it counted for (the users' choice B, 21 Nov 2026). The numbers under it open one
+            // parent's list.
+            NavigationLink(value: ShareListRequest(kind: kind, member: nil, range: range, rangeTitle: rangeTitle, time: time)) {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        FeedMarkView(Self.mark(kind), size: 16, relativeTo: .body)
+                        Text(title).feedText(.body).fontWeight(.semibold)
+                        Spacer(minLength: 4)
+                        Text(ShareText.number(total, kind: kind, time: time))
+                            .feedText(.body)
+                            .fontWeight(.semibold)
+                            .monospacedDigit()
+                    }
+                    SplitBar(parts: [(value(left), sides.mark(sides.left)), (value(right), sides.mark(sides.right)),
+                                     (value(others), Theme.stone)])
+                }
+                .contentShape(Rectangle())
             }
+            .buttonStyle(PressStyle())
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spoken(left: left, right: right, others: others, total: total))
-            SplitBar(parts: [(value(left), sides.mark(sides.left)), (value(right), sides.mark(sides.right)),
-                             (value(others), Theme.stone)])
-                .accessibilityHidden(true)
+            .accessibilityHint("Shows everyone's entries")
+            .accessibilityAddTraits(.isButton)
             let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 2))
                 : AnyLayout(HStackLayout(spacing: 6))
             layout {
