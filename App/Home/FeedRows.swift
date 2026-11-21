@@ -126,12 +126,13 @@ extension HistoryRow {
     /// and colours. History and the Duo's second column both use it. With `answer`, the big
     /// picture is who did it (DD12); without, who logged it.
     @MainActor
-    init(_ snapshot: EventSnapshot, zone: TimeZone, loggedTwice: Bool = false, answer: WhoDidIt.Answer? = nil) {
+    init(_ snapshot: EventSnapshot, zone: TimeZone, loggedTwice: Bool = false, answer: WhoDidIt.Answer? = nil,
+         note: String? = nil) {
         let people = RowPeople(snapshot, answer: answer)
         self.init(snapshot: snapshot,
                   time: snapshot.event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
                   loggedBy: people.main, finishedBy: people.second, loggedTwice: loggedTwice, role: people.role,
-                  secondRole: people.secondRole)
+                  secondRole: people.secondRole, note: note)
     }
 }
 
@@ -223,10 +224,14 @@ struct CareRow: View {
     var secondRole = ""
     /// The other phone logged it too, and the screens show it once (D12 A).
     var loggedTwice = false
+    /// On a graph's page: the time on the left, when it needs its day ("Mon 22:30") or is a date
+    /// ("Thu 19 Nov"), and a line under the facts ("3h 10m of it on Tuesday").
+    var timeText: String?
+    var note: String?
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text(clock(at ?? snapshot.event.startedAt))
+            Text(shownTime)
                 .feedText(.smallButton)
                 .fixedSize()
                 .frame(minWidth: 50, alignment: .leading)
@@ -243,6 +248,11 @@ struct CareRow: View {
                         .feedText(.small)
                         .foregroundStyle(Theme.textMuted)
                 }
+                if let note {
+                    Text(note)
+                        .feedText(.small)
+                        .foregroundStyle(Theme.textMuted)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             RowAvatars(main: loggedBy, second: second, tint: mark.tint)
@@ -253,10 +263,13 @@ struct CareRow: View {
         .background(mark.tint, in: RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(clock(at ?? snapshot.event.startedAt)): \(spoken). \(role) \(loggedBy.spoken)\(loggedBy.workedOut ? ", probably" : "")"
+        .accessibilityLabel("\(shownTime): \(spoken). \(role) \(loggedBy.spoken)\(loggedBy.workedOut ? ", probably" : "")"
             + (second.map { ", \(secondRole) \($0.spoken)" } ?? "") + "."
-            + (loggedTwice ? " Logged on both phones, shown once." : ""))
+            + (loggedTwice ? " Logged on both phones, shown once." : "")
+            + (note.map { " \($0)." } ?? ""))
     }
+
+    private var shownTime: String { timeText ?? clock(at ?? snapshot.event.startedAt) }
 
     private func clock(_ date: Date) -> String {
         date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone))
@@ -303,9 +316,10 @@ extension CareRow {
     /// that was the other parent; without, who logged it.
     @MainActor
     init(_ snapshot: EventSnapshot, zone: TimeZone, now: Date = Date(), loggedTwice: Bool = false,
-         answer: WhoDidIt.Answer? = nil) {
+         answer: WhoDidIt.Answer? = nil, timeText: String? = nil, note: String? = nil) {
         let people = RowPeople(snapshot, answer: answer)
         self.init(snapshot: snapshot, zone: zone, loggedBy: people.main, now: now, role: people.role,
-                  second: people.second, secondRole: people.secondRole, loggedTwice: loggedTwice)
+                  second: people.second, secondRole: people.secondRole, loggedTwice: loggedTwice, timeText: timeText,
+                  note: note)
     }
 }

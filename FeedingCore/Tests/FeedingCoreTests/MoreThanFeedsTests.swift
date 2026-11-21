@@ -474,9 +474,11 @@ struct RhythmTests {
         #expect(evening.start == at(2026, 11, 14, 0))
         #expect(evening.end == at(2026, 11, 15, 0))
         #expect(evening.sleeps == [RhythmSleep(id: "s1", start: at(2026, 11, 14, 22), end: at(2026, 11, 15, 0),
-                                               fromDayBefore: false, intoNextDay: true, running: false)])
+                                               fromDayBefore: false, intoNextDay: true, running: false,
+                                               spanStart: at(2026, 11, 14, 22), spanEnd: at(2026, 11, 15, 2))])
         #expect(morning.sleeps == [RhythmSleep(id: "s1", start: at(2026, 11, 15, 0), end: at(2026, 11, 15, 2),
-                                               fromDayBefore: true, intoNextDay: false, running: false)])
+                                               fromDayBefore: true, intoNextDay: false, running: false,
+                                               spanStart: at(2026, 11, 14, 22), spanEnd: at(2026, 11, 15, 2))])
         #expect(evening.nightSleepSeconds == .hours(2))
         #expect(morning.nightSleepSeconds == .hours(2))
         #expect(evening.daySleepSeconds == 0)
@@ -505,7 +507,8 @@ struct RhythmTests {
         let row = try #require(rows(events, now: now).last)
         #expect(row.isToday)
         #expect(row.sleeps == [RhythmSleep(id: "s1", start: at(2026, 11, 17, 10, 5), end: now,
-                                           fromDayBefore: false, intoNextDay: false, running: true)])
+                                           fromDayBefore: false, intoNextDay: false, running: true,
+                                           spanStart: at(2026, 11, 17, 10, 5), spanEnd: now)])
         #expect(row.daySleepSeconds == .minutes(80))
     }
 

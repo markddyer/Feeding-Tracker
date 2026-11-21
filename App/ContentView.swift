@@ -316,6 +316,16 @@ struct DevScreen: View {
         case "whoDidWhat":
             // With `-share.range day` (or `week`, `fourWeeks`, `all`) and `-share.breastfeederAsked YES`.
             NavigationStack { WhoDidWhatPage() }
+        case "graphPage":
+            // With `-graphPage feeds` (or `bottles`, `gaps`, `breast`, `pumped`, `rhythm`, `asleep`,
+            // `nappies`, `weight`) and `-graphPageDay 2` for two days back.
+            let zone = AppModel.shared.store.data.householdSettings.timeZone
+            let back = UserDefaults.standard.integer(forKey: "graphPageDay")
+            NavigationStack {
+                GraphPage(request: GraphPageRequest(
+                    kind: GraphKind(rawValue: UserDefaults.standard.string(forKey: "graphPage") ?? "") ?? .feeds,
+                    day: PlainDate(Date(), in: zone).adding(days: -back)))
+            }
         case "duo":
             DuoPreview(me: me, babyID: babyID)
         case "journalDuo":

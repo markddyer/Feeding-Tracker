@@ -59,10 +59,7 @@ public struct GraphDay: Hashable, Sendable, Identifiable {
 /// logged on both phones counts once.
 public func graphDays(_ snapshots: [EventSnapshot], babyID: String, timeZone: TimeZone,
                       range: GraphRange, now: Date) -> [GraphDay] {
-    let live = snapshots.filter {
-        $0.event.deletedAt == nil && $0.event.babyID == babyID && $0.event.startedAt <= now
-            && ($0.event.kind == .feed || $0.event.kind == .pump)
-    }
+    let live = graphSnapshots(snapshots, babyID: babyID, now: now)
     guard let first = live.map(\.event.startedAt).min() else { return [] }
     let today = PlainDate(now, in: timeZone)
     let firstDay = PlainDate(first, in: timeZone)
@@ -97,9 +94,9 @@ public func graphDays(_ snapshots: [EventSnapshot], babyID: String, timeZone: Ti
     }
 
     // Every feed, not only those in range, so the first day's first gap starts at the feed before.
-    let starts = live.filter { $0.event.kind == .feed }.map(\.event.startedAt).sorted()
-    for (earlier, later) in zip(starts, starts.dropFirst()) {
-        if let i = index(of: later) { days[i].gaps.append(later.timeIntervalSince(earlier)) }
+    // The same gaps a graph's page lists (`graphDayDetails`).
+    for gap in feedGaps(of: live.filter { $0.event.kind == .feed }) {
+        if let i = index(of: gap.to) { days[i].gaps.append(gap.seconds) }
     }
     return days
 }

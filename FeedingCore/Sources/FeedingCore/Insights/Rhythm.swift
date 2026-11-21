@@ -67,6 +67,10 @@ public struct RhythmSleep: Hashable, Sendable, Identifiable {
     public var intoNextDay: Bool
     /// Still asleep now.
     public var running: Bool
+    /// The whole sleep, from when it started to when it ended (or now, or the next sleep's
+    /// start), for a graph's page: "22:30 Mon, to 03:10".
+    public var spanStart: Date
+    public var spanEnd: Date
 }
 
 /// One calendar day of the daily rhythm report (the users' choice D, 17 Nov 2026): midnight to
@@ -137,7 +141,8 @@ public func rhythmDays(_ snapshots: [EventSnapshot], babyID: String, timeZone: T
             guard piece.1 > piece.0 else { continue }
             pieces.append(piece)
             day.sleeps.append(RhythmSleep(id: span.id, start: piece.0, end: piece.1, fromDayBefore: span.start < day.start,
-                                          intoNextDay: span.end > day.end, running: span.running))
+                                          intoNextDay: span.end > day.end, running: span.running,
+                                          spanStart: span.start, spanEnd: span.end))
         }
         for (from, upTo) in union(pieces) {
             let split = dayHours.nightAndDaySeconds(from: from, to: upTo, in: timeZone)

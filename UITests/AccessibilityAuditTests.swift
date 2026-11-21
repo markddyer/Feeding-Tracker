@@ -94,6 +94,21 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// Each graph's own page (`10-graph-pages.md`), on yesterday, in both looks and at large text.
+    func testGraphPages() {
+        func page(_ kind: String) -> [String] {
+            ["-sampleWeek", "YES", "-graphs.range", "week", "-openScreen", "graphPage", "-graphPage", kind, "-graphPageDay", "1"]
+        }
+        for look in ["automatic", "alwaysNight"] {
+            for kind in ["feeds", "gaps", "rhythm", "weight"] {
+                audit(launch(page(kind), look: look), "graph page \(kind) \(look)")
+            }
+        }
+        audit(launch(page("feeds"), largeText: true), "graph page feeds large text")
+        audit(launch(page("rhythm"), largeText: true), "graph page rhythm large text")
+        report()
+    }
+
     /// The Journal, with made-up firsts: the line, a first's page, the editor (empty, and with a
     /// photo in its square), the Firsts list and History with firsts in it.
     func testJournal() {
