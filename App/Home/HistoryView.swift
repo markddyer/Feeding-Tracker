@@ -21,9 +21,12 @@ struct HistoryView: View {
     var body: some View {
         let data = model.store.data
         let zone = data.householdSettings.timeZone
-        // A feed logged on both phones shows once: the copy is left out, and the feed logged
-        // first says so (the user's choice, 15 Nov 2026).
-        let pairs = data.duplicatePairs(babyID: model.baby?.name ?? "")
+        // An entry logged on both phones shows once: the copy is left out, and the one logged
+        // first says so (the user's choice, 15 Nov 2026; every kind that counts since D12 A).
+        let babyID = model.baby?.name ?? ""
+        let pairs = data.duplicatePairs(babyID: babyID) + data.careDuplicatePairs(babyID: babyID)
+        // Each row's big picture is who did it (DD12).
+        let who = data.whoDidIt(babyID: babyID, now: Date())
         let copyOf = Dictionary(pairs.map { ($0.kept, $0.duplicate) }, uniquingKeysWith: { first, _ in first })
         let filter = HistoryFilter(rawValue: filterName) ?? .all
         let events = filter.entries(in: data, hidden: Set(pairs.map(\.duplicate)))
@@ -49,7 +52,7 @@ struct HistoryView: View {
                     .padding(.top, 8)
                     .historyRow()
                 ForEach(days[day] ?? [], id: \.event.id) { stored in
-                    row(stored, zone: zone, copy: copyOf[stored.event.id])
+                    row(stored, zone: zone, copy: copyOf[stored.event.id], answer: who.doneBy(stored.event.id))
                         .historyRow()
                 }
             }
@@ -146,11 +149,11 @@ struct HistoryView: View {
     }
 
     @ViewBuilder
-    private func row(_ stored: StoredEvent, zone: TimeZone, copy: String?) -> some View {
+    private func row(_ stored: StoredEvent, zone: TimeZone, copy: String?, answer: WhoDidIt.Answer?) -> some View {
         if stored.event.kind == .milestone {
             firstRow(stored, zone: zone)
         } else {
-            entryRow(stored, zone: zone, copy: copy)
+            entryRow(stored, zone: zone, copy: copy, answer: answer)
         }
     }
 
@@ -168,7 +171,7 @@ struct HistoryView: View {
         }
     }
 
-    private func entryRow(_ stored: StoredEvent, zone: TimeZone, copy: String?) -> some View {
+    private func entryRow(_ stored: StoredEvent, zone: TimeZone, copy: String?, answer: WhoDidIt.Answer?) -> some View {
         let snapshot = stored.snapshot
         let event = snapshot.event
         let isFeed = event.kind == .feed || event.kind == .pump
@@ -178,15 +181,15 @@ struct HistoryView: View {
             if isFeed { editing = .edit(id: event.id) } else { careEditing = .edit(id: event.id) }
         } label: {
             if isFeed {
-                HistoryRow(snapshot, zone: zone, loggedTwice: copy != nil)
+                HistoryRow(snapshot, zone: zone, loggedTwice: copy != nil, answer: answer)
             } else {
-                CareRow(snapshot, zone: zone)
+                CareRow(snapshot, zone: zone, loggedTwice: copy != nil, answer: answer)
             }
         }
-        // Undo a merge: both feeds show again, on both phones.
+        // Undo a merge: both show again, on both phones.
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if let copy, let me = model.me {
-                Button("Two feeds", systemImage: "arrow.triangle.branch") {
+                Button("They were two", systemImage: "arrow.triangle.branch") {
                     model.store.change { $0.markDistinct(event.id, copy, by: me, now: Date()) }
                 }
                 .tint(Theme.primary)

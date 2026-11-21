@@ -387,6 +387,36 @@ struct LastNightTests {
 
 @Suite("Who does what: the household's answer sheet")
 struct HouseholdWhoDidItTests {
+    @Test func aNappyLoggedOnBothPhonesIsHiddenOnEveryScreenUntilTheyWereTwo() {
+        // D11 C, D12 A: the copy logged second leaves the screens, as a feed's does.
+        var data = HouseholdData()
+        let t = at(2026, 11, 18, 10, 0)
+        let kept = data.addNappy(babyID: baby, wee: true, poo: false, at: t, by: parentA, timeZoneID: "Europe/London", now: t)
+        let copy = data.addNappy(babyID: baby, wee: true, poo: false, at: t.addingTimeInterval(120), by: parentB,
+                                 timeZoneID: "Europe/London", now: t.addingTimeInterval(120))
+        #expect(data.hiddenDuplicates(babyID: baby) == [copy])
+        #expect(data.visibleSnapshots(babyID: baby).map(\.id) == [kept])
+        data.markDistinct(kept, copy, by: parentB, now: t.addingTimeInterval(300))
+        #expect(data.hiddenDuplicates(babyID: baby).isEmpty)
+        #expect(Set(data.visibleSnapshots(babyID: baby).map(\.id)) == [kept, copy])
+    }
+
+    @Test func finishedByIsWhoTappedFinishNotWhoCorrectedTheTime() throws {
+        // TD1, D10 C: the end set as it was tapped names the finisher; a correction doesn't.
+        var data = HouseholdData()
+        let start = at(2026, 11, 18, 10, 0)
+        let feed = data.startFeed(babyID: baby, side: .left, by: parentA, timeZoneID: "Europe/London", now: start)
+        #expect(data.events[feed]?.snapshot.finishedBy == nil, "running")
+        data.finishFeed(feed, by: parentB, now: start.addingTimeInterval(900))
+        #expect(data.events[feed]?.snapshot.finishedBy == parentB)
+        data.edit(feed, by: parentA, now: start.addingTimeInterval(3600)) { $0.event.endedAt = start.addingTimeInterval(1200) }
+        #expect(data.events[feed]?.snapshot.finishedBy == nil, "a later correction claims no finisher")
+        let earlier = data.add(kind: .feed, babyID: baby, startedAt: start, endedAt: start.addingTimeInterval(600),
+                               payload: EventPayload(feed: FeedDetails()), by: parentB, timeZoneID: "Europe/London",
+                               now: start.addingTimeInterval(7200))
+        #expect(data.events[earlier]?.snapshot.finishedBy == nil, "logged afterwards")
+    }
+
     @Test func theSharedSettingDecidesBreastfeedsWithNoChoice() throws {
         var data = HouseholdData()
         let start = at(2026, 11, 18, 10, 0)

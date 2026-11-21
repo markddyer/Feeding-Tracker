@@ -79,6 +79,17 @@ public struct ShareItem: Hashable, Sendable, Identifiable {
     public var day: PlainDate
 }
 
+extension EventSnapshot {
+    /// Who tapped Finish (TD1, D10 C): the parent in the end time's stamp, but only when the end
+    /// was set as it was tapped (the end equals its stamp's time, within a second). A later
+    /// correction of the time, or an entry logged afterwards, claims no finisher.
+    public var finishedBy: MemberID? {
+        guard let end = event.endedAt, let stamp = payload?.stamp(.endedAt),
+              abs(stamp.at.timeIntervalSince(end)) <= 1 else { return nil }
+        return stamp.by
+    }
+}
+
 /// Which days the page shows (design 1C): one day, the last days counting today, or all.
 public enum ShareRange: Hashable, Sendable {
     case day(PlainDate)

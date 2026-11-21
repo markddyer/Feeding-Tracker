@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The list behind one number (X2, DD10, engineering D1 A): its own screen, back returns to the
 /// page. Headed by the kind, with chips (parent · kind · range), the count or total on top, and
-/// the entries grouped by day, each with the parent it was counted for (dashed when worked out,
+/// the entries grouped by day, each with the parent it was counted for (a worked-out "got up" dashed,
 /// 7A). For a time number each row shows the time it added. A row opens its editor, where "who did
 /// it" can be changed. Built from the same items as the number, so the two always agree.
 struct ShareEntriesList: View {
@@ -79,10 +79,11 @@ struct ShareEntriesList: View {
                                range: request.rangeTitle)
     }
 
-    /// The parent an item was counted for, dashed when worked out (7A).
+    /// The parent an item was counted for; a "got up" worked out from the log is dashed (7A).
+    /// A "done by" isn't: it starts as who logged it, by the agreed rule (R2), not a guess.
     @MainActor static func person(_ item: ShareItem) -> RowPerson {
         var person = RowPerson(item.member)
-        person.workedOut = !item.saved
+        person.workedOut = item.kind == .gotUpAtNight && !item.saved
         return person
     }
 

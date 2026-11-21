@@ -324,7 +324,7 @@ struct NightLine: View {
         }
         .frame(minHeight: 36)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(time): \(what). \(item.kind == .gotUpAtNight ? "Got up" : "Done by") \(who.spoken)\(who.workedOut ? ", worked out" : "").")
+        .accessibilityLabel("\(time): \(what). \(item.kind == .gotUpAtNight ? "Got up" : "Done by") \(who.spoken)\(who.workedOut ? ", probably" : "").")
     }
 }
 
@@ -601,6 +601,7 @@ struct BreastfeederSheet: View {
                     .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(sides.name(member))
             }
             Button { onAnswer(.nobody) } label: {
                 Text(ShareText.nobody).feedText(.button)

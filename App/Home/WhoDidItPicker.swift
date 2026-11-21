@@ -2,13 +2,16 @@ import FeedingCore
 import SwiftUI
 
 /// "Who did it" in an editor (DD8): both parents side by side, picture and name, the chosen one
-/// filled in their colour. A worked-out answer has a dashed outline and a line asking to confirm
-/// it (7A). One tap chooses; Save keeps it. Feeds, pumping, nappies, medicines, baths and sleeps
-/// ("Settled by" and "Got up"); not growth or firsts.
+/// filled in their colour. A "got up" worked out from the log has a dashed outline and a line
+/// asking to confirm it (7A); a "done by" starts as who logged it (R2), so it isn't marked. One
+/// tap chooses; Save keeps it. Feeds, pumping, nappies, medicines, baths and sleeps ("Settled
+/// by" and "Got up"); not growth or firsts.
 struct WhoDidItPicker: View {
     let sides: ShareSides
     /// Who it counts for now, and whether a parent chose it (false: worked out).
     let shown: WhoDidIt.Answer?
+    /// True for "Got up": a worked-out answer is marked as a guess (7A).
+    var marksWorkedOut = false
     let onPick: (MemberID) -> Void
 
     var body: some View {
@@ -18,7 +21,7 @@ struct WhoDidItPicker: View {
                     button(member)
                 }
             }
-            if let shown, !shown.saved {
+            if marksWorkedOut, let shown, !shown.saved {
                 Text(EditorWhoText.workedOut)
                     .feedText(.small)
                     .foregroundStyle(Theme.textMuted)
@@ -34,7 +37,7 @@ struct WhoDidItPicker: View {
         return Button { onPick(member) } label: {
             HStack(spacing: 8) {
                 Avatar(name: name, colour: colour, size: 26)
-                    .workedOutRing(chosen && !(shown?.saved ?? true))
+                    .workedOutRing(marksWorkedOut && chosen && !(shown?.saved ?? true))
                 Text(name)
                     .feedText(.smallButton)
                     .lineLimit(1)
@@ -48,7 +51,7 @@ struct WhoDidItPicker: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(name)
-        .accessibilityValue(chosen ? (shown?.saved == false ? "Chosen, probably" : "Chosen") : "")
+        .accessibilityValue(chosen ? (marksWorkedOut && shown?.saved == false ? "Chosen, probably" : "Chosen") : "")
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 }

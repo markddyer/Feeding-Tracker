@@ -1116,7 +1116,7 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: D15, 4B
   - Files: App/Home/FeedControls.swift, App/Home/EventEditor.swift, Watch/App/WatchHomeView.swift
   - Verify: tap test on a bottle-only phone; watch simulator with `-sampleWatch faceStart`
-- [ ] **DT6 (P2, human: ~3h / CC: ~20min)** — History's pictures (7B) and the dashed outline for a worked-out "got up" (7A)
+- [x] **DT6 (P2, human: ~3h / CC: ~20min)** — History's pictures (7B) and the dashed outline for a worked-out "got up" (7A) (built 21 Nov 2026: the big picture is who did it, a small one the other parent who logged or finished it; the dashed ring only on a worked-out "got up", as 7A says, never on a "done by"; `BreastfeederFlowTests` checks the small picture)
   - Surfaced by: D12, 7A, 7B
   - Files: App/Home/FeedRows.swift, App/Home/CareEditor.swift
   - Verify: VoiceOver reads "done by Sam, logged by Alex"
@@ -2220,11 +2220,11 @@ review's DT1 to DT9; CEO T10 ("storage per E1") is now ET1, ET2 and ET5; CEO T5'
   - Surfaced by: E1 proof; subagent 4, 8
   - Files: none (checks on the two phones)
   - Verify: the numbers match on both phones; the sync log shows the fetch by name
-- [ ] **ET9 (P2, human: ~2h / CC: ~15min)** — History's "finished by" only when the end was set as Finish was tapped
+- [x] **ET9 (P2, human: ~2h / CC: ~15min)** — History's "finished by" only when the end was set as Finish was tapped (built 21 Nov 2026: `EventSnapshot.finishedBy`, with a core test)
   - Surfaced by: TD1 (D10 C); Codex 10
   - Files: App/Home/FeedRows.swift (through WhoDidIt)
   - Verify: unit test; VoiceOver in the audit
-- [ ] **ET10 (P1, human: ~1d / CC: ~1h)** — History: "Logged on both phones" and "They were two" for every counting kind
+- [x] **ET10 (P1, human: ~1d / CC: ~1h)** — History: "Logged on both phones" and "They were two" for every counting kind (built 21 Nov 2026: `hiddenDuplicates` now holds every kind's copies, so Home, Graphs, the watch and History all show a copy once; the sleep, nappy, medicine and bath editor has its "Logged on both phones" section; `-sampleDuplicate YES` adds a nappy copy)
   - Surfaced by: TD2 (D11 C), TD2b (D12 A)
   - Files: App/Home/HistoryView.swift, App/Home/FeedRows.swift
   - Verify: simulator with `-sampleDuplicate YES` widened to a nappy; unit tests in ET4

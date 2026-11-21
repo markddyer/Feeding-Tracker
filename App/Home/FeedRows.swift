@@ -34,12 +34,12 @@ struct RowPerson {
     var colour: ParentColour
     /// "you", or their name, for VoiceOver.
     var spoken: String
-    /// Worked out by the starting rule, not chosen by a parent: a dashed ring (design 7A).
+    /// A "got up" worked out from the log, not chosen by a parent: a dashed ring (design 7A).
     var workedOut = false
 }
 
 extension View {
-    /// The dashed ring of a worked-out "done by" or "got up" (design 7A).
+    /// The dashed ring of a worked-out "got up" (design 7A).
     func workedOutRing(_ shown: Bool) -> some View {
         overlay {
             if shown {
@@ -52,9 +52,9 @@ extension View {
     }
 }
 
-/// One feed or pumping session in History (and later the Duo's second column): tinted by kind,
-/// the time on the left, chips in the middle, and the avatar of who logged it on the right. A
-/// second, smaller avatar shows who finished it, when that was the other parent.
+/// One feed or pumping session in History (and the Duo's second column): tinted by kind, the time
+/// on the left, chips in the middle, and on the right the big picture of who did it (DD12) and a
+/// small one of the other parent when they logged it or finished it (7B).
 struct HistoryRow: View {
     let snapshot: EventSnapshot
     let time: String
@@ -64,6 +64,8 @@ struct HistoryRow: View {
     var loggedTwice = false
     /// What the avatar means, for VoiceOver: "Logged by", or "Done by" in a list behind a number.
     var role = "Logged by"
+    /// What the small picture means, for VoiceOver: "finished by", "logged by".
+    var secondRole = "finished by"
     /// A line under the chips: the time this row added to a number (X2).
     var note: String?
 
@@ -88,16 +90,7 @@ struct HistoryRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            HStack(spacing: -6) {
-                Avatar(name: loggedBy.name, colour: loggedBy.colour, size: 26)
-                    .workedOutRing(loggedBy.workedOut)
-                if let finishedBy {
-                    Avatar(name: finishedBy.name, colour: finishedBy.colour, size: 20)
-                        .padding(2)
-                        .background(tint, in: Circle())
-                        .offset(y: 6)
-                }
-            }
+            RowAvatars(main: loggedBy, second: finishedBy, tint: tint)
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
@@ -120,9 +113,9 @@ struct HistoryRow: View {
     private var spoken: String {
         let chips = HomeText.chips(snapshot, detailed: true).map(\.spoken).joined(separator: ", ")
         let running = snapshot.event.kind == .feed && snapshot.event.endedAt == nil ? ", running" : ""
-        let finished = finishedBy.map { ", finished by \($0.spoken)" } ?? ""
+        let finished = finishedBy.map { ", \(secondRole) \($0.spoken)" } ?? ""
         let twice = loggedTwice ? " Logged on both phones, shown once." : ""
-        let worked = loggedBy.workedOut ? ", worked out" : ""
+        let worked = loggedBy.workedOut ? ", probably" : ""
         let added = note.map { " \($0)." } ?? ""
         return "\(time): \(chips)\(running). \(role) \(loggedBy.spoken)\(worked)\(finished).\(twice)\(added)"
     }
@@ -130,16 +123,72 @@ struct HistoryRow: View {
 
 extension HistoryRow {
     /// A row for a feed or pumping session, with the household's clock and both phones' names
-    /// and colours. History and the Duo's second column both use it.
+    /// and colours. History and the Duo's second column both use it. With `answer`, the big
+    /// picture is who did it (DD12); without, who logged it.
     @MainActor
-    init(_ snapshot: EventSnapshot, zone: TimeZone, loggedTwice: Bool = false) {
-        let event = snapshot.event
-        let finisher = event.endedAt == nil ? nil : snapshot.payload?.stamp(.endedAt)?.by
+    init(_ snapshot: EventSnapshot, zone: TimeZone, loggedTwice: Bool = false, answer: WhoDidIt.Answer? = nil) {
+        let people = RowPeople(snapshot, answer: answer)
         self.init(snapshot: snapshot,
-                  time: event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
-                  loggedBy: RowPerson(event.loggedBy),
-                  finishedBy: finisher.flatMap { $0 == event.loggedBy ? nil : RowPerson($0) },
-                  loggedTwice: loggedTwice)
+                  time: snapshot.event.startedAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
+                  loggedBy: people.main, finishedBy: people.second, loggedTwice: loggedTwice, role: people.role,
+                  secondRole: people.secondRole)
+    }
+}
+
+/// Who a History row shows (DD12, 7B): the big picture is who did it; a small one shows the other parent when they logged it or finished it, so at most two. "Finished
+/// by" only when the end was set as Finish was tapped (`EventSnapshot.finishedBy`, TD1).
+struct RowPeople {
+    var main: RowPerson
+    var role: String
+    var second: RowPerson?
+    var secondRole: String
+
+    @MainActor
+    init(_ snapshot: EventSnapshot, answer: WhoDidIt.Answer?) {
+        let event = snapshot.event
+        let logger = event.loggedBy
+        let finisher = event.kind == .feed || event.kind == .pump ? snapshot.finishedBy : nil
+        guard let answer else {
+            main = RowPerson(logger)
+            role = "Logged by"
+            second = finisher.flatMap { $0 == logger ? nil : RowPerson($0) }
+            secondRole = "finished by"
+            return
+        }
+        main = RowPerson(answer.member)
+        role = event.kind == .sleep ? "Settled by" : "Done by"
+        let loggedByOther = logger != answer.member
+        let finishedByOther = finisher.map { $0 != answer.member } ?? false
+        if loggedByOther {
+            second = RowPerson(logger)
+            secondRole = finishedByOther && finisher == logger ? "logged and finished by" : "logged by"
+        } else if finishedByOther, let finisher {
+            second = RowPerson(finisher)
+            secondRole = "finished by"
+        } else {
+            second = nil
+            secondRole = ""
+        }
+    }
+}
+
+/// The big picture and, a little lower, the small one on the row's own colour.
+struct RowAvatars: View {
+    let main: RowPerson
+    let second: RowPerson?
+    let tint: Color
+
+    var body: some View {
+        HStack(spacing: -6) {
+            Avatar(name: main.name, colour: main.colour, size: 26)
+                .workedOutRing(main.workedOut)
+            if let second {
+                Avatar(name: second.name, colour: second.colour, size: 20)
+                    .padding(2)
+                    .background(tint, in: Circle())
+                    .offset(y: 6)
+            }
+        }
     }
 }
 
@@ -169,6 +218,11 @@ struct CareRow: View {
     var role = "Logged by"
     /// The time shown on the left, when not the start: a wake-up shows its end.
     var at: Date?
+    /// The small picture: the other parent, when they logged it (7B).
+    var second: RowPerson?
+    var secondRole = ""
+    /// The other phone logged it too, and the screens show it once (D12 A).
+    var loggedTwice = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -176,16 +230,22 @@ struct CareRow: View {
                 .feedText(.smallButton)
                 .fixedSize()
                 .frame(minWidth: 50, alignment: .leading)
-            HStack(spacing: 7) {
-                FeedMarkView(mark, size: 18, relativeTo: .subheadline)
-                    .accessibilityHidden(true)
-                Text(line)
-                    .feedText(.subheadline)
-                    .lineLimit(3)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 7) {
+                    FeedMarkView(mark, size: 18, relativeTo: .subheadline)
+                        .accessibilityHidden(true)
+                    Text(line)
+                        .feedText(.subheadline)
+                        .lineLimit(3)
+                }
+                if loggedTwice {
+                    Label("Logged on both phones", systemImage: "arrow.triangle.merge")
+                        .feedText(.small)
+                        .foregroundStyle(Theme.textMuted)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Avatar(name: loggedBy.name, colour: loggedBy.colour, size: 26)
-                .workedOutRing(loggedBy.workedOut)
+            RowAvatars(main: loggedBy, second: second, tint: mark.tint)
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
@@ -193,7 +253,9 @@ struct CareRow: View {
         .background(mark.tint, in: RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(clock(at ?? snapshot.event.startedAt)): \(spoken). \(role) \(loggedBy.spoken)\(loggedBy.workedOut ? ", worked out" : "").")
+        .accessibilityLabel("\(clock(at ?? snapshot.event.startedAt)): \(spoken). \(role) \(loggedBy.spoken)\(loggedBy.workedOut ? ", probably" : "")"
+            + (second.map { ", \(secondRole) \($0.spoken)" } ?? "") + "."
+            + (loggedTwice ? " Logged on both phones, shown once." : ""))
     }
 
     private func clock(_ date: Date) -> String {
@@ -237,8 +299,13 @@ struct CareRow: View {
 }
 
 extension CareRow {
+    /// With `answer`, the big picture is who did it (DD12) and a small one who logged it, when
+    /// that was the other parent; without, who logged it.
     @MainActor
-    init(_ snapshot: EventSnapshot, zone: TimeZone, now: Date = Date()) {
-        self.init(snapshot: snapshot, zone: zone, loggedBy: RowPerson(snapshot.event.loggedBy), now: now)
+    init(_ snapshot: EventSnapshot, zone: TimeZone, now: Date = Date(), loggedTwice: Bool = false,
+         answer: WhoDidIt.Answer? = nil) {
+        let people = RowPeople(snapshot, answer: answer)
+        self.init(snapshot: snapshot, zone: zone, loggedBy: people.main, now: now, role: people.role,
+                  second: people.second, secondRole: people.secondRole, loggedTwice: loggedTwice)
     }
 }

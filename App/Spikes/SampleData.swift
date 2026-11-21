@@ -10,7 +10,7 @@ import UIKit
 /// Launch with `-sampleData YES`. Add `-sampleFeedInProgress` for a feed: `YES` (breast, running),
 /// `bottle` (a formula bottle running), `other` (the other parent's feed running) or
 /// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
-/// Add `-sampleDuplicate YES` for the last feed logged on both phones, and `-sampleNightAsk` with
+/// Add `-sampleDuplicate YES` for the last feed and the last nappy logged on both phones, and `-sampleNightAsk` with
 /// `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for an ask to take tonight.
 /// Every sample day has sleeps, nappies and Vitamin D; the baby is asleep (1h 20m) unless
 /// `-sampleSleep awake`, and the last nappy (40m ago) is a poo with no details yet.
@@ -101,6 +101,12 @@ enum SampleData {
             let lastNappy = now.addingTimeInterval(-40 * 60)
             data.add(kind: .nappy, babyID: "sample-baby", startedAt: lastNappy,
                      payload: EventPayload(nappy: NappyDetails(wee: true, poo: true)), by: me, timeZoneID: zone, now: lastNappy)
+            if defaults.bool(forKey: "sampleDuplicate") {
+                // The other phone logged that nappy too, 2 minutes later (D12 A: shown once).
+                let copy = lastNappy.addingTimeInterval(120)
+                data.add(kind: .nappy, babyID: "sample-baby", startedAt: copy,
+                         payload: EventPayload(nappy: NappyDetails(wee: true, poo: true)), by: other, timeZoneID: zone, now: copy)
+            }
             for (daysAgo, grams, length, head) in [(26, 3400, 510, 350), (21, 3180, nil, nil), (16, 3350, nil, nil),
                                                    (12, 3520, 525, 360), (5, 3850, nil, nil)] as [(Int, Int, Int?, Int?)] {
                 let at = now.addingTimeInterval(-Double(daysAgo) * 86400 + 3600)

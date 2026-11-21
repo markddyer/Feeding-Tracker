@@ -752,10 +752,12 @@ extension HouseholdData {
         duplicateFeeds(allEvents.filter { $0.babyID == babyID }, confirmedDistinct: distinctFeedPairs)
     }
 
-    /// The copies the screens leave out: in each pair, the feed logged second. Only the screens
-    /// use this: `reconcile` reads every feed, so alerts never depend on a merge.
+    /// The copies the screens leave out: in each pair, the entry logged second. Feeds, and since
+    /// "who does what" sleeps, nappies, medicines and baths too (D11 C, D12 A: hidden on every
+    /// screen, "They were two" shows both again). Only the screens use this: `reconcile` reads
+    /// every feed, so alerts never depend on a merge.
     public func hiddenDuplicates(babyID: String) -> Set<String> {
-        Set(duplicatePairs(babyID: babyID).map(\.duplicate))
+        Set((duplicatePairs(babyID: babyID) + careDuplicatePairs(babyID: babyID)).map(\.duplicate))
     }
 
     /// What the screens show for `babyID`: every event except the hidden copies.
@@ -764,7 +766,8 @@ extension HouseholdData {
         return snapshots.filter { !hidden.contains($0.id) }
     }
 
-    /// "They were two feeds": both show again, on both phones.
+    /// "They were two": both show again, on both phones. Any kind (the record is the same shared
+    /// setting for feeds and the other kinds).
     public mutating func markDistinct(_ first: String, _ second: String, by member: MemberID, now: Date) {
         putSetting(DistinctFeeds(first, second, by: member, at: now), key: SettingKey.distinct(first, second), now: now)
     }

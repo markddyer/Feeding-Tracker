@@ -25,7 +25,8 @@ final class HistoryDeleteFlowTests: XCTestCase {
 
     func testAFeedIsDeletedAtOnceWithNoQuestion() {
         let app = launch(filter: "feeds")
-        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Logged by'")).firstMatch
+        // A feed row: History's rows say who did each entry (DD12), "Done by ...".
+        let row = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Done by'")).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         let label = row.label
         row.swipeLeft()
