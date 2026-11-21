@@ -13,6 +13,7 @@ import UIKit
 /// Add `-sampleDuplicate YES` for the last feed and the last nappy logged on both phones, and
 /// `-sampleNightAsk` with `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for
 /// an ask to take tonight. `-sampleBreastfeeder other` (or `me`, `nobody`) answers "Who breastfeeds?".
+/// `-sampleWindow open` (or `closed`, `alertsOff`) moves the window bar's times.
 /// Every sample day has sleeps, nappies and Vitamin D; the baby is asleep (1h 20m) unless
 /// `-sampleSleep awake`, and the last nappy (40m ago) is a poo with no details yet.
 enum SampleData {
@@ -97,6 +98,17 @@ enum SampleData {
                 let start = now.addingTimeInterval(-100 * 60)
                 data.add(kind: .sleep, babyID: "sample-baby", startedAt: start, endedAt: now.addingTimeInterval(-25 * 60),
                          payload: EventPayload(), by: other, timeZoneID: zone, now: start)
+            }
+            // `-sampleWindow open` (or `closed`, `alertsOff`): window times that put the last feed's
+            // 1h 40m inside the feeding window, or after it closed, for the window bar's screenshots.
+            switch defaults.string(forKey: "sampleWindow") {
+            case "open":
+                data.updateHouseholdSettings(by: me, now: now) { $0.window.opensAfter = 3600; $0.window.closesAfter = 3 * 3600 }
+            case "closed":
+                data.updateHouseholdSettings(by: me, now: now) { $0.window.opensAfter = 30 * 60; $0.window.closesAfter = 80 * 60 }
+            case "alertsOff":
+                data.updateHouseholdSettings(by: me, now: now) { $0.window.alertsEnabled = false }
+            default: break
             }
             switch defaults.string(forKey: "sampleBreastfeeder") {
             case "other": data.setBreastfeeder(.member(other), now: now)

@@ -539,59 +539,6 @@ struct LiveChip: View {
     }
 }
 
-/// The window bar: the time so far, the shaded feeding window, a mark for now, then "Feeding
-/// window 10:25" and a bell with the alert time.
-struct WindowBar: View {
-    let facts: HomeFacts
-    let window: FeedWindow
-    @Environment(\.look) private var look
-
-    var body: some View {
-        let settings = facts.settings.window
-        let opensShare = min(1, max(0, settings.opensAfter / max(1, settings.closesAfter)))
-        let progress = facts.windowProgress
-        let strong: Font.Weight = look == .night ? .semibold : .bold
-        VStack(alignment: .leading, spacing: 7) {
-            GeometryReader { proxy in
-                let width = proxy.size.width
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Theme.track)
-                    UnevenRoundedRectangle(bottomTrailingRadius: 6, topTrailingRadius: 6)
-                        .fill(Theme.window)
-                        .frame(width: width * (1 - opensShare))
-                        .offset(x: width * opensShare)
-                    Capsule()
-                        .fill(Theme.primary)
-                        .frame(width: max(12, width * progress))
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Theme.text)
-                        .frame(width: 4, height: 20)
-                        .offset(x: min(max(0, width * progress - 2), width - 4))
-                }
-            }
-            .frame(height: 12)
-            HStack(alignment: .firstTextBaseline) {
-                Text("Feeding window \(Text(facts.clock(window.opensAt)).fontWeight(strong).foregroundStyle(Theme.text))")
-                    .foregroundStyle(Theme.textMuted)
-                Spacer(minLength: 8)
-                if settings.alertsEnabled {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bell").imageScale(.small)
-                        Text(facts.clock(window.closesAt)).fontWeight(strong)
-                    }
-                } else {
-                    Text("Alerts off").foregroundStyle(Theme.textMuted)
-                }
-            }
-            .feedText(.subheadline)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(settings.alertsEnabled
-            ? "Feeding window opens at \(facts.clock(window.opensAt)). Alert at \(facts.clock(window.closesAt))."
-            : "Feeding window opens at \(facts.clock(window.opensAt)). Alerts are off.")
-    }
-}
-
 /// The suggested next side: its half-moon and "Left".
 struct NextSideTile: View {
     let side: BreastSide
