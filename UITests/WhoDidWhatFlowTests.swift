@@ -97,6 +97,41 @@ final class WhoDidWhatFlowTests: XCTestCase {
         add(list)
     }
 
+    /// The way a parent gets there: Graphs, the tile, then a bar and a number. Each list must stay
+    /// open (on the phone, 21 Nov 2026, it showed for a moment and went back to the page).
+    func testFromTheGraphsTabEachListStaysOpen() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-sampleData", "YES", "-sampleDataFresh", "YES", "-sampleWeek", "YES",
+                               "-setup.disclaimerSeen", "YES", "-setup.inviteOffered", "YES",
+                               "-setup.permissionsAsked", "YES", "-setup.feedingStyle", "breastAndBottle",
+                               "-share.breastfeederAsked", "YES", "-startTab", "graphs"]
+        app.launch()
+        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Who did what'")).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 8), "the tile on Graphs")
+        tile.tap()
+
+        // The bar: everyone's list, still there a few seconds later.
+        let bar = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Feeds, '")).firstMatch
+        XCTAssertTrue(bar.waitForExistence(timeout: 5), "the Feeds bar")
+        for _ in 0..<4 where !bar.isHittable { app.swipeUp() }
+        bar.tap()
+        XCTAssertTrue(app.staticTexts["Everyone"].waitForExistence(timeout: 3), "everyone's list opens")
+        sleep(3)
+        XCTAssertTrue(app.staticTexts["Everyone"].exists, "everyone's list stays open")
+        app.navigationBars.buttons.firstMatch.tap()
+
+        // A parent's number: their list, still there a few seconds later.
+        let number = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "^[A-Za-z]+ [0-9]+$")).firstMatch
+        XCTAssertTrue(number.waitForExistence(timeout: 5), "a parent's number")
+        for _ in 0..<4 where !number.isHittable { app.swipeUp() }
+        let parent = String(number.label.split(separator: " ").first ?? "")
+        number.tap()
+        let rows = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Done by' OR label CONTAINS 'Got up'"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 3), "\(parent)'s list opens")
+        sleep(3)
+        XCTAssertTrue(rows.firstMatch.exists, "\(parent)'s list stays open")
+    }
+
     /// On 7 days, a tap on a night's dots opens that night in the Day view.
     func testANightOpensInTheDayView() {
         // A `-share.range` launch setting would pin the range, so the page couldn't switch: pick

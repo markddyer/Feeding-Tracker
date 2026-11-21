@@ -54,6 +54,10 @@ struct ShareSides: Equatable {
 }
 
 /// The list behind one number (X2, DD10): one line, one parent (or "Other"), one range.
+///
+/// Its links name their screen (`NavigationLink { ShareEntriesList(...) }`), never a value: the
+/// Graphs tab opens its graph pages from a binding (`navigationDestination(item:)`), and a value
+/// pushed on the same stack was taken off again at once (on the phone, 21 Nov 2026).
 struct ShareListRequest: Hashable {
     var kind: ShareKind
     /// Nil with `others` false: every parent.
@@ -202,7 +206,6 @@ struct WhoDidWhatPage: View {
         .background(Theme.background.ignoresSafeArea())
         .navigationTitle(ShareText.title)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(for: ShareListRequest.self) { ShareEntriesList(request: $0) }
         .sheet(isPresented: $askingBreastfeeder) {
             BreastfeederSheet(sides: ShareSides.current()) { answer in
                 breastfeederAsked = true
@@ -471,7 +474,9 @@ struct ShareBar: View {
             // The heading and the bar are one button: everyone's entries for this line, each with
             // who it counted for (the users' choice B, 21 Nov 2026). The numbers under it open one
             // parent's list.
-            NavigationLink(value: ShareListRequest(kind: kind, member: nil, range: range, rangeTitle: rangeTitle, time: time)) {
+            NavigationLink {
+                ShareEntriesList(request: ShareListRequest(kind: kind, member: nil, range: range, rangeTitle: rangeTitle, time: time))
+            } label: {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         FeedMarkView(Self.mark(kind), size: 16, relativeTo: .body)
@@ -515,7 +520,9 @@ struct ShareBar: View {
         let name = others ? "Other" : sides.name(member)
         let request = ShareListRequest(kind: kind, member: member, others: others, range: range, rangeTitle: rangeTitle, time: time)
         let words = "\(name) \(ShareText.number(tally, kind: kind, time: time))"
-        return NavigationLink(value: request) {
+        return NavigationLink {
+            ShareEntriesList(request: request)
+        } label: {
             HStack(spacing: 5) {
                 if leading { Circle().fill(dotColour).frame(width: 9, height: 9) }
                 Text(words)
