@@ -2192,7 +2192,7 @@ review's DT1 to DT9; CEO T10 ("storage per E1") is now ET1, ET2 and ET5; CEO T5'
   - Surfaced by: E1 (D2 A, D8 A), E3 (D9 A), A4 (D5 A), subagent 8
   - Files: FeedingCore/Sources/FeedingCore/Model/Event.swift, Model/Payload.swift, Model/EventMerge.swift, Model/Identifiers.swift, Store/HouseholdData.swift
   - Verify: `swift test --package-path FeedingCore` (merge both orders; old file reads; no stamp without a value)
-- [ ] **ET2 (P1, human: ~4h / CC: ~30min)** — Sync — `schema.ckdb` +4 encrypted fields, `RecordMapping` both ways, rewrite `thePayloadIsEncryptedAndNothingElseIs`; Dev import; Production deploy only after the parents' go-ahead (asked again), before Little Log build 2 (built 21 Nov 2026: schema.ckdb, RecordMapping and the Dev import done; the Production deploy waits for the go-ahead)
+- [x] **ET2 (P1, human: ~4h / CC: ~30min)** — Sync — `schema.ckdb` +4 encrypted fields, `RecordMapping` both ways, rewrite `thePayloadIsEncryptedAndNothingElseIs`; Dev import; Production deploy only after the parents' go-ahead (asked again), before Little Log build 2 (built 21 Nov 2026: schema.ckdb, RecordMapping and the Dev import done. Deployed to Production on 21 Nov 2026 with the parents' go-ahead: imported into Little Log's Development environment with `cktool`, deployed in the CloudKit Console ("Modify 4 fields on Event type", nothing else), and Production's export then matched the file)
   - Surfaced by: E1 (D2 A, D8 A)
   - Files: schema.ckdb, App/Sync/RecordMapping.swift, AppTests/RecordMappingTests.swift
   - Verify: app tests in the simulator (every written field in the schema); `xcrun cktool` export matches the file
@@ -2216,10 +2216,11 @@ review's DT1 to DT9; CEO T10 ("storage per E1") is now ET1, ET2 and ET5; CEO T5'
   - Surfaced by: E2 (D4 A)
   - Files: App/Spikes/HouseholdDebugView.swift
   - Verify: simulator with `-sampleData YES`, Settings' debug screen
-- [ ] **ET8 (P1, human: ~3h / CC: ~30min)** — Device check — Feeding Dev build of `c4fedda` on one phone saves entries with the new fields (plain and clash) and sees a bath; then update it; both phones agree
+- [x] **ET8 (P1, human: ~3h / CC: ~30min)** — Device check — Feeding Dev build of `c4fedda` on one phone saves entries with the new fields (plain and clash) and sees a bath; then update it; both phones agree
   - Surfaced by: E1 proof; subagent 4, 8
   - Files: none (checks on the two phones)
   - Verify: the numbers match on both phones; the sync log shows the fetch by name
+  - Done 21 Nov 2026 (Feeding Dev, alarms off on both phones): one phone on the new build logged a wee, a feed and a bath; the other, still on `c4fedda`, logged a wee and then edited the first phone's wee. Both synced with no errors; the older build kept the bath; the edited wee kept its "done by"; after the second phone was updated, both showed the same numbers. The fetch by name had nothing to fetch (no value was lost).
 - [x] **ET9 (P2, human: ~2h / CC: ~15min)** — History's "finished by" only when the end was set as Finish was tapped (built 21 Nov 2026: `EventSnapshot.finishedBy`, with a core test)
   - Surfaced by: TD1 (D10 C); Codex 10
   - Files: App/Home/FeedRows.swift (through WhoDidIt)

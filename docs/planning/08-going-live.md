@@ -58,6 +58,7 @@ keep "Feeding": they can't change without a new iCloud container, and nobody see
 - **The first build** (build 1, version 0.1.0, commit `c4fedda`) archived and uploaded on 20 Nov
   2026 (the steps are in `CLAUDE.md`, "TestFlight upload"); Apple had it "Ready to Test" within
   minutes.
+- **Build 2** (version 0.1.0, commit `f45a9dc`: who does what, the graph pages, the new window bar) uploaded on 21 Nov 2026, after the four "who does what" fields were deployed to Production. The upload first failed with "App Store Connect access … is required" although Xcode showed the account; signing out of Xcode and back in fixed it.
 - **The internal TestFlight group "Household"**, with automatic distribution, holding build 1, with
   the household owner as its tester. **Still to do:** add the other parent once they have accepted
   Apple's invite (they appear in "Add Testers" only then).
