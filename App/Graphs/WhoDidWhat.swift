@@ -582,40 +582,47 @@ struct BreastfeederSheet: View {
     let onAnswer: (Breastfeeder?) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(ShareText.breastfeederQuestion)
-                .feedText(.title)
-                .accessibilityAddTraits(.isHeader)
-            Text(ShareText.breastfeederExplained)
-                .feedText(.body)
-                .foregroundStyle(Theme.textMuted)
-            ForEach([sides.left, sides.right].compactMap { $0 }, id: \.self) { member in
-                Button { onAnswer(.member(member)) } label: {
-                    HStack(spacing: 12) {
-                        Avatar(name: sides.name(member), colour: sides.colour(member), size: 30)
-                        Text(sides.name(member)).feedText(.button)
-                        Spacer()
+        // Scrolls, so nothing is cut off at the largest text sizes.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(ShareText.breastfeederQuestion)
+                    .feedText(.title)
+                    .accessibilityAddTraits(.isHeader)
+                Text(ShareText.breastfeederExplained)
+                    .feedText(.body)
+                    .foregroundStyle(Theme.textMuted)
+                ForEach([sides.left, sides.right].compactMap { $0 }, id: \.self) { member in
+                    Button { onAnswer(.member(member)) } label: {
+                        HStack(spacing: 12) {
+                            Avatar(name: sides.name(member), colour: sides.colour(member), size: 30)
+                            Text(sides.name(member)).feedText(.button)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14)
+                        .frame(minHeight: 56)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
                     }
-                    .padding(.horizontal, 14)
-                    .frame(minHeight: 56)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(sides.name(member))
+                }
+                Button { onAnswer(.nobody) } label: {
+                    Text(ShareText.nobody).feedText(.button)
+                        .padding(.horizontal, 14)
+                        .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(sides.name(member))
+                Button { onAnswer(nil) } label: {
+                    Text(ShareText.notNow)
+                        .feedText(.smallButton)
+                        .foregroundStyle(Theme.textMuted)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
-            Button { onAnswer(.nobody) } label: {
-                Text(ShareText.nobody).feedText(.button)
-                    .padding(.horizontal, 14)
-                    .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
-                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
-            }
-            .buttonStyle(.plain)
-            Button(ShareText.notNow) { onAnswer(nil) }
-                .feedText(.smallButton)
-                .foregroundStyle(Theme.textMuted)
-                .frame(maxWidth: .infinity, minHeight: 44)
+            .padding(20)
         }
-        .padding(20)
         .foregroundStyle(Theme.text)
         .presentationDetents([.medium, .large])
         .presentationBackground(Theme.background)

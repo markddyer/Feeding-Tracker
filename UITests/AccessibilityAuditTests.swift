@@ -113,6 +113,28 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// "Who does what" (`09-who-does-what.md`, DT9): the page at each range, its question, Home's
+    /// morning line and Undo card, the sleep's editor, and History with copies.
+    func testWhoDoesWhat() {
+        let page = ["-sampleWeek", "YES", "-openScreen", "whoDidWhat", "-share.breastfeederAsked", "YES"]
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(page + ["-share.range", "week"], look: look), "who did what 7 days \(look)")
+            audit(launch(page + ["-share.range", "day", "-share.dayOffset", "1"], look: look), "who did what day \(look)")
+            audit(launch(page + ["-share.range", "fourWeeks"], look: look), "who did what 4 weeks \(look)")
+            audit(launch(["-sampleWeek", "YES", "-openScreen", "whoDidWhat", "-share.breastfeederAsked", "NO"], look: look),
+                  "who breastfeeds \(look)")
+            audit(launch(["-homeLastNight", "YES", "-sampleWeek", "YES"], look: look), "home last night \(look)")
+            audit(launch(["-homeUndo", "nappy"], look: look), "undo card \(look)")
+            audit(launch(["-openScreen", "editLastSleep"], look: look), "edit sleep \(look)")
+            audit(launch(["-openScreen", "history", "-sampleDuplicate", "YES"], look: look), "history copies \(look)")
+        }
+        audit(launch(page + ["-share.range", "week"], largeText: true), "who did what 7 days large text")
+        audit(launch(page + ["-share.range", "day", "-share.dayOffset", "1"], largeText: true), "who did what day large text")
+        audit(launch(["-homeLastNight", "YES", "-sampleWeek", "YES"], largeText: true), "home last night large text")
+        audit(launch(["-openScreen", "editLastSleep"], largeText: true), "edit sleep large text")
+        report()
+    }
+
     func testLargeText() {
         audit(launch([], largeText: true), "home large text")
         audit(launch(["-homeAtBottom", "YES"], largeText: true), "home lower large text")

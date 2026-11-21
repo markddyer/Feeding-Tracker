@@ -1124,11 +1124,11 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: D11, 2A
   - Files: App/Home/SettingsView.swift, App/Graphs/ (the page)
   - Verify: tap test: Not now, then the quiet line; answer, then it goes
-- [ ] **DT8 (P2, human: ~2h / CC: ~15min)** — DESIGN.md — the new guarded rule in place of line 297, the glass exception and its moving timer, the mark and Bath tokens, four tabs, the Graphs tile; Decisions Log rows
+- [x] **DT8 (P2, human: ~2h / CC: ~15min)** — DESIGN.md — the new guarded rule in place of line 297, the glass exception and its moving timer, the mark and Bath tokens, four tabs, the Graphs tile; Decisions Log rows (built 21 Nov 2026: the guarded rule, the glass and timer exceptions, the marks and Bath, four tabs, the page, the morning line, the editors and three Decisions Log rows)
   - Surfaced by: R1, D7, 5B, 5A, D6; the out-of-date "three tabs"
   - Files: DESIGN.md
   - Verify: read back; the colour tests read the new tokens
-- [ ] **DT9 (P2, human: ~4h / CC: ~30min)** — Accessibility as listed in 6B
+- [x] **DT9 (P2, human: ~4h / CC: ~30min)** — Accessibility as listed in 6B (checked 21 Nov 2026 with the new audit `testWhoDoesWhat` (day, night, large text): fixed "Not now"'s tap area, the editor's clipped names and the question sheet at large text; left as before: notes the older screens share (tile labels, glass contrast read from the screen picture, Home behind the Undo card), and two unnamed small tap areas on the 7-days page, most likely the numbers cut off at the screen's bottom edge)
   - Surfaced by: 6B
   - Files: the new views above
   - Verify: `xcodebuild test ... -scheme FeedingDevAudit` and read the AUDIT lines
@@ -2232,7 +2232,7 @@ review's DT1 to DT9; CEO T10 ("storage per E1") is now ET1, ET2 and ET5; CEO T5'
   - Surfaced by: Codex 4, 7, 8, 9
   - Files: Watch/App/WatchHomeView.swift, FeedingCore/Sources/FeedingCore/Watch/WatchState.swift, App/Home/FeedControls.swift, App/Home/CareTiles.swift, App/Sync/HouseholdSync.swift
   - Verify: watch simulator `-sampleWatch faceStart`; tap test for the poo panel swap
-- [ ] **ET12 (P2, human: ~30min / CC: ~5min)** — Docs — rollback step "let a phone sync before going back to an earlier build"; CLAUDE.md layout lines for `WhoDidIt` and the 4 fields
+- [x] **ET12 (P2, human: ~30min / CC: ~5min)** — Docs — rollback step "let a phone sync before going back to an earlier build"; CLAUDE.md layout lines for `WhoDidIt` and the 4 fields (written 21 Nov 2026: `08-going-live.md`, "Going back to an earlier build"; CLAUDE.md already had its layout line)
   - Surfaced by: E3 (D9 A); Codex 1
   - Files: docs/planning/08-going-live.md, CLAUDE.md
   - Verify: read back

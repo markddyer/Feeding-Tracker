@@ -101,3 +101,16 @@ keep "Feeding": they can't change without a new iCloud container, and nobody see
   kept readable until the import ends, a good photo never deleted by a failed copy, test alarms
   and their notices silenced too, and the Done screen telling the parent to keep Feeding Dev's
   alarms on until Feeding may ring.
+
+## Going back to an earlier build ("who does what", 21 Nov 2026)
+
+If a Little Log build with "who does what" (`09-who-does-what.md`) has to be undone:
+
+1. On each phone, open the newer build once with a signal, and wait for "Checked with iCloud" at
+   the bottom of Graphs › Who did what. Its "done by" and "got up" choices are then in iCloud.
+2. Reinstall the earlier TestFlight build.
+
+An earlier build keeps those choices in iCloud: it writes only the fields it knows, so it never
+erases them. It does drop them from its own copy on the phone. When the newer build comes back, it
+fetches those entries again by name (engineering review E3, `entriesMissingWhoValues`), so nothing
+chosen is lost. Step 1 matters only for choices made on that phone and not yet sent.

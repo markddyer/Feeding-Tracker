@@ -40,11 +40,12 @@ struct WhoDidItPicker: View {
                     .workedOutRing(marksWorkedOut && chosen && !(shown?.saved ?? true))
                 Text(name)
                     .feedText(.smallButton)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
                     .foregroundStyle(chosen ? Theme.onParentMark : Theme.text)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(chosen ? colour.mark : Theme.background, in: RoundedRectangle(cornerRadius: 14))
             .contentShape(RoundedRectangle(cornerRadius: 14))
