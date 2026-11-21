@@ -59,7 +59,10 @@ struct RecordMappingTests {
         #expect(back.doneBy == "parent-b")
         #expect(back.wakeID == "wake-1")
         #expect(back.gotUpBy == "parent-b")
-        #expect(back.gotUpFor == "wake-1")
+        // Bound to the ending: the wake-up ID with its end time.
+        #expect(back.gotUpFor == stored.event.gotUpFor)
+        #expect(back.gotUpFor?.hasPrefix("wake-1:") == true)
+        #expect(back.validGotUp == "parent-b")
     }
 
     /// A phone with no value never writes the field, so it can't erase one iCloud has.

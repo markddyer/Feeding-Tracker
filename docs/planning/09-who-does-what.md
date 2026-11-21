@@ -2246,6 +2246,26 @@ Carried from the journal's engineering list (still open there): T10, T12, T14, T
   launch. No path writes one (the store sets value and stamp in one edit, the move maps both).
   Resolved anyway by D9 A's end state.
 
+## Outside review of the build (21 Nov 2026)
+
+Codex (`gpt-6.2-sol`, high effort, read-only; 163,878 tokens) read `git diff c4fedda..1ec3a65`. All
+11 findings were checked against the code and found real; all were fixed the same day, each with a
+test.
+
+| # | Finding (Codex's severity) | Fix |
+|---|---|---|
+| 1 | High: the read by name of entries an older build left without a value could bring back an older copy over a newer one, for example a deleted feed, and move the alarms | `HouseholdSync.fetchMissingWhoValues` notes each entry's revision and iCloud version before the read and skips any that changed meanwhile (read again at the next launch); it runs only after a working fetch of the household zone |
+| 2 | Medium: an end changed by an older build kept the old wake-up ID and "got up", so the new ending looked chosen and joined the old wake-up | `Event.endingID` is now the wake-up ID with the end time; an end changed on this build takes "got up" along (`keepSleepEnding`), one changed by an older build leaves it behind and stands alone |
+| 3 | Medium: Undo of Finish (and the other feed buttons) put back the whole entry, over a "who did it" change from the other phone | Undo puts back only the parts the tap changed (`FeedControls.change`) |
+| 4 | Medium: "Got up" chosen in a sleep's editor could land on a later ending if the other phone ended the sleep again | the editor checks the ending it showed; `setGotUp(_:to:for:)`; the Woke up card's swap goes if the wake-up changes |
+| 5 | Medium: correcting the end of a sleep ended before wake-up IDs dropped its confirmed "got up" | as 2: the end moved here takes it along |
+| 6 | Medium: a sleep logged on both phones, each ended by its own Woke up, counted two wake-ups | wake-ups leave out hidden copies; a copy answers as its sleep |
+| 7 | Medium: a running sleep could be hidden as the copy of an ended one, so Home said "awake" and Fell asleep did nothing | a running sleep and an ended one are never copies |
+| 8 | Medium: "Breastfeed (Sam)" lost Left and Right when a bottle was added before a side | a feed saved as done by the parent who breastfeeds stays a breastfeed (`isBreastfeed`) |
+| 9 | Low: a row given to another parent left its list at once, against 2C | the row stays, with its new picture, until the list is left; the count follows at once |
+| 10 | Low: a failed fetch of the household zone still advanced "Checked with iCloud" | only a working fetch counts; a failed one shows the banner (`householdFetchFailed`) |
+| 11 | Low: pumping time was counted but not shown ("pumping (count and time)") | Pumping shows its count and time, and its list each session's time |
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |

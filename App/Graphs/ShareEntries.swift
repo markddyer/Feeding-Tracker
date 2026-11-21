@@ -11,6 +11,10 @@ struct ShareEntriesList: View {
     private let model = AppModel.shared
     @State private var editing: EventEditor.Mode?
     @State private var careEditing: CareEditor.Mode?
+    /// Every row shown since the list opened. A row given to another parent here stays, with its
+    /// new picture, until the list is left; the count is the list's own (design 2C, the screens
+    /// table; Codex review of the build, 21 Nov 2026). A deleted entry leaves at once.
+    @State private var seen: Set<String> = []
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -18,8 +22,11 @@ struct ShareEntriesList: View {
             let zone = data.householdSettings.timeZone
             let who = data.whoDidIt(babyID: model.baby?.name ?? "", now: context.date)
             let sides = ShareSides.current()
-            let items = Self.items(who, request: request, sides: sides).reversed()
-            let tally = items.reduce(into: ShareTally()) { $0.count += 1; $0.seconds += $1.seconds ?? 0 }
+            let current = Self.items(who, request: request, sides: sides)
+            let currentIDs = Set(current.map(\.id))
+            let moved = who.items.filter { seen.contains($0.id) && !currentIDs.contains($0.id) }
+            let items = (current + moved).sorted { ($0.at, $0.id) > ($1.at, $1.id) }
+            let tally = current.reduce(into: ShareTally()) { $0.count += 1; $0.seconds += $1.seconds ?? 0 }
             let today = PlainDate(context.date, in: zone)
             let days = Dictionary(grouping: items, by: \.day)
             ScrollView {
@@ -54,6 +61,7 @@ struct ShareEntriesList: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 24)
             }
+            .onChange(of: currentIDs, initial: true) { _, ids in seen.formUnion(ids) }
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
@@ -101,7 +109,8 @@ struct ShareEntriesList: View {
                 if isFeed {
                     HistoryRow(snapshot: snapshot, time: item.at.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)),
                                loggedBy: person, loggedTwice: item.eventIDs.count > 1, role: role,
-                               note: request.time ? item.seconds.map { ShareText.added($0) } ?? ShareText.stillRunning : nil)
+                               note: request.time || ShareText.showsTime(request.kind)
+                                   ? item.seconds.map { ShareText.added($0) } ?? ShareText.stillRunning : nil)
                 } else {
                     CareRow(snapshot: snapshot, zone: zone, loggedBy: person, now: now, role: role,
                             at: item.kind == .gotUpAtNight ? item.at : nil)

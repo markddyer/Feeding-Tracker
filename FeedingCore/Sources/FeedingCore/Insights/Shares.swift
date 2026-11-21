@@ -81,12 +81,16 @@ public struct ShareItem: Hashable, Sendable, Identifiable {
 
 extension HouseholdData {
     /// A breastfeed, for the buttons a running feed shows (design DD15, Codex 7): it has a breast
-    /// side, or it counts for the parent named in "Who breastfeeds?" and has no bottle. So a
-    /// bottle-only phone shows Left and Right on "Breastfeed (Sam)", whatever its own setting.
+    /// side, or it was saved as done by the parent named in "Who breastfeeds?" ("Breastfeed
+    /// (Sam)", even with a bottle top-up added before a side: Codex review of the build), or it
+    /// counts for that parent and has no bottle. So a bottle-only phone shows Left and Right on
+    /// "Breastfeed (Sam)", whatever its own setting.
     public func isBreastfeed(_ feed: EventSnapshot) -> Bool {
         let details = feed.payload?.feed ?? FeedDetails()
         if !details.breast.isEmpty { return true }
-        guard details.bottles.isEmpty, let parent = breastfeeder?.member else { return false }
+        guard let parent = breastfeeder?.member else { return false }
+        if feed.event.doneBy == parent { return true }
+        guard details.bottles.isEmpty else { return false }
         return WhoDidIt.answer(for: feed, breastfeeder: breastfeeder).member == parent
     }
 }
@@ -242,8 +246,10 @@ public struct WhoDidIt: Sendable {
         // Wake-ups: the sleeps one ending closed (D8 A), each counted once, at its earliest end.
         let feeds = live.map(\.event).filter(\.isLiveFeed)
         var gotUpBySleep: [String: Answer] = [:]
-        let ended = live.map(\.event).filter { $0.kind == .sleep && $0.endedAt != nil }
-        let wakeUps = Dictionary(grouping: ended) { $0.wakeID ?? $0.endingID ?? $0.id }
+        // A sleep logged on both phones is one sleep: its hidden copy's own ending is not a second
+        // wake-up (Codex review of the build, 21 Nov 2026).
+        let ended = live.map(\.event).filter { $0.kind == .sleep && $0.endedAt != nil && !hidden.contains($0.id) }
+        let wakeUps = Dictionary(grouping: ended) { $0.endingID ?? $0.id }
         for (key, sleeps) in wakeUps {
             let ordered = sleeps.sorted { ($0.endedAt!, $0.id) < ($1.endedAt!, $1.id) }
             let first = ordered[0]
@@ -254,6 +260,11 @@ public struct WhoDidIt: Sendable {
             items.append(ShareItem(id: "\(ShareKind.gotUpAtNight.rawValue):\(key)", kind: .gotUpAtNight,
                                    eventIDs: ordered.map(\.id), member: answer.member, saved: answer.saved,
                                    at: moment, seconds: nil, day: evening))
+        }
+
+        // A hidden copy of a sleep answers as the sleep it was folded into.
+        for (kept, copy) in copyOf where gotUpBySleep[copy] == nil {
+            if let answer = gotUpBySleep[kept] { gotUpBySleep[copy] = answer }
         }
 
         self.items = items.sorted { ($0.at, $0.id) < ($1.at, $1.id) }

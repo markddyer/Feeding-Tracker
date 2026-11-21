@@ -316,11 +316,14 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// ID, D8 A), as they are one wake-up. Returns false for a running sleep, another kind or an
     /// unknown event.
     @discardableResult
-    public mutating func setGotUp(_ id: String, to riser: MemberID, by member: MemberID, now: Date) -> Bool {
-        guard let event = events[id]?.event, event.kind == .sleep, event.endingID != nil else { return false }
-        let wakeUp = event.wakeID.map { wake in
-            allEvents.filter { $0.kind == .sleep && $0.babyID == event.babyID && $0.endedAt != nil && $0.wakeID == wake }
-        } ?? [event]
+    public mutating func setGotUp(_ id: String, to riser: MemberID, for ending: String? = nil, by member: MemberID,
+                                  now: Date) -> Bool {
+        guard let event = events[id]?.event, event.kind == .sleep, let endingID = event.endingID else { return false }
+        // The choice was made for the ending a screen showed: if the sleep has ended again since
+        // (the other phone reopened it), it isn't given to the new ending (Codex review, 21 Nov 2026).
+        if let ending, ending != endingID { return false }
+        let wakeUp = event.wakeID == nil ? [event]
+            : allEvents.filter { $0.kind == .sleep && $0.babyID == event.babyID && $0.endingID == endingID }
         var done = false
         for sleep in wakeUp {
             guard let ending = sleep.endingID else { continue }
@@ -593,7 +596,12 @@ public struct HouseholdData: Hashable, Sendable, Codable {
             let wake = UUID().uuidString
             after.event.wakeID = wake
             after.event.gotUpBy = member
-            after.event.gotUpFor = wake
+            after.event.gotUpFor = after.event.endingID
+        } else if before.event.endedAt != after.event.endedAt, before.event.validGotUp != nil,
+                  after.event.gotUpBy == before.event.gotUpBy, after.event.gotUpFor == before.event.gotUpFor {
+            // The end moved by hand on this build: who got up moves with it, also for a sleep ended
+            // before wake-up IDs existed (Codex review of the build, 21 Nov 2026).
+            after.event.gotUpFor = after.event.endingID
         }
     }
 

@@ -37,7 +37,7 @@ struct DoneByTests {
         let millis = Int64((end.timeIntervalSince1970 * 1000).rounded())
         #expect(sleep.endingID == "end:s1:\(millis)")
         sleep.wakeID = "wake-1"
-        #expect(sleep.endingID == "wake-1")
+        #expect(sleep.endingID == "wake-1:\(millis)")
         sleep.endedAt = nil
         #expect(sleep.endingID == nil)
     }
@@ -138,6 +138,8 @@ struct DoneByTests {
     }
 
     /// A sleep ended before wake-up IDs existed: a "got up" given for it belongs to its end time.
+    /// An end this build changes takes it along (Codex review, 21 Nov 2026); one an older build
+    /// changes leaves it behind.
     @Test func anOldSleepsGotUpBelongsToItsEndTime() throws {
         var data = HouseholdData()
         let woke = start.addingTimeInterval(.hours(1))
@@ -149,7 +151,28 @@ struct DoneByTests {
         #expect(data.events["old"]?.event.validGotUp == parentB)
         #expect(data.events["old"]?.event.wakeID == nil)
         data.edit("old", by: parentA, now: woke.addingTimeInterval(120)) { $0.event.endedAt = woke.addingTimeInterval(-60) }
-        #expect(data.events["old"]?.event.validGotUp == nil)
+        #expect(data.events["old"]?.event.validGotUp == parentB, "moved with the end changed here")
+        // An older build changes the end and knows nothing of "got up".
+        var older = try #require(data.events["old"]?.event)
+        older.endedAt = woke.addingTimeInterval(-300)
+        data.receiveEvent(older, systemFields: Data([2]))
+        #expect(data.events["old"]?.event.validGotUp == nil, "left behind")
+    }
+
+    @Test func gotUpChosenForOneEndingIsNotGivenToALaterOne() throws {
+        // Codex review, 21 Nov 2026: an editor (or the Undo card) chose for the ending it showed.
+        var data = HouseholdData()
+        let woke = start.addingTimeInterval(.hours(1))
+        data.add(id: "s", kind: .sleep, babyID: baby, startedAt: start, payload: EventPayload(), by: parentA,
+                 timeZoneID: "Europe/London", now: start)
+        data.endSleep(babyID: baby, at: woke, by: parentA, now: woke)
+        let shown = try #require(data.events["s"]?.event.endingID)
+        let stale = data.setGotUp("s", to: parentB, for: "another-ending", by: parentA, now: woke.addingTimeInterval(60))
+        #expect(!stale)
+        #expect(data.events["s"]?.event.validGotUp == parentA)
+        let fresh = data.setGotUp("s", to: parentB, for: shown, by: parentA, now: woke.addingTimeInterval(60))
+        #expect(fresh)
+        #expect(data.events["s"]?.event.validGotUp == parentB)
     }
 
     @Test func gotUpIsOnlyForSleeps() throws {
@@ -207,7 +230,7 @@ struct DoneByTests {
         }
         server = stamped(server, .gotUp, at: second.addingTimeInterval(600), by: parentB) {
             $0.event.gotUpBy = parentB
-            $0.event.gotUpFor = "wake-1"
+            $0.event.gotUpFor = $0.event.endingID
         }
         // This phone: reopened and ended again at the second wake-up, Parent A got up.
         var local = stamped(base, .endedAt, at: second, by: parentA) {
@@ -216,7 +239,7 @@ struct DoneByTests {
         }
         local = stamped(local, .gotUp, at: second, by: parentA) {
             $0.event.gotUpBy = parentA
-            $0.event.gotUpFor = "wake-2"
+            $0.event.gotUpFor = $0.event.endingID
         }
         let result = merge(local: local, server: server, changedLocally: [.endedAt, .gotUp])
         #expect(result.snapshot.event.wakeID == "wake-2")
@@ -233,7 +256,7 @@ struct DoneByTests {
         }
         server = stamped(server, .gotUp, at: woke, by: parentB) {
             $0.event.gotUpBy = parentB
-            $0.event.gotUpFor = "wake-1"
+            $0.event.gotUpFor = $0.event.endingID
         }
         // This phone holds a stale "got up" for an ending iCloud no longer has, stamped later.
         let local = stamped(server, .gotUp, at: woke.addingTimeInterval(300), by: parentA) {

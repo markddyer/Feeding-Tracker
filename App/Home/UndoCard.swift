@@ -124,7 +124,8 @@ struct UndoSwapButton: View {
         let data = model.store.data
         let names = model.memberNames
         let colours = model.memberColours
-        if let snapshot = data.events[swap.eventID]?.snapshot, let me = model.me {
+        if let snapshot = data.events[swap.eventID]?.snapshot, let me = model.me,
+           !swap.gotUp || swap.wakeID == nil || snapshot.event.wakeID == swap.wakeID {
             let current = swap.gotUp ? (snapshot.event.validGotUp ?? snapshot.event.loggedBy)
                 : WhoDidIt.answer(for: snapshot, breastfeeder: data.breastfeeder).member
             let other = names.keys.sorted().first { $0 != current }

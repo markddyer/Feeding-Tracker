@@ -101,6 +101,10 @@ public func duplicateCareEntries(_ snapshots: [EventSnapshot], confirmedDistinct
             guard let x = details[a.id]??.medicine?.name, let y = details[b.id]??.medicine?.name else { return false }
             let name = { (n: String) in n.trimmingCharacters(in: .whitespaces).lowercased() }
             return name(x) == name(y)
+        case .sleep:
+            // A running sleep and an ended one are not one sleep: hiding the running one would leave
+            // Home saying "awake" while the baby sleeps (Codex review of the build, 21 Nov 2026).
+            return (a.endedAt == nil) == (b.endedAt == nil)
         default:
             return true
         }

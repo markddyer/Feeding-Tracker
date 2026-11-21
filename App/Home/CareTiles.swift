@@ -58,7 +58,7 @@ struct CareLog {
         let me = me
         // The swap changes who got up for this wake-up, every sleep it ended (R3).
         onUndo(UndoAction(message: "Woke up logged", changeTime: TimeChange(ids: ended, field: .end, title: "Woke up", at: at),
-                          swap: UndoSwap(eventID: ended[0], gotUp: true)) {
+                          swap: UndoSwap(eventID: ended[0], gotUp: true, wakeID: store.data.events[ended[0]]?.event.wakeID)) {
             AppModel.shared.store.change { data in
                 for sleep in before where ended.contains(sleep.id) {
                     data.edit(sleep.id, by: me, now: Date()) { $0.event.endedAt = nil }

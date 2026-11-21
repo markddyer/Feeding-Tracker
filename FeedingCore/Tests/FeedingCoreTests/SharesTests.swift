@@ -13,11 +13,12 @@ func shareEntry(_ kind: EventKind, _ start: Date, end: Date? = nil, id: String =
     if doneBy != nil { payload?.setStamp(.doneBy, FieldStamp(at: stampedAt ?? start, by: by)) }
     if gotUpBy != nil { payload?.setStamp(.gotUp, FieldStamp(at: end ?? start, by: by)) }
     if let end { payload?.setStamp(.endedAt, FieldStamp(at: end, by: by)) }
-    return EventSnapshot(
-        event: Event(id: id, babyID: babyID, kind: kind, startedAt: start, endedAt: end, timeZoneID: "Europe/London",
-                     loggedBy: by, createdAt: created ?? start, modifiedAt: start, deletedAt: deletedAt, doneBy: doneBy,
-                     wakeID: wakeID, gotUpBy: gotUpBy, gotUpFor: gotUpBy == nil ? nil : wakeID),
-        payload: payload)
+    var event = Event(id: id, babyID: babyID, kind: kind, startedAt: start, endedAt: end, timeZoneID: "Europe/London",
+                      loggedBy: by, createdAt: created ?? start, modifiedAt: start, deletedAt: deletedAt, doneBy: doneBy,
+                      wakeID: wakeID, gotUpBy: gotUpBy)
+    // A "got up" given for this ending.
+    if gotUpBy != nil { event.gotUpFor = event.endingID }
+    return EventSnapshot(event: event, payload: payload)
 }
 
 func breastFeed(_ start: Date, seconds: [Int?] = [600], end: Date? = nil, id: String = UUID().uuidString,
@@ -195,6 +196,42 @@ struct WhoDidItTimeTests {
 struct WhoDidItWakeUpTests {
     let evening = at(2026, 11, 17, 20, 0)
     let now = at(2026, 11, 18, 9, 0)
+
+    @Test func anEndAnOlderBuildChangedIsAWakeUpOfItsOwn() {
+        // Codex review, 21 Nov 2026: an older build reopened s1 and ended it again; it kept the
+        // wake-up ID and "got up" it doesn't know. That ending is its own wake-up, worked out.
+        let end = at(2026, 11, 18, 3, 0)
+        var s1 = shareEntry(.sleep, evening, end: end, id: "s1", by: parentA, wakeID: "w", gotUpBy: parentB)
+        let s2 = shareEntry(.sleep, evening.addingTimeInterval(600), end: end, id: "s2", by: parentB, wakeID: "w", gotUpBy: parentB)
+        s1.event.endedAt = at(2026, 11, 18, 4, 30)
+        let s = sheet([s1, s2], now: now)
+        #expect(s.entries(.gotUpAtNight, range: .all).count == 2)
+        #expect(s.gotUp(sleep: "s1")?.saved == false)
+        #expect(s.gotUp(sleep: "s2") == .init(member: parentB, saved: true))
+    }
+
+    @Test func aSleepLoggedOnBothPhonesIsOneWakeUp() {
+        // Codex review: both phones logged the sleep, and each tapped Woke up; one wake-up counts.
+        let kept = shareEntry(.sleep, evening, end: at(2026, 11, 18, 3, 0), id: "k", by: parentA, created: evening,
+                              wakeID: "wa", gotUpBy: parentA)
+        let copy = shareEntry(.sleep, evening.addingTimeInterval(120), end: at(2026, 11, 18, 3, 2), id: "c", by: parentB,
+                              created: evening.addingTimeInterval(120), wakeID: "wb", gotUpBy: parentB)
+        let s = sheet([kept, copy], now: now)
+        #expect(s.hiddenCopies == ["c"])
+        #expect(s.entries(.gotUpAtNight, range: .all).map(\.member) == [parentA])
+        #expect(s.gotUp(sleep: "c") == s.gotUp(sleep: "k"))
+    }
+
+    @Test func aRunningSleepIsNeverACopyOfAnEndedOne() {
+        // Codex review: hiding the running one would leave Home saying "awake".
+        let ended = shareEntry(.sleep, evening, end: at(2026, 11, 18, 3, 0), id: "e", by: parentA, created: evening)
+        let running = shareEntry(.sleep, evening.addingTimeInterval(120), id: "r", by: parentB,
+                                 created: evening.addingTimeInterval(120))
+        #expect(duplicateCareEntries([ended, running]).isEmpty)
+        let bothEnded = shareEntry(.sleep, evening.addingTimeInterval(120), end: at(2026, 11, 18, 3, 1), id: "r", by: parentB,
+                                   created: evening.addingTimeInterval(120))
+        #expect(duplicateCareEntries([ended, bothEnded]).map(\.duplicate) == ["r"])
+    }
 
     @Test func oneEndingIsOneWakeUpAtNightForWhoGotUp() {
         let end = at(2026, 11, 18, 3, 0)

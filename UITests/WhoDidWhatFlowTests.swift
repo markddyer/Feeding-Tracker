@@ -2,7 +2,8 @@ import XCTest
 
 /// The "who did what" page (`09-who-does-what.md`, X2, DD10, D1 A): a parent's number opens the
 /// list behind it, with as many rows as the number says; a row opens its editor, and giving the
-/// entry to the other parent there takes it off the list (DD8) (Feeding Dev, simulator only). Run with the FeedingDevAudit scheme:
+/// entry to the other parent there lowers the count while the row stays until the list is left
+/// (DD8, 2C) (Feeding Dev, simulator only). Run with the FeedingDevAudit scheme:
 /// `-only-testing:FeedingDevUITests/WhoDidWhatFlowTests`.
 @MainActor
 final class WhoDidWhatFlowTests: XCTestCase {
@@ -54,8 +55,11 @@ final class WhoDidWhatFlowTests: XCTestCase {
         for _ in 0..<4 where !other.isHittable { app.swipeUp() }
         other.tap()
         app.buttons["Save"].tap()
-        let fewer = NSPredicate(format: "count == %d", count - 1)
-        expectation(for: fewer, evaluatedWith: rows)
-        waitForExpectations(timeout: 5)
+        // The count goes down by one; the row stays, with its new picture, until the list is left
+        // (design 2C).
+        let fewer = count - 1
+        let newCount = app.staticTexts.matching(NSPredicate(format: "label == %@", "\(fewer) \(fewer == 1 ? "entry" : "entries")"))
+        XCTAssertTrue(newCount.firstMatch.waitForExistence(timeout: 5), "the count follows")
+        XCTAssertEqual(rows.count, count, "the changed row stays in the open list")
     }
 }

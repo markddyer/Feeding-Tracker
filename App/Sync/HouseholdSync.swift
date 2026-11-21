@@ -36,6 +36,10 @@ final class HouseholdSync {
     /// When a fetch from the household's database last finished, not when a batch arrived: the
     /// "who did what" page's "Checked with iCloud" (design 1D; Codex review of the plan, 9).
     private(set) var lastCompletedFetchAt: Date?
+    /// The household zone's part of the latest fetch failed: the page shows its banner, and the
+    /// time above stays where it was (Codex review of the build, 21 Nov 2026).
+    private(set) var householdFetchFailed = false
+    private var householdZoneFailedThisFetch = false
     private(set) var lastSendAt: Date?
     /// Something the parents need to know, such as the household being removed.
     private(set) var problem: String?
@@ -480,11 +484,26 @@ final class HouseholdSync {
         switch event {
         case .willFetchChanges:
             onEngineFetch?(true)
+            if scope == householdScope { householdZoneFailedThisFetch = false }
+
+        case .didFetchRecordZoneChanges(let fetched):
+            if scope == householdScope, fetched.zoneID == writeTarget?.zoneID, let error = fetched.error {
+                householdZoneFailedThisFetch = true
+                SyncLog.add("fetch of the household zone failed: \(String(reflecting: error))")
+            }
 
         case .didFetchChanges:
             onEngineFetch?(false)
-            if scope == householdScope { lastCompletedFetchAt = Date() }
-            await fetchMissingWhoValues()
+            // Only a fetch of the household that worked counts as "Checked with iCloud", and only
+            // then are entries an older build left without a value read again, after the
+            // household's own changes have arrived.
+            if scope == householdScope {
+                householdFetchFailed = householdZoneFailedThisFetch
+                if !householdZoneFailedThisFetch {
+                    lastCompletedFetchAt = Date()
+                    await fetchMissingWhoValues()
+                }
+            }
 
         case .stateUpdate(let update):
             let state = try? JSONEncoder().encode(update.stateSerialization)
@@ -591,6 +610,13 @@ final class HouseholdSync {
         checkedMissingWhoValues = true
         let ids = store.data.entriesMissingWhoValues
         guard !ids.isEmpty else { return }
+        // Each entry as it is now. One that changes while the read is out (the sync engine brought
+        // a newer copy, or this phone changed it) keeps its newer copy: the read's may be older,
+        // and an older feed could bring a deleted feed back and move the alarms (Codex review of
+        // the build, 21 Nov 2026). It is read again at the next launch.
+        let before = Dictionary(uniqueKeysWithValues: ids.compactMap { id in
+            store.data.events[id].map { (id, WhoReadBasis(revision: $0.localRevision, systemFields: $0.systemFields)) }
+        })
         let database = switch role {
         case .owner: container.privateCloudDatabase
         default: container.sharedCloudDatabase
@@ -600,12 +626,15 @@ final class HouseholdSync {
             var answered: [String] = []
             store.applySync { data in
                 for (recordID, result) in results {
+                    let name = recordID.recordName
+                    let now = data.events[name].map { WhoReadBasis(revision: $0.localRevision, systemFields: $0.systemFields) }
+                    guard now == before[name] else { continue }
                     switch result {
                     case .success(let record):
                         Self.receive(record, into: &data)
-                        answered.append(recordID.recordName)
+                        answered.append(name)
                     case .failure(let error as CKError) where error.code == .unknownItem:
-                        answered.append(recordID.recordName)
+                        answered.append(name)
                     case .failure:
                         break // tried again at the next launch
                     }
@@ -617,6 +646,12 @@ final class HouseholdSync {
         } catch {
             SyncLog.add("who: fetching entries missing a value failed: \(String(reflecting: error))")
         }
+    }
+
+    /// What an entry was when a read by name went out, to tell whether it changed meanwhile.
+    private struct WhoReadBasis: Equatable {
+        var revision: Int
+        var systemFields: Data?
     }
 
     private static func receive(_ record: CKRecord, into data: inout HouseholdData) {

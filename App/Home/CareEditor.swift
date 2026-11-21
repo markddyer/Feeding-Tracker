@@ -371,13 +371,17 @@ struct CareEditor: View {
             let changed = EventSnapshot.changedFields(from: original, to: final)
             let doer = pickedDoneBy
             let riser = final.event.endedAt == nil ? nil : pickedGotUp
+            let shownEnding = original.event.endingID
             store.change {
+                // "Got up" was chosen for the ending this editor showed: if the other phone ended
+                // the sleep again meanwhile, it isn't given to that new ending (Codex review).
+                let sameEnding = $0.events[id]?.event.endingID == shownEnding
                 $0.edit(id, by: me, now: Date()) { current in
                     for field in changed { current.copy(field, from: final) }
                 }
                 if let doer { $0.setDoneBy(id, to: doer, by: me, now: Date()) }
                 // After the edit, so it is given for the sleep's ending as saved.
-                if let riser { $0.setGotUp(id, to: riser, by: me, now: Date()) }
+                if let riser, sameEnding { $0.setGotUp(id, to: riser, by: me, now: Date()) }
             }
         }
         dismiss()

@@ -33,6 +33,10 @@ struct UndoSwap {
     let eventID: String
     /// Woke up swaps who got up, not who settled the baby (R3).
     var gotUp = false
+    /// For Woke up: the wake-up the card is about. If the other phone reopens and ends the sleep
+    /// while the card shows, the swap goes, rather than change a later wake-up (Codex review,
+    /// 21 Nov 2026). Change time from the card keeps it.
+    var wakeID: String?
 }
 
 /// The big buttons at the bottom of the home screen. Ordinary buttons in the content, pinned to
@@ -249,14 +253,19 @@ struct FeedControls: View {
 
     // MARK: Undo
 
-    /// Makes a change to a feed, with Undo putting the feed back as it was.
+    /// Makes a change to a feed, with Undo putting back only what this change changed, so a change
+    /// from the other phone in the meantime ("who did it", say) stays (Codex review, 21 Nov 2026).
     private func change(_ feed: EventSnapshot, message: String, _ body: @escaping (inout HouseholdData) -> Bool) {
-        let before = feed
+        let before = store.data.events[feed.id]?.snapshot ?? feed
         store.change { _ = body(&$0) }
+        let after = store.data.events[feed.id]?.snapshot ?? before
+        let changed = EventSnapshot.changedFields(from: before, to: after)
         let me = me
         onUndo(UndoAction(message: message) {
             AppModel.shared.store.change { data in
-                data.edit(before.id, by: me, now: Date()) { $0 = before }
+                data.edit(before.id, by: me, now: Date()) { current in
+                    for field in changed { current.copy(field, from: before) }
+                }
             }
         })
     }

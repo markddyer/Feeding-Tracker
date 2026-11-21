@@ -74,12 +74,15 @@ public struct Event: Hashable, Sendable, Identifiable, Codable {
         self.gotUpFor = gotUpFor
     }
 
-    /// The ending a sleep's "got up" binds to: its wake-up ID, or, for a sleep ended before wake-up
-    /// IDs existed, one made from its own ID and end time, so it stands alone and a later change
-    /// of its end leaves an old "got up" behind. Nil while it runs.
+    /// The ending a sleep's "got up" binds to, and the key that groups the sleeps of one wake-up:
+    /// its wake-up ID (or, for a sleep ended before wake-up IDs existed, one made from its own ID)
+    /// with its end time. So an end changed by an older build, which keeps the wake-up ID but
+    /// knows nothing of it, leaves the old "got up" and the old wake-up behind; this build moves
+    /// them with an end it changes (`keepSleepEnding`). Nil while it runs (Codex review of the
+    /// build, 21 Nov 2026).
     public var endingID: String? {
         guard let endedAt else { return nil }
-        return wakeID ?? "end:\(id):\(Int64((endedAt.timeIntervalSince1970 * 1000).rounded()))"
+        return "\(wakeID ?? "end:\(id)"):\(Int64((endedAt.timeIntervalSince1970 * 1000).rounded()))"
     }
 
     /// The stored "got up", when it belongs to this ending; nil otherwise (engineering review, D8 A).

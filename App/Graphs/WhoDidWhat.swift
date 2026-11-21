@@ -545,7 +545,7 @@ private struct SyncCheckBanner: View {
 
     var body: some View {
         let sync = AppModel.shared.sync
-        if AppConfig.syncEnabled, sync.problem != nil
+        if AppConfig.syncEnabled, sync.problem != nil || sync.householdFetchFailed
             || (sync.lastCompletedFetchAt.map { now.timeIntervalSince($0) > 15 * 60 } ?? false) {
             Text(ShareText.checkProblem(since: sync.lastCompletedFetchAt, in: zone))
                 .feedText(.small)

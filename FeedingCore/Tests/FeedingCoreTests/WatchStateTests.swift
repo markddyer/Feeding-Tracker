@@ -131,6 +131,17 @@ struct WatchStateTests {
         #expect(data.whoDidIt(babyID: baby, now: now).doneBy("f") == .init(member: parentB, saved: true))
     }
 
+    @Test func aBreastfeedWithATopUpBeforeASideIsStillABreastfeed() throws {
+        // Codex review, 21 Nov 2026: Left and Right stay after a bottle is added first.
+        var data = household()
+        data.setBreastfeeder(.member(parentB), now: now)
+        let id = data.startFeed(babyID: baby, side: nil, doneBy: parentB, by: parentA, timeZoneID: "Europe/London", now: now)
+        data.edit(id, by: parentA, now: now.addingTimeInterval(60)) { $0.payload?.feed?.bottles.append(Bottle(milk: .formula)) }
+        let feed = try #require(data.feedInProgress(babyID: baby))
+        #expect(data.isBreastfeed(feed))
+        #expect(state(data, bottleOnly: true).running?.breastfeed == true)
+    }
+
     @Test func aBottleStartIgnoresDoneByAndAPlainBottleFeedIsNoBreastfeed() throws {
         var data = household()
         data.setBreastfeeder(.member(parentB), now: now)

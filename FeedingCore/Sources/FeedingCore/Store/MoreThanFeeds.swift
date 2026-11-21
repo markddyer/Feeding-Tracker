@@ -47,11 +47,11 @@ extension HouseholdData {
     /// the same on both phones and in every pass, so they are one wake-up.
     public static func feedWakeID(_ feedID: String) -> String { "feed:\(feedID)" }
 
-    /// Gives a sleep's new ending its wake-up ID and who got up for it.
+    /// Gives a sleep's new ending (its end already set) its wake-up ID and who got up for it.
     static func setWakeUp(_ snapshot: inout EventSnapshot, _ wakeID: String, gotUp member: MemberID) {
         snapshot.event.wakeID = wakeID
         snapshot.event.gotUpBy = member
-        snapshot.event.gotUpFor = wakeID
+        snapshot.event.gotUpFor = snapshot.event.endingID
     }
 
     /// A nappy change: wee, poo or both, at `at` (now by default). The colour and consistency come

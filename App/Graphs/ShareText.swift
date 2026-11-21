@@ -35,10 +35,14 @@ enum ShareText {
     /// "13h 30m", "25m", "0m".
     static func time(_ seconds: TimeInterval) -> String { HomeText.elapsed(seconds) }
 
-    /// A number on a line: "24", or with the time for night feeds, "10 · 3h 40m".
+    /// Lines that show a count and its time together: night feeds, and pumping (the plan's
+    /// counting rules: "pumping (count and time)").
+    static func showsTime(_ kind: ShareKind) -> Bool { kind == .nightFeeds || kind == .pumping }
+
+    /// A number on a line: "24", or with the time for night feeds and pumping, "10 · 3h 40m".
     static func number(_ tally: ShareTally, kind: ShareKind, time: Bool) -> String {
         if time { return self.time(tally.seconds) }
-        if kind == .nightFeeds { return "\(tally.count) · \(self.time(tally.seconds))" }
+        if showsTime(kind) { return "\(tally.count) · \(self.time(tally.seconds))" }
         return "\(tally.count)"
     }
 
@@ -139,7 +143,7 @@ enum ShareText {
     /// The list's number for VoiceOver: "7 entries", "3h 40m in all".
     static func listCount(_ tally: ShareTally, kind: ShareKind, time: Bool) -> String {
         if time { return "\(self.time(tally.seconds)) in all" }
-        if kind == .nightFeeds { return "\(tally.count) \(tally.count == 1 ? "entry" : "entries"), \(self.time(tally.seconds))" }
+        if showsTime(kind) { return "\(tally.count) \(tally.count == 1 ? "entry" : "entries"), \(self.time(tally.seconds))" }
         return "\(tally.count) \(tally.count == 1 ? "entry" : "entries")"
     }
 
