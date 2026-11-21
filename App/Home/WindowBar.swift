@@ -7,16 +7,19 @@ import SwiftUI
 // `window-bar-20261121/round1.html`), then one thick bar in parts: after the feed, the feeding
 // window with its name inside, and (with alerts on) a short striped part up to the backup alarm
 // with a bell inside, each in its own colour (choice B of `hero-bar-20261121/round2-colours.html`:
-// misty blue, coral, terracotta), pale still to come and full up to now; the edge is now. The
-// times sit under their parts. Facts only: "opens", "alert at", "closed at", "backup alarm". Never "due", "missed" or
-// "overdue".
+// misty blue, coral, terracotta), pale still to come and full up to now, with a needle at now. The
+// times sit under their parts. The window opens and never closes: past the alert it stays "In the
+// feeding window" and only the colours deepen (the users' choice A, 21 Nov 2026). Facts only:
+// "opens", "alert at", "backup alarm", "since". Never "closed", "due", "missed" or "overdue".
 
 /// Where now is against the window: the parts of the bar, and the words for them.
 struct WindowSteps {
     enum Phase: Equatable {
         case beforeWindow
+        /// The window is open; the alert is still to come.
         case inWindow
-        case afterWindow
+        /// The window is still open, and the alert time has passed.
+        case afterAlert
     }
 
     enum PartKind: Equatable {
@@ -35,7 +38,8 @@ struct WindowSteps {
 
     let lastFeed: Date
     let opensAt: Date
-    let closesAt: Date
+    /// When the alert rings (`FeedWindow.closesAt`). The window stays open after it.
+    let alertAt: Date
     /// When the backup alarm rings on both phones; nil with alerts off.
     let backupAt: Date?
     let alertsEnabled: Bool
@@ -44,7 +48,7 @@ struct WindowSteps {
     init(window: FeedWindow, settings: FeedWindowSettings, now: Date) {
         lastFeed = window.lastFeedStart
         opensAt = window.opensAt
-        closesAt = window.closesAt
+        alertAt = window.closesAt
         alertsEnabled = settings.alertsEnabled
         backupAt = settings.alertsEnabled && settings.backupAfterClose > 0
             ? window.closesAt.addingTimeInterval(settings.backupAfterClose) : nil
@@ -54,20 +58,20 @@ struct WindowSteps {
     var elapsed: TimeInterval { max(0, now.timeIntervalSince(lastFeed)) }
 
     var phase: Phase {
-        if now >= closesAt { return .afterWindow }
+        if now >= alertAt { return .afterAlert }
         if now >= opensAt { return .inWindow }
         return .beforeWindow
     }
 
-    /// The bar's parts, oldest first. A window that opens when it closes (or later) has no part
-    /// of its own.
+    /// The bar's parts, oldest first. A window that opens at the alert (or later) has no part of
+    /// its own.
     var parts: [Part] {
         let opens = max(0, opensAt.timeIntervalSince(lastFeed))
-        let closes = max(0, closesAt.timeIntervalSince(lastFeed))
+        let closes = max(0, alertAt.timeIntervalSince(lastFeed))
         var parts: [Part] = []
         if min(opens, closes) > 0 { parts.append(Part(kind: .sinceFeed, from: 0, to: min(opens, closes))) }
         if closes > opens { parts.append(Part(kind: .window, from: opens, to: closes)) }
-        if let backupAt, backupAt > closesAt {
+        if let backupAt, backupAt > alertAt {
             parts.append(Part(kind: .backup, from: closes, to: backupAt.timeIntervalSince(lastFeed)))
         }
         return parts
@@ -111,18 +115,29 @@ struct WindowSteps {
         }
     }
 
-    /// The line over the bar: the words that matter, then the times after them.
-    /// "Window opens in 20m" · "at 15:22"; "In the feeding window" · "alert at 17:22";
-    /// "Window closed at 17:22" · "backup alarm 17:52".
+    /// Where now sits on a bar `width` wide: inside the part it is in, at the bar's end once the
+    /// bar is full.
+    func nowX(width: CGFloat, gap: CGFloat = 3, minimum: CGFloat = 26) -> CGFloat {
+        let frames = frames(width: width, gap: gap, minimum: minimum)
+        guard let frame = frames.first(where: { $0.part.kind == currentPart }) else { return 0 }
+        return frame.x + frame.width * filled(frame.part)
+    }
+
+    /// The line over the bar: where now is, then what comes next. "Window opens in 20m" · "at
+    /// 15:22"; then "In the feeding window" · "alert at 17:22", · "backup alarm 17:52", and once
+    /// both have rung · "since 15:22".
     func line(_ clock: (Date) -> String) -> (main: String, more: String) {
+        let off = alertsEnabled ? "" : " · alerts off"
         switch phase {
         case .beforeWindow:
-            return ("Window opens in \(HomeText.elapsed(untilOpens))", " · at \(clock(opensAt))" + (alertsEnabled ? "" : " · alerts off"))
+            return ("Window opens in \(HomeText.elapsed(untilOpens))", " · at \(clock(opensAt))" + off)
         case .inWindow:
-            return ("In the feeding window", alertsEnabled ? " · alert at \(clock(closesAt))" : " · until \(clock(closesAt)) · alerts off")
-        case .afterWindow:
-            let more = backupAt.map { " · backup alarm \(clock($0))" } ?? (alertsEnabled ? "" : " · alerts off")
-            return ("Window closed at \(clock(closesAt))", more)
+            return ("In the feeding window", alertsEnabled ? " · alert at \(clock(alertAt))" : " · since \(clock(opensAt))" + off)
+        case .afterAlert:
+            if let backupAt, now < backupAt {
+                return ("In the feeding window", " · backup alarm \(clock(backupAt))")
+            }
+            return ("In the feeding window", " · since \(clock(opensAt))" + off)
         }
     }
 
@@ -135,7 +150,7 @@ struct WindowSteps {
     func label(_ kind: PartKind, _ clock: (Date) -> String) -> (name: String, time: String) {
         switch kind {
         case .sinceFeed: ("Last feed", clock(lastFeed))
-        case .window: ("Feeding window", "\(clock(opensAt))–\(clock(closesAt))")
+        case .window: ("Feeding window", "from \(clock(opensAt))")
         case .backup: ("Backup", backupAt.map(clock) ?? "")
         }
     }
@@ -144,17 +159,16 @@ struct WindowSteps {
     func spoken(_ clock: (Date) -> String) -> String {
         let place = switch phase {
         case .beforeWindow: "The window opens in \(HomeText.spokenElapsed(untilOpens))."
-        case .inWindow: "Now in the feeding window."
-        case .afterWindow: "The window closed at \(clock(closesAt))."
+        case .inWindow, .afterAlert: "Now in the feeding window."
         }
-        let alerts = backupAt.map { " Alert at \(clock(closesAt)), backup alarm at \(clock($0))." }
-            ?? (alertsEnabled ? " Alert at \(clock(closesAt))." : " Alerts are off.")
-        return "Feeding window \(clock(opensAt)) to \(clock(closesAt)). \(place)\(alerts)"
+        let alerts = backupAt.map { " Alert at \(clock(alertAt)), backup alarm at \(clock($0))." }
+            ?? (alertsEnabled ? " Alert at \(clock(alertAt))." : " Alerts are off.")
+        return "Feeding window from \(clock(opensAt)). \(place)\(alerts)"
     }
 }
 
 /// The window bar, under the time in Home's top tile: the line in words, one thick bar in parts
-/// with coral up to now (its edge is now), and the times under their parts.
+/// filled up to now, a needle at now, and the times under their parts.
 struct WindowBar: View {
     let steps: WindowSteps
     let clock: (Date) -> String
@@ -174,6 +188,8 @@ struct WindowBar: View {
                 .feedText(.subheadline)
             WindowTrack(steps: steps, height: height)
                 .frame(height: height)
+                // Room for the needle, which stands out over and under the bar.
+                .padding(.vertical, WindowTrack.overhang - 4)
             times
         }
     }
@@ -226,8 +242,26 @@ private struct WindowTrack: View {
                     .clipShape(shape)
                     .offset(x: frame.x)
                 }
+                needle(at: steps.nowX(width: proxy.size.width, minimum: WindowBar.minimumPart), width: proxy.size.width)
             }
         }
+    }
+
+    /// How far the needle stands out over and under the bar, with its edge.
+    static let overhang: CGFloat = 9
+
+    /// The needle at now (the users' choice A, 21 Nov 2026, `hero-bar-20261121/round3-now.html`):
+    /// a 5 pt line in `text`, taller than the bar, edged in `surface` so it shows on every colour.
+    /// It stays inside the bar's ends; once the bar is full it sits at its end.
+    private func needle(at x: CGFloat, width: CGFloat) -> some View {
+        let line: CGFloat = 5, edge: CGFloat = 2
+        let centre = min(max(x, line / 2 + 1), width - line / 2 - 1)
+        return RoundedRectangle(cornerRadius: line / 2)
+            .fill(Theme.text)
+            .frame(width: line, height: height + 2 * (Self.overhang - edge))
+            .padding(edge)
+            .background(Theme.surface, in: RoundedRectangle(cornerRadius: line / 2 + edge))
+            .offset(x: centre - line / 2 - edge, y: -Self.overhang)
     }
 
     /// A part still to come.
