@@ -41,6 +41,9 @@ struct GraphsView: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.bottom, 2)
+                    // Who did what, the last 7 nights; tap for the page (DD3, DD9).
+                    WhoDidWhatTile(who: data.whoDidIt(babyID: babyID, now: context.date),
+                                   today: PlainDate(context.date, in: zone), zone: zone)
                     if days.isEmpty && rhythm.isEmpty {
                         growthTile
                         Tile {

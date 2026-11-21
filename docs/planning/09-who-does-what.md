@@ -877,7 +877,7 @@ finding above. Run with Claude Code or Codex; checkbox as you ship. Tasks T1 to 
   - Surfaced by: R1, R2; DS1
   - Files: App/Graphs/ (new view), App/Graphs/GraphText.swift, App/Home/SettingsView.swift
   - Verify: simulator with `-sampleData YES`; accessibility audit; the five Duo widths
-- [ ] **T8 (P1, human: ~1d / CC: ~45min)** — App — X2's temporary History list with each row's counted time
+- [x] **T8 (P1, human: ~1d / CC: ~45min)** — App — X2's temporary History list with each row's counted time (built 21 Nov 2026 as its own list, `App/Graphs/ShareEntries.swift`, per DD10; the tap test `WhoDidWhatFlowTests` checks number = rows and row → editor)
   - Surfaced by: X2; outside finding 7
   - Files: App/Home/HistoryView.swift, App/Home/FeedRows.swift
   - Verify: tap test: each number equals its list's length and time
@@ -1104,7 +1104,7 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: D5, D7, 5B
   - Files: App/Home/FeedControls.swift, App/Home/HomeView.swift, App/Home/HistoryView.swift, App/Journal/JournalView.swift
   - Verify: tap tests (`HistoryDeleteFlowTests` and the others that use Undo) updated and passing; the audit at large text
-- [ ] **DT3 (P1, human: ~2d / CC: ~1.5h)** — The page — per-range nights (1A, 1B), the day picker with swipe (1C), the sync line and banner (1D), the quiet line (2A), fixed order and zeros (2C), "Other" (2D), heading (4A), two columns on the open Duo (6A)
+- [x] **DT3 (P1, human: ~2d / CC: ~1.5h)** — (built 21 Nov 2026, `App/Graphs/WhoDidWhat.swift`; the Graphs tile on top; Feeding Dev opens it with `-openScreen whoDidWhat`, `-share.range`, `-share.dayOffset`; the open Duo's two columns not yet seen on the Duo simulator) The page — per-range nights (1A, 1B), the day picker with swipe (1C), the sync line and banner (1D), the quiet line (2A), fixed order and zeros (2C), "Other" (2D), heading (4A), two columns on the open Duo (6A)
   - Surfaced by: Passes 1, 2, 4, 6
   - Files: App/Graphs/ (new views), App/Graphs/GraphText.swift
   - Verify: simulator with `-sampleData YES -sampleWeek 30` at each range, day and night; the five Duo widths
@@ -1120,7 +1120,7 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: D12, 7A, 7B
   - Files: App/Home/FeedRows.swift, App/Home/CareEditor.swift
   - Verify: VoiceOver reads "done by Sam, logged by Alex"
-- [ ] **DT7 (P2, human: ~3h / CC: ~20min)** — "Who breastfeeds?" sheet once per phone, and its Settings row
+- [ ] **DT7 (P2, human: ~3h / CC: ~20min)** — "Who breastfeeds?" sheet once per phone, and its Settings row (the sheet and the page's quiet line built 21 Nov 2026; the Settings row is still to do)
   - Surfaced by: D11, 2A
   - Files: App/Home/SettingsView.swift, App/Graphs/ (the page)
   - Verify: tap test: Not now, then the quiet line; answer, then it goes

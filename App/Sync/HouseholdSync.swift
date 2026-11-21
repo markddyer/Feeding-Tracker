@@ -33,6 +33,9 @@ final class HouseholdSync {
     /// This parent's ID: their iCloud user record name.
     private(set) var memberID: MemberID?
     private(set) var lastFetchAt: Date?
+    /// When a fetch from the household's database last finished, not when a batch arrived: the
+    /// "who did what" page's "Checked with iCloud" (design 1D; Codex review of the plan, 9).
+    private(set) var lastCompletedFetchAt: Date?
     private(set) var lastSendAt: Date?
     /// Something the parents need to know, such as the household being removed.
     private(set) var problem: String?
@@ -120,6 +123,27 @@ final class HouseholdSync {
 
     private var ownZoneID: CKRecordZone.ID {
         CKRecordZone.ID(zoneName: Self.zoneName, ownerName: CKCurrentUserDefaultName)
+    }
+
+    /// The database that holds the household: this phone's own when it made it, the shared one
+    /// when it joined.
+    private var householdScope: CKDatabase.Scope? {
+        switch role {
+        case .owner: .private
+        case .member: .shared
+        case .notSetUp: nil
+        }
+    }
+
+    /// The parent who made the household: the "who did what" page puts them on the left on both
+    /// phones (design 2C). Their member ID is their iCloud user record name, which is the shared
+    /// zone's owner name on the other phone.
+    var householdOwner: MemberID? {
+        switch role {
+        case .owner: memberID
+        case .member(let owner): MemberID(rawValue: owner)
+        case .notSetUp: nil
+        }
     }
 
     /// The engine and zone this phone writes to, once it is in a household.
@@ -459,6 +483,7 @@ final class HouseholdSync {
 
         case .didFetchChanges:
             onEngineFetch?(false)
+            if scope == householdScope { lastCompletedFetchAt = Date() }
             await fetchMissingWhoValues()
 
         case .stateUpdate(let update):

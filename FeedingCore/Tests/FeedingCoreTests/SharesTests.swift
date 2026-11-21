@@ -358,6 +358,18 @@ struct LastNightTests {
         #expect(sheetAt(at(2026, 11, 19, 12, 30), night, dayHours: lateMorning).lastNight() == nil)
     }
 
+    @Test func anyNightCanBeShownByItsEvening() {
+        // The page's Day view (1A): the same night at any time later, and none for an evening to come.
+        let later = sheetAt(at(2026, 11, 21, 15, 0), night)
+        #expect(later.lastNight() == nil)
+        #expect(later.night(date("2026-11-18")).items.map(\.kind) == [.nightNappies, .gotUpAtNight, .nightFeeds])
+        #expect(later.night(date("2026-11-18")).sleptSeconds == .hours(4) + .minutes(25))
+        #expect(later.night(date("2026-11-17")).items.isEmpty)
+        #expect(later.night(date("2026-11-21")).items.isEmpty)
+        #expect(later.evening(at: at(2026, 11, 19, 2, 0)) == date("2026-11-18"))
+        #expect(later.evening(at: at(2026, 11, 19, 12, 0)) == nil)
+    }
+
     @Test func anEmptyNightHasNoCard() {
         #expect(sheetAt(at(2026, 11, 19, 7, 30), [wee(at(2026, 11, 18, 15, 0))]).lastNight() == nil)
     }

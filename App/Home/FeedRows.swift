@@ -34,6 +34,22 @@ struct RowPerson {
     var colour: ParentColour
     /// "you", or their name, for VoiceOver.
     var spoken: String
+    /// Worked out by the starting rule, not chosen by a parent: a dashed ring (design 7A).
+    var workedOut = false
+}
+
+extension View {
+    /// The dashed ring of a worked-out "done by" or "got up" (design 7A).
+    func workedOutRing(_ shown: Bool) -> some View {
+        overlay {
+            if shown {
+                Circle()
+                    .stroke(Theme.text, style: StrokeStyle(lineWidth: 1.2, dash: [3, 2]))
+                    .padding(-3)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
 }
 
 /// One feed or pumping session in History (and later the Duo's second column): tinted by kind,
@@ -46,6 +62,10 @@ struct HistoryRow: View {
     var finishedBy: RowPerson?
     /// The other phone logged this feed too, and the screens show it once.
     var loggedTwice = false
+    /// What the avatar means, for VoiceOver: "Logged by", or "Done by" in a list behind a number.
+    var role = "Logged by"
+    /// A line under the chips: the time this row added to a number (X2).
+    var note: String?
 
     var body: some View {
         let tint = Self.tint(snapshot)
@@ -61,10 +81,16 @@ struct HistoryRow: View {
                         .feedText(.small)
                         .foregroundStyle(Theme.textMuted)
                 }
+                if let note {
+                    Text(note)
+                        .feedText(.small)
+                        .foregroundStyle(Theme.textMuted)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: -6) {
                 Avatar(name: loggedBy.name, colour: loggedBy.colour, size: 26)
+                    .workedOutRing(loggedBy.workedOut)
                 if let finishedBy {
                     Avatar(name: finishedBy.name, colour: finishedBy.colour, size: 20)
                         .padding(2)
@@ -96,7 +122,9 @@ struct HistoryRow: View {
         let running = snapshot.event.kind == .feed && snapshot.event.endedAt == nil ? ", running" : ""
         let finished = finishedBy.map { ", finished by \($0.spoken)" } ?? ""
         let twice = loggedTwice ? " Logged on both phones, shown once." : ""
-        return "\(time): \(chips)\(running). Logged by \(loggedBy.spoken)\(finished).\(twice)"
+        let worked = loggedBy.workedOut ? ", worked out" : ""
+        let added = note.map { " \($0)." } ?? ""
+        return "\(time): \(chips)\(running). \(role) \(loggedBy.spoken)\(worked)\(finished).\(twice)\(added)"
     }
 }
 
@@ -137,10 +165,14 @@ struct CareRow: View {
     let zone: TimeZone
     let loggedBy: RowPerson
     let now: Date
+    /// What the avatar means, for VoiceOver: "Logged by", "Done by" or "Got up".
+    var role = "Logged by"
+    /// The time shown on the left, when not the start: a wake-up shows its end.
+    var at: Date?
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
-            Text(clock(snapshot.event.startedAt))
+            Text(clock(at ?? snapshot.event.startedAt))
                 .feedText(.smallButton)
                 .fixedSize()
                 .frame(minWidth: 50, alignment: .leading)
@@ -153,6 +185,7 @@ struct CareRow: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             Avatar(name: loggedBy.name, colour: loggedBy.colour, size: 26)
+                .workedOutRing(loggedBy.workedOut)
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
@@ -160,7 +193,7 @@ struct CareRow: View {
         .background(mark.tint, in: RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(clock(snapshot.event.startedAt)): \(spoken). Logged by \(loggedBy.spoken).")
+        .accessibilityLabel("\(clock(at ?? snapshot.event.startedAt)): \(spoken). \(role) \(loggedBy.spoken)\(loggedBy.workedOut ? ", worked out" : "").")
     }
 
     private func clock(_ date: Date) -> String {
@@ -172,6 +205,7 @@ struct CareRow: View {
         case .sleep: .sleep
         case .nappy: .nappy(wee: snapshot.payload?.nappy?.wee ?? false, poo: snapshot.payload?.nappy?.poo ?? false)
         case .medicine: .medicine
+        case .bath: .bath
         default: .growth
         }
     }
@@ -190,6 +224,8 @@ struct CareRow: View {
             return payload.nappy.map(CareText.nappyLine) ?? "Nappy"
         case .medicine:
             return payload.medicine.map(CareText.medicineLine) ?? "Medicine"
+        case .bath:
+            return "Bath"
         default:
             return payload.growth.map(CareText.growthLine) ?? "Growth"
         }

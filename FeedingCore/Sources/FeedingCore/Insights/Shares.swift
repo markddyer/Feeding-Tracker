@@ -148,8 +148,15 @@ public struct WhoDidIt: Sendable {
     public let hiddenCopies: Set<String>
     let doneByID: [String: Answer]
     let gotUpBySleep: [String: Answer]
-    let lastNightItems: (night: PlainDate, sleptSeconds: TimeInterval)?
+    /// The night before this morning, while the morning line shows (until 12:00).
+    let morningNight: PlainDate?
     let today: PlainDate
+    /// For the nights' slept time.
+    let liveEvents: [Event]
+    let babyID: String
+    let dayHours: DayHours
+    let timeZone: TimeZone
+    let now: Date
 
     /// The morning line shows until this time on the household's wall clock (D6: "until midday").
     public static let lastNightUntil = TimeOfDay(hour: 12)!
@@ -224,7 +231,12 @@ public struct WhoDidIt: Sendable {
         self.items = items.sorted { ($0.at, $0.id) < ($1.at, $1.id) }
         self.doneByID = doneByID
         self.gotUpBySleep = gotUpBySleep
-        lastNightItems = Self.lastNight(live.map(\.event), babyID: babyID, dayHours: dayHours, timeZone: timeZone, now: now)
+        liveEvents = live.map(\.event)
+        self.babyID = babyID
+        self.dayHours = dayHours
+        self.timeZone = timeZone
+        self.now = now
+        morningNight = Self.morningNight(dayHours: dayHours, timeZone: timeZone, now: now)
     }
 
     // MARK: Reading
@@ -257,10 +269,29 @@ public struct WhoDidIt: Sendable {
     /// The night before this morning, from the night's end until 12:00; nil otherwise, with no
     /// night hours, or when nothing was logged in it.
     public func lastNight() -> LastNight? {
-        guard let (night, slept) = lastNightItems else { return nil }
-        let items = items.filter { $0.kind.isNight && $0.day == night }
-        guard !items.isEmpty else { return nil }
-        return LastNight(night: night, items: items, sleptSeconds: slept)
+        guard let night = morningNight else { return nil }
+        let summary = self.night(night)
+        return summary.items.isEmpty ? nil : summary
+    }
+
+    /// One night, named by its evening: its feeds, nappies and wake-ups in time order, and how
+    /// long the baby slept in it (the page's Day view, design 1A).
+    public func night(_ evening: PlainDate) -> LastNight {
+        let spans = union(sleepSpans(liveEvents, babyID: babyID, now: now).map { ($0.start, $0.end) })
+        let slept = spans.reduce(0) { $0 + dayHours.seconds(from: $1.0, to: $1.1, inNight: evening, timeZone: timeZone) }
+        return LastNight(night: evening, items: items.filter { $0.kind.isNight && $0.day == evening }, sleptSeconds: slept)
+    }
+
+    /// The night named by its evening that `instant` falls in, or nil in the day.
+    public func evening(at instant: Date) -> PlainDate? {
+        if case .night(let evening) = dayHours.period(at: instant, in: timeZone) { return evening }
+        return nil
+    }
+
+    /// Who one entry counts for on its own, with no copy from the other phone joined: the Undo
+    /// card's picture right after a tap, by the same rule as the page.
+    public static func answer(for entry: EventSnapshot, breastfeeder: Breastfeeder?) -> Answer {
+        doneBy(entry, copy: nil, breastfeeder: breastfeeder)
     }
 
     // MARK: Rules
@@ -308,17 +339,12 @@ public struct WhoDidIt: Sendable {
         return max(0, end.timeIntervalSince(feed.event.startedAt))
     }
 
-    /// The night before `now` while it is morning (from the day's start to 12:00), and how long
-    /// the baby slept in it.
-    static func lastNight(_ events: [Event], babyID: String, dayHours: DayHours, timeZone: TimeZone,
-                          now: Date) -> (PlainDate, TimeInterval)? {
+    /// The night before `now` while it is morning (from the day's start to 12:00).
+    static func morningNight(dayHours: DayHours, timeZone: TimeZone, now: Date) -> PlainDate? {
         guard dayHours.dayStart != dayHours.nightStart, dayHours.dayStart < lastNightUntil,
               case .day(let today) = dayHours.period(at: now, in: timeZone),
               WallClock.reading(now, in: timeZone).time < lastNightUntil else { return nil }
-        let night = dayHours.nightEnding(on: today)
-        let spans = union(sleepSpans(events, babyID: babyID, now: now).map { ($0.start, $0.end) })
-        let slept = spans.reduce(0) { $0 + dayHours.seconds(from: $1.0, to: $1.1, inNight: night, timeZone: timeZone) }
-        return (night, slept)
+        return dayHours.nightEnding(on: today)
     }
 }
 

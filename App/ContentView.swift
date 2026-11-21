@@ -313,6 +313,9 @@ struct DevScreen: View {
             NavigationStack { SettingsView() }
         case "graphs":
             NavigationStack { GraphsView() }
+        case "whoDidWhat":
+            // With `-share.range day` (or `week`, `fourWeeks`, `all`) and `-share.breastfeederAsked YES`.
+            NavigationStack { WhoDidWhatPage() }
         case "duo":
             DuoPreview(me: me, babyID: babyID)
         case "journalDuo":
