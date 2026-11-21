@@ -31,11 +31,44 @@ struct RecordMappingTests {
         #expect(back == expected)
     }
 
-    @Test func thePayloadIsEncryptedAndNothingElseIs() {
+    /// The details and the "who does what" fields are encrypted; the fields the alerts read are not
+    /// (engineering review of "who does what", E1).
+    @Test func theDetailsAndWhoDidItAreEncryptedAndNothingElseIs() {
         let record = RecordMapping.record(for: storedEvent(deletedAt: start.addingTimeInterval(60)), zoneID: zone)
         #expect(record.encryptedValues["payload"] as? Data != nil)
         #expect(record["payload"] == nil)
         #expect(record.encryptedValues.allKeys() == ["payload"])
+
+        let who = RecordMapping.record(for: sleepWithWhoDidIt(), zoneID: zone)
+        #expect(Set(who.encryptedValues.allKeys()) == ["payload", "doneBy", "wakeID", "gotUpBy", "gotUpFor"])
+        for key in ["doneBy", "wakeID", "gotUpBy", "gotUpFor"] { #expect(who[key] == nil) }
+    }
+
+    /// A sleep that was ended, with a "done by" and a "got up".
+    func sleepWithWhoDidIt() -> StoredEvent {
+        var data = HouseholdData()
+        data.add(id: "sleep-1", kind: .sleep, babyID: "baby-1", startedAt: start, payload: EventPayload(),
+                 by: "parent-a", doneBy: "parent-b", timeZoneID: "Europe/London", now: start)
+        data.endSleep(babyID: "baby-1", by: "parent-b", now: start.addingTimeInterval(3600), wakeID: "wake-1")
+        return data.events["sleep-1"]!
+    }
+
+    @Test func whoDidItRoundTrips() throws {
+        let stored = sleepWithWhoDidIt()
+        let back = try #require(RecordMapping.event(from: RecordMapping.record(for: stored, zoneID: zone)))
+        #expect(back.doneBy == "parent-b")
+        #expect(back.wakeID == "wake-1")
+        #expect(back.gotUpBy == "parent-b")
+        #expect(back.gotUpFor == "wake-1")
+    }
+
+    /// A phone with no value never writes the field, so it can't erase one iCloud has.
+    @Test func anEmptyWhoDidItFieldIsNeverWritten() {
+        let record = RecordMapping.record(for: storedEvent(), zoneID: zone)
+        for key in ["doneBy", "wakeID", "gotUpBy", "gotUpFor"] {
+            #expect(!record.encryptedValues.allKeys().contains(key))
+            #expect(!record.changedKeys().contains(key))
+        }
     }
 
     @Test func emptyOptionalFieldsAreLeftEmpty() {
@@ -108,7 +141,8 @@ struct RecordMappingTests {
     /// field by itself, and a deploy would make it permanent in Production.
     @Test func everyFieldWrittenIsInTheSchema() throws {
         let schema = try Schema.load()
-        var written: [(String, CKRecord)] = [("Event", RecordMapping.record(for: storedEvent(endedAt: start, deletedAt: start), zoneID: zone))]
+        var written: [(String, CKRecord)] = [("Event", RecordMapping.record(for: storedEvent(endedAt: start, deletedAt: start), zoneID: zone)),
+                                             ("Event", RecordMapping.record(for: sleepWithWhoDidIt(), zoneID: zone))]
         for type in PlainRecordType.allCases {
             let plain = PlainRecord(type: type, name: "n", modifiedAt: start, archivedAt: start, payload: Data([1]))
             let stored = StoredPlainRecord(record: plain, needsUpload: true, systemFields: nil, localRevision: 1)
@@ -123,7 +157,8 @@ struct RecordMappingTests {
                 #expect(fields[key] != nil, "\(type).\(key) is not in schema.ckdb")
             }
             for key in record.encryptedValues.allKeys() {
-                #expect(fields[key] == "ENCRYPTED BYTES", "\(type).\(key) must be ENCRYPTED BYTES in schema.ckdb")
+                let expected = record.encryptedValues[key] is String ? "ENCRYPTED STRING" : "ENCRYPTED BYTES"
+                #expect(fields[key] == expected, "\(type).\(key) must be \(expected) in schema.ckdb")
             }
         }
     }

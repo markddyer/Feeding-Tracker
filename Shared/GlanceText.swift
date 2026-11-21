@@ -57,6 +57,8 @@ enum GlanceText {
             return "\(whose) finished, after \(minutes)."
         case .nothingRunning:
             return "No feed is running."
+        case .couldNotFinish:
+            return couldNotFinish
         }
     }
 
@@ -86,4 +88,6 @@ enum GlanceText {
     }
 
     static let notSetUp = "Open Little Log to set it up first."
+    /// A quick finish this phone refused (`QuickFeedResult.couldNotFinish`).
+    static let couldNotFinish = "Couldn't finish the feed here. Open Little Log."
 }

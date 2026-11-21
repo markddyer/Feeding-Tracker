@@ -55,8 +55,12 @@ keep "Feeding": they can't change without a new iCloud container, and nobody see
   users on the team).
 - **The other parent** invited as a user with the Marketing role (enough to be an internal
   tester), with access to this app only. They accept Apple's email, then install TestFlight.
-- **Still to do:** the internal TestFlight group "Household" with both parents and automatic
-  distribution, once the first build is uploaded and processed.
+- **The first build** (build 1, version 0.1.0, commit `c4fedda`) archived and uploaded on 20 Nov
+  2026 (the steps are in `CLAUDE.md`, "TestFlight upload"); Apple had it "Ready to Test" within
+  minutes.
+- **The internal TestFlight group "Household"**, with automatic distribution, holding build 1, with
+  the household owner as its tester. **Still to do:** add the other parent once they have accepted
+  Apple's invite (they appear in "Add Testers" only then).
 
 ## Built (19 Nov 2026)
 - **Sync on in Feeding:** `AppConfig.syncEnabled` is true for both apps; photos follow it.

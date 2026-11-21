@@ -460,3 +460,37 @@ struct MoveFileTests {
         #expect(throws: MoveFile.Problem.notAMoveFile) { try reader.extract(range(10, 6), to: dir.appendingPathComponent("out")) }
     }
 }
+
+@Suite("The move from Feeding Dev: who does what (CEO review T4)")
+struct HouseholdMoveWhoTests {
+    @Test("Who did it, who got up and Who breastfeeds? name the real parents")
+    func whoDidItIsMapped() throws {
+        var (dev, _) = try devHousehold()
+        let nappy = dev.addNappy(babyID: baby, wee: true, poo: false, by: parentA, timeZoneID: londonID,
+                                 now: t0.addingTimeInterval(.hours(5)))
+        dev.setDoneBy(nappy, to: parentB, by: parentA, now: t0.addingTimeInterval(.hours(5)))
+        let sleep = dev.startSleep(babyID: baby, by: parentA, timeZoneID: londonID, now: t0.addingTimeInterval(.hours(6)))
+        dev.endSleep(babyID: baby, by: parentB, now: t0.addingTimeInterval(.hours(7)), wakeID: "wake-1")
+        dev.setBreastfeeder(.member(parentB), now: t0)
+        let move = dev.move(babyID: baby, by: parentA, now: moveTime)
+        #expect(move.otherParents == [parentB])
+
+        var real = try realHousehold()
+        try real.bringIn(move, me: realA, carried: ["p1", "p2", "p3"], now: moveTime)
+        #expect(real.events[nappy]?.event.doneBy == realB)
+        #expect(real.events[sleep]?.event.gotUpBy == realB)
+        #expect(real.events[sleep]?.event.validGotUp == realB)
+        #expect(real.breastfeeder == .member(realB))
+        #expect(real.entriesMissingWhoValues.isEmpty)
+    }
+
+    @Test("An answer already given here stays")
+    func anAnswerHereStays() throws {
+        var (dev, _) = try devHousehold()
+        dev.setBreastfeeder(.member(parentB), now: t0)
+        var real = try realHousehold()
+        real.setBreastfeeder(.nobody, now: moveTime)
+        try real.bringIn(dev.move(babyID: baby, by: parentA, now: moveTime), me: realA, carried: ["p1", "p2", "p3"], now: moveTime)
+        #expect(real.breastfeeder == .nobody)
+    }
+}

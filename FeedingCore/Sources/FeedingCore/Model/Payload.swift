@@ -20,6 +20,7 @@ public struct FieldStamp: Hashable, Sendable, Codable, Comparable {
 /// top-level record fields; the rest live in the encrypted payload.
 public enum EventField: String, Hashable, Sendable, Codable, CaseIterable {
     case startedAt
+    /// The end, and with it a sleep's wake-up ID (`Event.wakeID`), as one.
     case endedAt
     case deletedAt
     case breast
@@ -49,21 +50,31 @@ public enum EventField: String, Hashable, Sendable, Codable, CaseIterable {
     /// Where each of a first's photos sits in its square (D39), as one: the later change wins
     /// whole (eng2 D5).
     case crops
+    /// Who did it (`Event.doneBy`, R2). The value is a top-level record field; its stamp is here.
+    case doneBy
+    /// Who got up when a sleep ended, with the ending it belongs to (`Event.gotUpBy` and
+    /// `gotUpFor`), as one (R3, engineering review D8 A).
+    case gotUp
+
+    /// Stamped only when a value is set, never as part of a new event's fields: so a stamp always
+    /// means a value, and a phone that finds a stamp with no value knows an older build dropped it
+    /// (engineering review, E3).
+    public static let onlyWhenSet: Set<EventField> = [.doneBy, .gotUp]
 
     /// The fields an event of `kind` has: the top-level ones, the note, and its own details. A new
     /// event is stamped with these only, so a feed's record holds no field an older app version
-    /// can't name. Every field for a kind this app doesn't know.
+    /// can't name. Every field for a kind this app doesn't know, except `onlyWhenSet`.
     public static func fields(for kind: EventKind) -> Set<EventField> {
         let shared: Set<EventField> = [.startedAt, .endedAt, .deletedAt, .note]
         switch kind {
         case .feed: return shared.union([.breast, .bottles])
         case .pump: return shared.union([.pump])
-        case .sleep: return shared
+        case .sleep, .bath: return shared
         case .nappy: return shared.union([.nappy, .pooColour, .pooConsistency])
         case .growth: return shared.union([.weight, .length, .head])
         case .medicine: return shared.union([.medicine])
         case .milestone: return shared.union([.title, .media, .removedMedia, .crops])
-        default: return Set(allCases)
+        default: return Set(allCases).subtracting(onlyWhenSet)
         }
     }
 }

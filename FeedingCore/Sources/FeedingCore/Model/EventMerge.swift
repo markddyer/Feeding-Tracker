@@ -22,8 +22,14 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
     public mutating func copy(_ field: EventField, from other: EventSnapshot) {
         switch field {
         case .startedAt: event.startedAt = other.event.startedAt
-        case .endedAt: event.endedAt = other.event.endedAt
+        case .endedAt:
+            event.endedAt = other.event.endedAt
+            event.wakeID = other.event.wakeID
         case .deletedAt: event.deletedAt = other.event.deletedAt
+        case .doneBy: event.doneBy = other.event.doneBy
+        case .gotUp:
+            event.gotUpBy = other.event.gotUpBy
+            event.gotUpFor = other.event.gotUpFor
         case .breast:
             var feed = payload?.feed ?? FeedDetails()
             feed.breast = other.payload?.feed?.breast ?? []
@@ -83,8 +89,14 @@ public struct EventSnapshot: Hashable, Sendable, Identifiable {
     public static func changedFields(from before: EventSnapshot, to after: EventSnapshot) -> Set<EventField> {
         var changed: Set<EventField> = []
         if before.event.startedAt != after.event.startedAt { changed.insert(.startedAt) }
-        if before.event.endedAt != after.event.endedAt { changed.insert(.endedAt) }
+        if before.event.endedAt != after.event.endedAt || before.event.wakeID != after.event.wakeID {
+            changed.insert(.endedAt)
+        }
         if before.event.deletedAt != after.event.deletedAt { changed.insert(.deletedAt) }
+        if before.event.doneBy != after.event.doneBy { changed.insert(.doneBy) }
+        if before.event.gotUpBy != after.event.gotUpBy || before.event.gotUpFor != after.event.gotUpFor {
+            changed.insert(.gotUp)
+        }
         if before.payload?.feed?.breast ?? [] != after.payload?.feed?.breast ?? [] { changed.insert(.breast) }
         if before.payload?.feed?.bottles ?? [] != after.payload?.feed?.bottles ?? [] { changed.insert(.bottles) }
         if before.payload?.pump != after.payload?.pump { changed.insert(.pump) }
@@ -160,6 +172,22 @@ public func merge(local: EventSnapshot, server: EventSnapshot, changedLocally: S
         result.copy(field, from: local)
         result.payload?.setStamp(field, mine)
         applied.insert(field)
+    }
+    // A "got up" belongs to one ending (engineering review, D8 A). When the merged ending isn't
+    // the one the merged "got up" was given for, the copy whose "got up" matches it wins, if
+    // either does; otherwise the mismatch stays and is ignored (`Event.validGotUp`). So a late
+    // correction meant for an earlier ending never replaces the current ending's "got up".
+    if let ending = result.event.endingID, result.event.gotUpFor != ending {
+        if local.event.gotUpFor == ending {
+            result.copy(.gotUp, from: local)
+            if let stamp = local.payload?.stamp(.gotUp) { result.payload?.setStamp(.gotUp, stamp) }
+            overruled.remove(.gotUp)
+            applied.insert(.gotUp)
+        } else if server.event.gotUpFor == ending {
+            result.copy(.gotUp, from: server)
+            if let stamp = server.payload?.stamp(.gotUp) { result.payload?.setStamp(.gotUp, stamp) }
+            if applied.remove(.gotUp) != nil { overruled.insert(.gotUp) }
+        }
     }
     if var joined = result.payload?.milestone, let mineDetails = local.payload?.milestone {
         let theirs = joined

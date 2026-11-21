@@ -180,6 +180,10 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// iCloud has sent the household back, or for a day at most, what the phone knows may be
     /// missing feeds, so no alert already set is cancelled (CEO review D18, `planAlertChanges`).
     public var waitingForICloudSince: Date?
+    /// Entries fetched again by name because their "done by" or "got up" had a stamp with no
+    /// value, that iCloud had no value for either: never fetched again (engineering review of
+    /// "who does what", E3, D9 A). A part of the file an older build keeps as it is.
+    public internal(set) var whoValuesChecked: Set<String> = []
 
     public init() {
         format = Self.currentFormat
@@ -237,18 +241,22 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     // MARK: Changes made on this phone
 
     /// Adds a new event. Every field of its kind is stamped (`EventField.fields(for:)`), so if the
-    /// same record ever meets an older copy in iCloud, this one wins. Returns the event's ID.
+    /// same record ever meets an older copy in iCloud, this one wins. A "done by" given now (a
+    /// breastfeed logged for the other parent, design 4B) is stored and stamped too; with none,
+    /// there is no "done by" stamp (`EventField.onlyWhenSet`). Returns the event's ID.
     @discardableResult
     public mutating func add(
         id: String = UUID().uuidString, kind: EventKind, babyID: String, startedAt: Date, endedAt: Date? = nil,
-        payload: EventPayload, by member: MemberID, timeZoneID: String, now: Date
+        payload: EventPayload, by member: MemberID, doneBy: MemberID? = nil, timeZoneID: String, now: Date
     ) -> String {
         var payload = payload
-        let fields = EventField.fields(for: kind)
+        var fields = EventField.fields(for: kind)
+        if doneBy != nil, kind.countsAsWork { fields.insert(.doneBy) }
         for field in fields { payload.setStamp(field, FieldStamp(at: now, by: member)) }
         let event = Event(id: id, babyID: babyID, kind: kind, startedAt: startedAt, endedAt: endedAt,
                           timeZoneID: timeZoneID, loggedBy: member, createdAt: now, modifiedAt: now,
-                          payload: try? PayloadCoder.encode(payload))
+                          payload: try? PayloadCoder.encode(payload),
+                          doneBy: kind.countsAsWork ? doneBy : nil)
         events[id] = StoredEvent(event: event, changedFields: fields, needsUpload: true,
                                  uploadNotBefore: now.addingTimeInterval(Self.undoWindow), systemFields: nil, localRevision: 1)
         return id
@@ -266,7 +274,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         let id = add(id: id, kind: .feed, babyID: babyID, startedAt: now,
                      payload: EventPayload(feed: FeedDetails(breast: breast, bottles: bottles)),
                      by: member, timeZoneID: timeZoneID, now: now)
-        endSleepForFeed(babyID: babyID, start: now, by: member, now: now)
+        endSleepForFeed(babyID: babyID, start: now, feedID: id, by: member, now: now)
         return id
     }
 
@@ -279,6 +287,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         guard before.payload != nil else { return false }
         var after = before
         change(&after)
+        Self.keepSleepEnding(before: before, after: &after, by: member)
         let changed = Self.changedFields(from: before, to: after)
         guard !changed.isEmpty else { return true }
         for field in changed { after.payload?.setStamp(field, FieldStamp(at: now, by: member)) }
@@ -290,6 +299,62 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         stored.localRevision += 1
         events[id] = stored
         return true
+    }
+
+    /// "Done by" chosen by a parent (R2): on the Undo bar's swap or in an editor. Only for kinds
+    /// that count as work; a stored choice always wins and is never cleared. Returns false for
+    /// another kind, an unknown event, or details from a newer app version.
+    @discardableResult
+    public mutating func setDoneBy(_ id: String, to doer: MemberID, by member: MemberID, now: Date) -> Bool {
+        guard let kind = events[id]?.event.kind, kind.countsAsWork else { return false }
+        return edit(id, by: member, now: now) { $0.event.doneBy = doer }
+    }
+
+    /// "Got up" chosen by a parent for an ended sleep (R3): on the Woke up bar's swap or in the
+    /// sleep's editor. It is given for the sleep's current ending (`Event.endingID`), so a later
+    /// ending ignores it, and to every sleep of the baby that one wake-up ended (the same wake-up
+    /// ID, D8 A), as they are one wake-up. Returns false for a running sleep, another kind or an
+    /// unknown event.
+    @discardableResult
+    public mutating func setGotUp(_ id: String, to riser: MemberID, by member: MemberID, now: Date) -> Bool {
+        guard let event = events[id]?.event, event.kind == .sleep, event.endingID != nil else { return false }
+        let wakeUp = event.wakeID.map { wake in
+            allEvents.filter { $0.kind == .sleep && $0.babyID == event.babyID && $0.endedAt != nil && $0.wakeID == wake }
+        } ?? [event]
+        var done = false
+        for sleep in wakeUp {
+            guard let ending = sleep.endingID else { continue }
+            let changed = edit(sleep.id, by: member, now: now) { snapshot in
+                snapshot.event.gotUpBy = riser
+                snapshot.event.gotUpFor = ending
+            }
+            if sleep.id == id { done = changed }
+        }
+        return done
+    }
+
+    /// Entries whose own copy holds a "done by" or "got up" stamp with no value, not yet checked: an
+    /// older build of the app dropped the value from this phone's file, and iCloud still has it
+    /// (engineering review E3, D9 A). The app fetches just these by name at launch.
+    public var entriesMissingWhoValues: [String] {
+        events.values.filter { !whoValuesChecked.contains($0.event.id) && Self.missesWhoValue($0) }.map(\.event.id).sorted()
+    }
+
+    /// After fetching `ids` by name and receiving what came back: an entry still missing a value is
+    /// noted as checked, so it is never fetched again; one that has its values now leaves the note.
+    public mutating func noteWhoValuesFetched(_ ids: [String]) {
+        for id in ids {
+            guard let stored = events[id] else { continue }
+            if Self.missesWhoValue(stored) { whoValuesChecked.insert(id) } else { whoValuesChecked.remove(id) }
+        }
+    }
+
+    /// A stamp always means a value (`EventField.onlyWhenSet`), so a stamp alone means a lost one.
+    static func missesWhoValue(_ stored: StoredEvent) -> Bool {
+        guard let payload = stored.snapshot.payload else { return false }
+        let event = stored.event
+        return (payload.stamp(.doneBy) != nil && event.doneBy == nil)
+            || (payload.stamp(.gotUp) != nil && (event.gotUpBy == nil || event.gotUpFor == nil))
     }
 
     /// Switches a live feed to `side`: the open segment gets its length, and a new one starts now.
@@ -515,6 +580,23 @@ public struct HouseholdData: Hashable, Sendable, Codable {
         EventSnapshot.changedFields(from: before, to: after)
     }
 
+    /// Every ending of a sleep carries its wake-up ID (engineering review of "who does what", D8 A),
+    /// whichever screen ends it: a sleep made to run again (Undo of Woke up, the editor's "Still
+    /// asleep") loses its ID, and one ended without an ID of its own (the editor) gets a new one,
+    /// with the parent who ended it as "got up". Woke up and the feed rules set their own ID, which
+    /// is kept. A sleep ended before wake-up IDs existed keeps none when only its time changes.
+    static func keepSleepEnding(before: EventSnapshot, after: inout EventSnapshot, by member: MemberID) {
+        guard after.event.kind == .sleep else { return }
+        if after.event.endedAt == nil {
+            after.event.wakeID = nil
+        } else if before.event.endedAt == nil, after.event.wakeID == nil || after.event.wakeID == before.event.wakeID {
+            let wake = UUID().uuidString
+            after.event.wakeID = wake
+            after.event.gotUpBy = member
+            after.event.gotUpFor = wake
+        }
+    }
+
     /// Gives the open segment (started, no length yet) its length up to `now`.
     static func closeOpenSegment(_ feed: inout FeedDetails, now: Date) {
         guard let last = feed.breast.indices.last, feed.breast[last].durationSeconds == nil,
@@ -526,7 +608,8 @@ public struct HouseholdData: Hashable, Sendable, Codable {
 // MARK: Reading a file a newer build wrote
 
 extension HouseholdData {
-    private static let knownParts: Set<String> = ["format", "events", "plainRecords", "syncState", "waitingForICloudSince"]
+    private static let knownParts: Set<String> = ["format", "events", "plainRecords", "syncState", "waitingForICloudSince",
+                                                  "whoValuesChecked"]
 
     /// Reads every entry it can. An entry it can't read, and a part of the file it doesn't know, is
     /// kept as it was (step 0, CEO review D18). A file that isn't JSON at all still throws.
@@ -535,6 +618,7 @@ extension HouseholdData {
         format = try container.decode(Int.self, forKey: AnyCodingKey("format"))
         syncState = try container.decode([String: Data].self, forKey: AnyCodingKey("syncState"))
         waitingForICloudSince = try container.decodeIfPresent(Date.self, forKey: AnyCodingKey("waitingForICloudSince"))
+        whoValuesChecked = Set((try? container.decodeIfPresent([String].self, forKey: AnyCodingKey("whoValuesChecked"))) ?? [])
         (events, keptEvents) = Self.split(try container.decode([String: Lenient<StoredEvent>].self,
                                                                forKey: AnyCodingKey("events")))
         (plainRecords, keptPlainRecords) = Self.split(try container.decode([String: Lenient<StoredPlainRecord>].self,
@@ -554,6 +638,9 @@ extension HouseholdData {
         try container.encode(format, forKey: AnyCodingKey("format"))
         try container.encode(syncState, forKey: AnyCodingKey("syncState"))
         try container.encodeIfPresent(waitingForICloudSince, forKey: AnyCodingKey("waitingForICloudSince"))
+        if !whoValuesChecked.isEmpty {
+            try container.encode(whoValuesChecked.sorted(), forKey: AnyCodingKey("whoValuesChecked"))
+        }
         try container.encode(Self.joined(events, keptEvents), forKey: AnyCodingKey("events"))
         try container.encode(Self.joined(plainRecords, keptPlainRecords), forKey: AnyCodingKey("plainRecords"))
     }

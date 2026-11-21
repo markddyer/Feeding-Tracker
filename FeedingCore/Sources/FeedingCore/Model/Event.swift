@@ -23,6 +23,18 @@ public struct Event: Hashable, Sendable, Identifiable, Codable {
     public var payload: Data?
     /// When the server created the record (`CKRecord.creationDate`). Nil until it has uploaded.
     public var serverCreatedAt: Date?
+    /// Who did it, when a parent chose (`docs/planning/09-who-does-what.md`, R2). Nil means the
+    /// starting rule decides (`WhoDidIt`). An encrypted record field (engineering review E1);
+    /// `reconcile` never reads it. Never cleared once set; its stamp is in the payload.
+    public var doneBy: MemberID?
+    /// The ending a sleep's `endedAt` belongs to (engineering review, D8 A): one ID per Woke up
+    /// tap, shared by every sleep it ends, and "feed:<feed ID>" when a feed ended it. Merged with
+    /// `endedAt` as one field. Nil while the sleep runs, and on sleeps ended before this build.
+    public var wakeID: String?
+    /// Who got up when a sleep ended (R3), and the ending it was given for (`gotUpFor`, an
+    /// `endingID`). Merged as one field. A "got up" for another ending is ignored (`validGotUp`).
+    public var gotUpBy: MemberID?
+    public var gotUpFor: String?
 
     public init(
         id: String,
@@ -37,7 +49,11 @@ public struct Event: Hashable, Sendable, Identifiable, Codable {
         deletedAt: Date? = nil,
         schemaVersion: Int = 1,
         payload: Data? = nil,
-        serverCreatedAt: Date? = nil
+        serverCreatedAt: Date? = nil,
+        doneBy: MemberID? = nil,
+        wakeID: String? = nil,
+        gotUpBy: MemberID? = nil,
+        gotUpFor: String? = nil
     ) {
         self.id = id
         self.babyID = babyID
@@ -52,6 +68,24 @@ public struct Event: Hashable, Sendable, Identifiable, Codable {
         self.schemaVersion = schemaVersion
         self.payload = payload
         self.serverCreatedAt = serverCreatedAt
+        self.doneBy = doneBy
+        self.wakeID = wakeID
+        self.gotUpBy = gotUpBy
+        self.gotUpFor = gotUpFor
+    }
+
+    /// The ending a sleep's "got up" binds to: its wake-up ID, or, for a sleep ended before wake-up
+    /// IDs existed, one made from its own ID and end time, so it stands alone and a later change
+    /// of its end leaves an old "got up" behind. Nil while it runs.
+    public var endingID: String? {
+        guard let endedAt else { return nil }
+        return wakeID ?? "end:\(id):\(Int64((endedAt.timeIntervalSince1970 * 1000).rounded()))"
+    }
+
+    /// The stored "got up", when it belongs to this ending; nil otherwise (engineering review, D8 A).
+    public var validGotUp: MemberID? {
+        guard let endingID, gotUpFor == endingID else { return nil }
+        return gotUpBy
     }
 
     /// How long after the server created the record a start time may be. Guards against the

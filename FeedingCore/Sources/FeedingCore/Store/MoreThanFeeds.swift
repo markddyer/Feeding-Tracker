@@ -24,17 +24,34 @@ extension HouseholdData {
 
     /// "Woke up", at `end` (now, or a few minutes ago when tapped late). Ends every sleep of
     /// `babyID` still running, so a sleep started on each phone ends with one tap. A sleep never
-    /// ends before it started. Returns the IDs it ended.
+    /// ends before it started. The tap is one wake-up: every sleep it ends gets the same wake-up
+    /// ID, with the parent who tapped as "got up" (R3, engineering review D8 A). Returns the IDs it
+    /// ended.
     @discardableResult
-    public mutating func endSleep(babyID: String, at end: Date? = nil, by member: MemberID, now: Date) -> [String] {
+    public mutating func endSleep(babyID: String, at end: Date? = nil, by member: MemberID, now: Date,
+                                  wakeID: String = UUID().uuidString) -> [String] {
         let running = liveSleeps(allEvents, babyID: babyID, now: now).filter { $0.endedAt == nil }
         let wokeAt = min(end ?? now, now)
         var ended: [String] = []
         for sleep in running {
-            let done = edit(sleep.id, by: member, now: now) { $0.event.endedAt = max(wokeAt, sleep.startedAt) }
+            let done = edit(sleep.id, by: member, now: now) { snapshot in
+                snapshot.event.endedAt = max(wokeAt, sleep.startedAt)
+                Self.setWakeUp(&snapshot, wakeID, gotUp: member)
+            }
             if done { ended.append(sleep.id) }
         }
         return ended
+    }
+
+    /// The wake-up ID of sleeps a feed ended (Start feed, or a feed that reached this phone late):
+    /// the same on both phones and in every pass, so they are one wake-up.
+    public static func feedWakeID(_ feedID: String) -> String { "feed:\(feedID)" }
+
+    /// Gives a sleep's new ending its wake-up ID and who got up for it.
+    static func setWakeUp(_ snapshot: inout EventSnapshot, _ wakeID: String, gotUp member: MemberID) {
+        snapshot.event.wakeID = wakeID
+        snapshot.event.gotUpBy = member
+        snapshot.event.gotUpFor = wakeID
     }
 
     /// A nappy change: wee, poo or both, at `at` (now by default). The colour and consistency come
@@ -70,12 +87,20 @@ extension HouseholdData {
     /// Start feed ends the sleep: the baby woke to feed. Ends every sleep of `babyID` that is
     /// running and started before `start`, at `start`. A sleep that started later (a watch tap
     /// that reached the phone late) is left alone. The alarms don't change: they count feeds only.
-    /// Returns the IDs it ended.
+    /// The sleeps it ends are one wake-up, with the feed's wake-up ID and the parent who started
+    /// the feed as "got up". Returns the IDs it ended.
     @discardableResult
-    public mutating func endSleepForFeed(babyID: String, start: Date, by member: MemberID, now: Date) -> [String] {
+    public mutating func endSleepForFeed(babyID: String, start: Date, feedID: String, by member: MemberID,
+                                         now: Date) -> [String] {
         let running = liveSleeps(allEvents, babyID: babyID, now: max(now, start))
             .filter { $0.endedAt == nil && $0.startedAt < start }
-        return running.filter { sleep in edit(sleep.id, by: member, now: now) { $0.event.endedAt = start } }.map(\.id)
+        let wake = Self.feedWakeID(feedID)
+        return running.filter { sleep in
+            edit(sleep.id, by: member, now: now) { snapshot in
+                snapshot.event.endedAt = start
+                Self.setWakeUp(&snapshot, wake, gotUp: member)
+            }
+        }.map(\.id)
     }
 
     /// A feed removed as started by mistake ("Stop · discard"): the sleep its Start feed ended
@@ -88,6 +113,9 @@ extension HouseholdData {
         let sleeps = liveSleeps(allEvents, babyID: feed.babyID, now: max(now, feed.createdAt))
         func endedByFeed(_ sleep: Event) -> Bool {
             guard sleep.endedAt != nil, let stamp = events[sleep.id]?.snapshot.payload?.stamp(.endedAt) else { return false }
+            // Since wake-up IDs: never a sleep another wake-up or feed ended.
+            if let wake = sleep.wakeID, wake != Self.feedWakeID(feed.id) { return false }
+            // The end must still be the one the feed's start wrote: an end changed by hand stays.
             return stamp.by == feed.loggedBy && abs(stamp.at.timeIntervalSince(feed.createdAt)) < 1
         }
         guard let last = sleeps.last, endedByFeed(last) else { return [] }
@@ -108,7 +136,12 @@ extension HouseholdData {
         for sleep in allEvents where sleep.kind == .sleep && sleep.deletedAt == nil && sleep.endedAt == nil {
             guard let feed = feeds.filter({ $0.babyID == sleep.babyID && $0.startedAt > sleep.startedAt })
                 .min(by: { ($0.startedAt, $0.id) < ($1.startedAt, $1.id) }) else { continue }
-            if edit(sleep.id, by: member, now: now, { $0.event.endedAt = feed.startedAt }) { ended.append(sleep.id) }
+            // The feed's wake-up ID, and its logger as "got up", whichever phone runs this.
+            let ended1 = edit(sleep.id, by: member, now: now) { snapshot in
+                snapshot.event.endedAt = feed.startedAt
+                Self.setWakeUp(&snapshot, Self.feedWakeID(feed.id), gotUp: feed.loggedBy)
+            }
+            if ended1 { ended.append(sleep.id) }
         }
         return ended
     }

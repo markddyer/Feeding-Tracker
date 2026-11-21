@@ -212,14 +212,16 @@ struct HouseholdDebugView: View {
 
     private func eventsSection(babyID: String, me: MemberID) -> some View {
         let events = store.data.events.values
-            .filter { $0.event.babyID == babyID && ($0.event.kind == .feed || $0.event.kind == .pump) }
+            .filter { $0.event.babyID == babyID && $0.event.kind.countsAsWork }
             .sorted { $0.event.startedAt > $1.event.startedAt }
-        return Section("6. Feeds, newest first") {
+        // "Who does what" (engineering review E2): who each entry counts for, and who got up.
+        let who = store.data.whoDidIt(babyID: babyID, now: Date())
+        return Section("6. Entries, newest first") {
             if events.isEmpty {
                 Text("None yet.").foregroundStyle(.secondary)
             }
             ForEach(events, id: \.event.id) { stored in
-                EventRow(stored: stored, me: me, members: store.data.plainRecords(of: .member))
+                EventRow(stored: stored, me: me, members: store.data.plainRecords(of: .member), who: who)
                     .swipeActions {
                         if stored.event.deletedAt == nil {
                             Button("Delete", role: .destructive) { store.change { $0.delete(stored.event.id, by: me, now: Date()) } }
@@ -236,6 +238,7 @@ private struct EventRow: View {
     let stored: StoredEvent
     let me: MemberID
     let members: [PlainRecord]
+    let who: WhoDidIt
 
     var body: some View {
         let snapshot = stored.snapshot
@@ -245,10 +248,36 @@ private struct EventRow: View {
             Text(statusLine(snapshot))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
+            if let line = whoLine(snapshot) {
+                Text(line)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
+    private func name(_ member: MemberID) -> String {
+        member == me ? "this phone"
+            : members.first { $0.name == member.rawValue }
+                .flatMap { PayloadCoder.decode(MemberPayload.self, from: $0.payload)?.displayName } ?? member.rawValue
+    }
+
+    /// "done by Sam, saved · got up this phone, worked out, for the end at 03:10".
+    private func whoLine(_ snapshot: EventSnapshot) -> String? {
+        var parts: [String] = []
+        if let done = who.doneBy(snapshot.id) {
+            parts.append("done by \(name(done.member)), \(done.saved ? "saved" : "worked out")")
+        }
+        if let up = who.gotUp(sleep: snapshot.id), let end = snapshot.event.endedAt {
+            parts.append("got up \(name(up.member)), \(up.saved ? "saved" : "worked out"), for the end at "
+                + end.formatted(date: .omitted, time: .shortened))
+        }
+        if who.hiddenCopies.contains(snapshot.id) { parts.append("copy of an entry on the other phone") }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     private func details(_ snapshot: EventSnapshot) -> String {
+        guard snapshot.event.kind == .feed || snapshot.event.kind == .pump else { return snapshot.event.kind.rawValue }
         guard let payload = snapshot.payload else { return "details from a newer app" }
         var parts: [String] = []
         if let pump = payload.pump {

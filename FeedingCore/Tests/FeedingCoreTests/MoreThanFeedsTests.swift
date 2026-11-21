@@ -100,7 +100,9 @@ struct MoreThanFeedsPayloadTests {
         #expect(EventField.fields(for: .nappy) == shared.union([.nappy, .pooColour, .pooConsistency]))
         #expect(EventField.fields(for: .growth) == shared.union([.weight, .length, .head]))
         #expect(EventField.fields(for: .medicine) == shared.union([.medicine]))
-        #expect(EventField.fields(for: "a-newer-kind") == Set(EventField.allCases))
+        // Every field for a kind this build doesn't know, except "done by" and "got up", which are
+        // stamped only with a value (engineering review of "who does what", E3).
+        #expect(EventField.fields(for: "a-newer-kind") == Set(EventField.allCases).subtracting(EventField.onlyWhenSet))
 
         var data = HouseholdData()
         let id = data.addNappy(babyID: baby, wee: false, poo: true, by: parentA, timeZoneID: "Europe/London", now: start)

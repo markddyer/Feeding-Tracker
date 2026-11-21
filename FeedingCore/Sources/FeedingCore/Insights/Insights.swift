@@ -83,7 +83,39 @@ public let duplicateWindow: TimeInterval = 5 * 60
 /// parents. Each feed is in at most one pair; each is matched with the nearest candidate.
 /// `confirmedDistinct` holds pairs of event IDs the parents said are two real feeds.
 public func duplicateFeeds(_ events: [Event], confirmedDistinct: Set<Set<String>> = []) -> [DuplicatePair] {
-    let feeds = events.filter(\.isLiveFeed).sorted { ($0.startedAt, $0.id) < ($1.startedAt, $1.id) }
+    pairLoggedTwice(events.filter(\.isLiveFeed), confirmedDistinct: confirmedDistinct) { _, _ in true }
+}
+
+/// A sleep, nappy, medicine or bath logged once on each phone (engineering review of "who does
+/// what", D11 C and D12 A): as feeds, the same kind and baby, starting within 5 minutes, logged by
+/// different parents and not marked as two; and a nappy only with the same wee and poo, a
+/// medicine only with the same name. An entry whose details can't be read never pairs.
+public func duplicateCareEntries(_ snapshots: [EventSnapshot], confirmedDistinct: Set<Set<String>> = []) -> [DuplicatePair] {
+    let details = Dictionary(snapshots.map { ($0.id, $0.payload) }, uniquingKeysWith: { first, _ in first })
+    func alike(_ a: Event, _ b: Event) -> Bool {
+        switch a.kind {
+        case .nappy:
+            guard let x = details[a.id]??.nappy, let y = details[b.id]??.nappy else { return false }
+            return x.wee == y.wee && x.poo == y.poo
+        case .medicine:
+            guard let x = details[a.id]??.medicine?.name, let y = details[b.id]??.medicine?.name else { return false }
+            let name = { (n: String) in n.trimmingCharacters(in: .whitespaces).lowercased() }
+            return name(x) == name(y)
+        default:
+            return true
+        }
+    }
+    return [EventKind.sleep, .nappy, .medicine, .bath].flatMap { kind in
+        pairLoggedTwice(snapshots.map(\.event).filter { $0.kind == kind && $0.deletedAt == nil },
+                        confirmedDistinct: confirmedDistinct, alike: alike)
+    }
+}
+
+/// The pairing both rules share: entries of one kind, starting within 5 minutes, by different
+/// parents, matched with the nearest candidate; the one created first is kept.
+private func pairLoggedTwice(_ entries: [Event], confirmedDistinct: Set<Set<String>>,
+                             alike: (Event, Event) -> Bool) -> [DuplicatePair] {
+    let feeds = entries.sorted { ($0.startedAt, $0.id) < ($1.startedAt, $1.id) }
     var matched: Set<String> = []
     var pairs: [DuplicatePair] = []
     for (index, feed) in feeds.enumerated() where !matched.contains(feed.id) {
@@ -93,6 +125,7 @@ public func duplicateFeeds(_ events: [Event], confirmedDistinct: Set<Set<String>
                 && other.loggedBy != feed.loggedBy
                 && other.startedAt.timeIntervalSince(feed.startedAt) <= duplicateWindow
                 && !confirmedDistinct.contains([feed.id, other.id])
+                && alike(feed, other)
         }
         guard let partner = candidates.min(by: {
             ($0.startedAt.timeIntervalSince(feed.startedAt), $0.id) < ($1.startedAt.timeIntervalSince(feed.startedAt), $1.id)

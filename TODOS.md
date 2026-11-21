@@ -8,3 +8,7 @@ Work put off on purpose, with why. Each item names where it was decided.
 - **A printable keepsake PDF** (X5, D12). One page per first: the photo, title, date, the baby's age and the note, in the app's look; printed by the parents or any print shop, with no print service in the app. Put off until there are enough firsts to fill a book; the export already keeps every photo and word safe. Effort M.
 
 (Added to the plan in the same review, so not deferred: a notification to the other phone for a new first (X1, D8), the "Firsts" list for the red book (X2, D9), Share (X4, D11), and up to 4 photos and short videos per first (X6, D13).)
+
+## Who does what (deferred in the CEO review, 20 Nov 2026)
+
+- **A weekly look back** (X4, D7). Each Sunday evening a quiet notice opens a short page on the week: feeds, nappies and nights, who did which part, and the longest sleep. Put off because the shared screen already shows a week and the "Last night" card covers each night; add it if the parents find they want a set weekly moment. Effort M. Reuses the shared screen's facts. See `docs/planning/09-who-does-what.md`.

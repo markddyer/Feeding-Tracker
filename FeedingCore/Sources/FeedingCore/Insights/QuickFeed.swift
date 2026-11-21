@@ -45,6 +45,9 @@ public enum QuickFeedResult: Hashable, Sendable {
     case finished(EventSnapshot)
     /// No feed is running, so there was nothing to finish.
     case nothingRunning
+    /// A feed is running but this phone couldn't finish it: its details come from a newer app
+    /// version (engineering review of "who does what", A2). It is still running.
+    case couldNotFinish(EventSnapshot)
 }
 
 extension HouseholdData {
@@ -84,7 +87,7 @@ extension HouseholdData {
     /// the app's Finish and "Finish for Sam" do.
     public mutating func quickFinishFeed(babyID: String, by member: MemberID, now: Date) -> QuickFeedResult {
         guard let running = feedInProgress(babyID: babyID) else { return .nothingRunning }
-        _ = finishFeed(running.id, by: member, now: now)
+        guard finishFeed(running.id, by: member, now: now) else { return .couldNotFinish(running) }
         events[running.id]?.uploadNotBefore = nil
         return .finished(events[running.id]?.snapshot ?? running)
     }

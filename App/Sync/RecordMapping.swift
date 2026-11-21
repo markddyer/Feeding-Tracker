@@ -41,7 +41,18 @@ enum RecordMapping {
         record["deletedAt"] = event.deletedAt
         record["schemaVersion"] = Int64(event.schemaVersion)
         record.encryptedValues["payload"] = event.payload
+        // "Who does what" (engineering review E1, D2 A and D8 A): encrypted, and written only with
+        // a value. A phone that lost a value (an older build dropped it from its file) then never
+        // erases it in iCloud; CloudKit keeps a field a save doesn't set.
+        for (key, value) in whoFields(event) { record.encryptedValues[key] = value }
         return record
+    }
+
+    /// The "who does what" fields with a value, by record field name.
+    static func whoFields(_ event: Event) -> [(String, String)] {
+        [("doneBy", event.doneBy?.rawValue), ("wakeID", event.wakeID),
+         ("gotUpBy", event.gotUpBy?.rawValue), ("gotUpFor", event.gotUpFor)]
+            .compactMap { key, value in value.map { (key, $0) } }
     }
 
     /// Nil when a required top-level field is missing.
@@ -66,7 +77,11 @@ enum RecordMapping {
             deletedAt: record["deletedAt"] as? Date,
             schemaVersion: (record["schemaVersion"] as? Int64).map(Int.init) ?? 1,
             payload: record.encryptedValues["payload"] as? Data,
-            serverCreatedAt: record.creationDate)
+            serverCreatedAt: record.creationDate,
+            doneBy: (record.encryptedValues["doneBy"] as? String).map(MemberID.init(rawValue:)),
+            wakeID: record.encryptedValues["wakeID"] as? String,
+            gotUpBy: (record.encryptedValues["gotUpBy"] as? String).map(MemberID.init(rawValue:)),
+            gotUpFor: record.encryptedValues["gotUpFor"] as? String)
     }
 
     // MARK: Record names

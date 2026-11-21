@@ -459,6 +459,7 @@ final class HouseholdSync {
 
         case .didFetchChanges:
             onEngineFetch?(false)
+            await fetchMissingWhoValues()
 
         case .stateUpdate(let update):
             let state = try? JSONEncoder().encode(update.stateSerialization)
@@ -549,6 +550,47 @@ final class HouseholdSync {
 
         default:
             break
+        }
+    }
+
+    /// Set once this launch has looked for "who does what" values to fetch again.
+    private var checkedMissingWhoValues = false
+
+    /// Once per launch, after a fetch: the entries whose "done by" or "got up" an older build
+    /// dropped from this phone's file are fetched again by name from the household zone, and
+    /// received as any fetched record is, so a waiting local change still merges (engineering
+    /// review of "who does what", E3, D9 A). The sync engines are never reset. An entry iCloud has
+    /// no value for either is noted as checked and never fetched again.
+    private func fetchMissingWhoValues() async {
+        guard !checkedMissingWhoValues, let target = writeTarget else { return }
+        checkedMissingWhoValues = true
+        let ids = store.data.entriesMissingWhoValues
+        guard !ids.isEmpty else { return }
+        let database = switch role {
+        case .owner: container.privateCloudDatabase
+        default: container.sharedCloudDatabase
+        }
+        do {
+            let results = try await database.records(for: ids.map { CKRecord.ID(recordName: $0, zoneID: target.zoneID) })
+            var answered: [String] = []
+            store.applySync { data in
+                for (recordID, result) in results {
+                    switch result {
+                    case .success(let record):
+                        Self.receive(record, into: &data)
+                        answered.append(recordID.recordName)
+                    case .failure(let error as CKError) where error.code == .unknownItem:
+                        answered.append(recordID.recordName)
+                    case .failure:
+                        break // tried again at the next launch
+                    }
+                }
+                data.noteWhoValuesFetched(answered)
+            }
+            SyncLog.add("who: fetched \(answered.count) of \(ids.count) entries missing a value; checked and still missing \(store.data.whoValuesChecked.count)")
+            scheduleUploads()
+        } catch {
+            SyncLog.add("who: fetching entries missing a value failed: \(String(reflecting: error))")
         }
     }
 

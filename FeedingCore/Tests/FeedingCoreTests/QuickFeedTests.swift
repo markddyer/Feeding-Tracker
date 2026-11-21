@@ -114,3 +114,23 @@ struct QuickFeedTests {
         #expect(try #require(data.glance(now: now)).lastFeedStart == nil)
     }
 }
+
+@Suite("Quick finish refused (who does what, A2)")
+struct QuickFinishRefusedTests {
+    /// A running feed whose details a newer app version wrote: this phone can't finish it, and says so.
+    @Test func aFeedThisBuildCantReadIsNotFinishedAndSaysSo() throws {
+        var data = HouseholdData()
+        let start = at(2026, 11, 20, 2, 0)
+        let id = data.startFeed(babyID: baby, side: .left, by: parentA, timeZoneID: "Europe/London", now: start)
+        var stored = try #require(data.events[id])
+        stored.event.payload = Data(#"{"v":99,"stamps":{}}"#.utf8)
+        data.events[id] = stored
+        let result = data.quickFinishFeed(babyID: baby, by: parentA, now: start.addingTimeInterval(600))
+        guard case .couldNotFinish(let feed) = result else {
+            Issue.record("expected couldNotFinish, got \(result)")
+            return
+        }
+        #expect(feed.id == id)
+        #expect(data.events[id]?.event.endedAt == nil)
+    }
+}

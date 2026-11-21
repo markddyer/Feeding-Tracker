@@ -24,7 +24,10 @@ DEFINE SCHEMA
         babyID          STRING,
         createdAt       TIMESTAMP,
         deletedAt       TIMESTAMP,
+        doneBy          ENCRYPTED STRING,
         endedAt         TIMESTAMP,
+        gotUpBy         ENCRYPTED STRING,
+        gotUpFor        ENCRYPTED STRING,
         kind            STRING,
         loggedBy        STRING,
         modifiedAt      TIMESTAMP,
@@ -32,6 +35,7 @@ DEFINE SCHEMA
         schemaVersion   INT64,
         startedAt       TIMESTAMP,
         timeZoneID      STRING,
+        wakeID          ENCRYPTED STRING,
         GRANT WRITE TO "_creator",
         GRANT CREATE TO "_icloud",
         GRANT READ TO "_world"

@@ -397,7 +397,7 @@ extension HouseholdData {
                 payload: EventPayload(feed: FeedDetails(bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [])),
                 by: me, timeZoneID: timeZoneID, now: at)
             // Start feed ends a running sleep, as in the app (the users' choice O).
-            alsoChanged = endSleepForFeed(babyID: babyID, start: at, by: me, now: at)
+            alsoChanged = endSleepForFeed(babyID: babyID, start: at, feedID: feedID, by: me, now: at)
             changed = true
         case .switchSide(let feedID, let side):
             id = feedID

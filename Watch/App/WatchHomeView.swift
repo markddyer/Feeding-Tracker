@@ -38,6 +38,17 @@ struct WatchHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { link.refresh() }
         }
+        // The phone refused a Finish (it can't read that feed's details): its answer shows the feed
+        // still running and the tap handled, so the amount question goes (engineering review of
+        // "who does what", A2).
+        .onChange(of: link.shown) { _, shown in
+            guard let question, shown?.running?.id == question.feedID else { return }
+            let finishWaiting = link.saved.pending.contains {
+                if case .finish(let id) = $0.command { return id == question.feedID }
+                return false
+            }
+            if !finishWaiting { self.question = nil }
+        }
         // Start feed on the watch face, and its Finish while this parent's feed runs. Its other
         // link (during the other parent's feed) only opens the app, which shows that feed.
         .onOpenURL { url in

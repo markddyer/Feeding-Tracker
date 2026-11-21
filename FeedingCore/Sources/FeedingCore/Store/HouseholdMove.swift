@@ -44,7 +44,7 @@ public struct HouseholdMove: Codable, Sendable, Hashable {
     /// the night again in Feeding, which only adds alerting.
     static func moves(settingKey key: String) -> Bool {
         [SettingKey.feedWindow, SettingKey.dayHours, SettingKey.timeZone, SettingKey.rota, SettingKey.medicines,
-         SettingKey.photoAllowance].contains(key) || key.hasPrefix("distinct-")
+         SettingKey.photoAllowance, SettingKey.breastfeeder].contains(key) || key.hasPrefix("distinct-")
     }
 
     /// The entries that move: those of the file's baby, never another's.
@@ -91,6 +91,7 @@ public struct HouseholdMove: Codable, Sendable, Hashable {
         var ids = Set<MemberID>()
         for event in entries {
             ids.insert(event.loggedBy)
+            ids.formUnion([event.doneBy, event.gotUpBy].compactMap { $0 })
             if let stamps = PayloadCoder.decode(EventPayload.self, from: event.payload)?.stamps {
                 ids.formUnion(stamps.values.map(\.by))
             }
@@ -99,6 +100,7 @@ public struct HouseholdMove: Codable, Sendable, Hashable {
         let settings = settingsOnly
         if let rota = settings.rota { ids.formUnion([rota.firstOnDuty, rota.secondOnDuty]) }
         ids.formUnion(settings.distinctFeeds.map(\.by))
+        if let breastfeeder = settings.breastfeeder?.member { ids.insert(breastfeeder) }
         ids.remove(madeBy)
         return ids
     }
@@ -284,6 +286,9 @@ extension HouseholdData {
             var event = original
             event.babyID = baby.name
             event.loggedBy = map(original.loggedBy)
+            // "Who does what": who did it and who got up name members too (CEO review T4).
+            event.doneBy = original.doneBy.map(map)
+            event.gotUpBy = original.gotUpBy.map(map)
             // iCloud stamps its own time when this container first gets the record. Feeding Dev's
             // cap on a start from a phone whose clock ran fast is kept in the start itself, so the
             // alerts plan from the same moment in both apps (Codex review of the move).
@@ -350,6 +355,10 @@ extension HouseholdData {
         }
         if has(SettingKey.medicines) { setMedicines(dev.medicines, now: now) }
         if has(SettingKey.photoAllowance) { setPhotoAllowance(dev.photoAllowance, now: now) }
+        // "Who breastfeeds?", unless it is already answered here.
+        if breastfeeder == nil, let answer = dev.breastfeeder {
+            setBreastfeeder(answer.member.map { .member(map($0)) } ?? .nobody, now: now)
+        }
         // A pair already marked here stays as it is.
         for pair in dev.distinctFeeds where pair.ids.count == 2 {
             let key = SettingKey.distinct(pair.ids[0], pair.ids[1])
