@@ -11,8 +11,17 @@ struct WatchHomeView: View {
     @State private var question: AmountAsk?
     /// The moment Start feed on the watch face was tapped, while "Formula or expressed?" waits.
     @State private var milkAsk: Date?
-    /// Feeds, or sleep and nappies (pick I, 17 Nov 2026).
+    /// Feeds, sleep and nappies (pick I, 17 Nov 2026), or bath and medicine (step 1 of
+    /// `11-watch-parity.md`).
     @State private var page = WatchPage.feeds
+    /// The Logged card after a tap, with Undo, Earlier and who did it.
+    @State private var logged: LoggedCard?
+    /// After Poo or Both: its colour and consistency.
+    @State private var pooAsk: PooAsk?
+    /// Pumping, from page 1.
+    @State private var pumping = false
+    /// The medicine list, from page 3 when there are two or more.
+    @State private var medicineList = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -20,6 +29,10 @@ struct WatchHomeView: View {
         _question = State(initialValue: WatchSamples.question())
         _milkAsk = State(initialValue: WatchSamples.milkAsk())
         _page = State(initialValue: WatchSamples.page())
+        _logged = State(initialValue: WatchSamples.logged())
+        _pooAsk = State(initialValue: WatchSamples.pooAsk())
+        _pumping = State(initialValue: WatchSamples.screen == "pump")
+        _medicineList = State(initialValue: WatchSamples.screen == "medicines")
         #endif
     }
 
@@ -30,8 +43,11 @@ struct WatchHomeView: View {
             let look = state?.look(at: now) ?? .night
             // No title: on a 41 or 42 mm watch it takes a row of its own, and the big number and
             // the button need that room. The label above the number says what it is.
-            screen(state, now: now)
-                .environment(\.watchLook, look)
+            // The navigation stack places each screen's small label beside the clock.
+            NavigationStack {
+                screen(state, now: now)
+            }
+            .environment(\.watchLook, look)
             .tint(WatchPalette.of(look).primary)
             .animation(.easeOut(duration: 0.3), value: look)
         }
@@ -136,8 +152,41 @@ struct WatchHomeView: View {
 
     @ViewBuilder
     private func mainScreen(_ state: WatchState?, now: Date) -> some View {
-        if let question, let state {
-            AmountScreen(ask: question, start: state.startAmount(for: question.bottle.milk) ?? 60) { ml in
+        if let card = logged, let state {
+            WatchLoggedScreen(card: card, state: state, send: { action, after in link.send(action, after: after) }) {
+                logged = nil
+            }
+            .id(card.id)
+        } else if let ask = pooAsk, let state {
+            WatchPooDetailsScreen { colour, consistency in
+                if colour != nil || consistency != nil {
+                    link.send(.pooDetails(nappyID: ask.nappyID, colour: colour, consistency: consistency), after: ask.requestID)
+                }
+                pooAsk = nil
+                logged = ask.card
+            }
+            .environment(\.watchLook, state.look(at: now))
+        } else if medicineList, let state {
+            WatchMedicineListScreen(state: state, now: now) { name in
+                medicineList = false
+                given(name)
+            } close: {
+                medicineList = false
+            }
+        } else if pumping, let state {
+            WatchPumpScreen(start: state.lastExpressedML ?? 60) { side, left, right in
+                let id = UUID().uuidString
+                let at = Date()
+                let request = link.send(.pump(id: id, side: side, leftML: left, rightML: right), now: at)
+                pumping = false
+                logged = LoggedCard(id: request, entryID: id, title: "Pumping logged", at: at,
+                                    start: at.addingTimeInterval(-30 * 60), mark: .pump)
+            } cancel: {
+                pumping = false
+            }
+        } else if let question, let state {
+            WatchAmountPicker(title: "How much \(question.bottle.milk == .formula ? "formula" : "expressed milk")?",
+                              start: state.startAmount(for: question.bottle.milk) ?? 60) { ml in
                 if let ml {
                     link.send(.setAmount(feedID: question.feedID, bottleID: question.bottle.id, ml: ml))
                     link.rememberAmount(ml, milk: question.bottle.milk)
@@ -158,23 +207,39 @@ struct WatchHomeView: View {
                 milkAsk = nil
             }
         } else if let state, state.setUp {
-            // Two pages, one above the other. The feed page is as it was; its double tap works
-            // only while it is in sight.
-            TabView(selection: $page) {
-                ScrollView {
+            // Three pages, one above the other, each one screen (`11-watch-parity.md`). A page's
+            // double tap works only while it is in sight.
+            Group {
+                TabView(selection: $page) {
                     feedPage(state, now: now)
-                        .padding(.horizontal, 2)
+                        .environment(\.watchDoubleTapAllowed, page == .feeds)
+                        .tag(WatchPage.feeds)
+                    WatchCarePage(state: state, now: now, waiting: link.waitingForPhone) {
+                        sleepTap(state)
+                    } nappy: { wee, poo in
+                        nappy(state, wee: wee, poo: poo)
+                    } addDetails: { id in
+                        pooAsk = PooAsk(nappyID: id, requestID: nil, card: nil)
+                    }
+                    .environment(\.watchDoubleTapAllowed, page == .care)
+                    .tag(WatchPage.care)
+                    if state.understands(WatchCapability.bath) || state.understands(WatchCapability.medicine) {
+                        WatchTodayPage(state: state, now: now) {
+                            let id = UUID().uuidString
+                            let at = Date()
+                            let request = link.send(.bath(id: id), now: at)
+                            logged = LoggedCard(id: request, entryID: id, title: "Bath logged", at: at, mark: .bath)
+                        } medicine: { name in
+                            given(name)
+                        } medicineList: {
+                            medicineList = true
+                        }
+                        .environment(\.watchDoubleTapAllowed, false)
+                        .tag(WatchPage.today)
+                    }
                 }
-                .environment(\.watchDoubleTapAllowed, page == .feeds)
-                .tag(WatchPage.feeds)
-                ScrollView {
-                    CareScreen(state: state, now: now, waiting: link.waitingForPhone) { link.send($0) }
-                        .padding(.horizontal, 2)
-                }
-                .environment(\.watchDoubleTapAllowed, page == .care)
-                .tag(WatchPage.care)
+                .tabViewStyle(.verticalPage)
             }
-            .tabViewStyle(.verticalPage)
         } else {
             MessageScreen(text: state == nil ? "Open Little Log on your iPhone, with this watch nearby."
                                              : "Set up Little Log on your iPhone first.")
@@ -184,29 +249,83 @@ struct WatchHomeView: View {
     /// Page one: the feed screen.
     @ViewBuilder
     private func feedPage(_ state: WatchState, now: Date) -> some View {
-        Group {
-            if let running = state.running, running.mine {
-                RunningScreen(state: state, feed: running, waiting: link.waitingForPhone) { command in
-                    if case .finish = command {
-                        finish(running)
-                    } else {
-                        link.send(command)
-                    }
+        if let running = state.running, running.mine {
+            WatchRunningPage(state: state, feed: running, waiting: link.waitingForPhone) { command in
+                if case .finish = command {
+                    finish(running)
+                } else {
+                    link.send(command)
                 }
-            } else if let running = state.running {
-                OthersFeedScreen(state: state, feed: running, waiting: link.waitingForPhone) {
-                    link.send(.finish(feedID: running.id))
-                }
-            } else {
-                IdleScreen(state: state, now: now, waiting: link.waitingForPhone) { bottle in
-                    link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
-                } breastfeed: {
-                    link.send(.start(feedID: UUID().uuidString, bottle: nil, bottleID: UUID().uuidString,
-                                     doneBy: state.breastfeeder))
-                }
+            }
+        } else if let running = state.running {
+            WatchOthersFeedPage(state: state, feed: running, waiting: link.waitingForPhone) {
+                link.send(.finish(feedID: running.id))
+            }
+        } else {
+            WatchIdlePage(state: state, now: now, waiting: link.waitingForPhone) { bottle in
+                link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
+            } breastfeed: {
+                link.send(.start(feedID: UUID().uuidString, bottle: nil, bottleID: UUID().uuidString,
+                                 doneBy: state.breastfeeder))
+            } pumping: {
+                pumping = true
             }
         }
     }
+
+    /// Fell asleep or Woke up, with its Logged card. Woke up's Earlier, Undo and "who got up" are
+    /// step 3 (they need the wake-up's own identity).
+    private func sleepTap(_ state: WatchState) {
+        guard let command = state.sleepTap() else { return }
+        let at = Date()
+        let request = link.send(command, now: at)
+        switch command {
+        case .fellAsleep(let id):
+            logged = LoggedCard(id: request, entryID: id, title: "Fell asleep logged", at: at, mark: .asleep)
+        case .wokeUp(let id):
+            logged = LoggedCard(id: request, entryID: id, title: "Woke up logged", at: at, mark: .awake,
+                                canUndo: false, canEarlier: false, canDoneBy: false)
+        default:
+            break
+        }
+    }
+
+    /// A medicine given, with its Logged card.
+    private func given(_ name: String) {
+        let id = UUID().uuidString
+        let at = Date()
+        let request = link.send(.medicine(id: id, name: name), now: at)
+        logged = LoggedCard(id: request, entryID: id, title: "\(name) given", at: at, mark: .medicine)
+    }
+
+    /// Wee, Poo or Both: a poo asks its colour and consistency first, then the Logged card.
+    private func nappy(_ state: WatchState, wee: Bool, poo: Bool) {
+        let id = UUID().uuidString
+        let at = Date()
+        let request = link.send(.nappy(nappyID: id, wee: wee, poo: poo), now: at)
+        let title = wee && poo ? "Wee and poo logged" : poo ? "Poo logged" : "Wee logged"
+        let card = LoggedCard(id: request, entryID: id, title: title, at: at, mark: .nappy(wee: wee, poo: poo))
+        if poo, state.understands(WatchCapability.pooDetails) {
+            pooAsk = PooAsk(nappyID: id, requestID: request, card: card)
+        } else {
+            logged = card
+        }
+    }
+}
+
+/// A poo waiting for its details: the nappy, the tap that logged it (nil for "Add details" on an
+/// older one), and the Logged card to show after.
+struct PooAsk: Equatable {
+    let nappyID: String
+    let requestID: String?
+    let card: LoggedCard?
+}
+
+/// The watch app's pages (pick I, 17 Nov 2026, and step 1 of `11-watch-parity.md`).
+enum WatchPage: Hashable {
+    case feeds
+    case care
+    case today
 }
 
 /// The bottles still waiting for their amount after Finish on this watch, asked one at a time.
@@ -224,88 +343,9 @@ struct AmountAsk: Equatable {
     var next: AmountAsk? { AmountAsk(feedID: feedID, bottles: Array(bottles.dropFirst())) }
 }
 
-// MARK: - No feed running
-
-private struct IdleScreen: View {
-    let state: WatchState
-    let now: Date
-    let waiting: Bool
-    let start: (MilkKind?) -> Void
-    /// "Breastfeed (Sam)" on a bottle-only watch (design DD15, 4B).
-    let breastfeed: () -> Void
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        VStack(alignment: .leading, spacing: 7) {
-            if let last = state.lastFeedStart, let window = state.feedWindow {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Last feed").watchText(.label).foregroundStyle(palette.textMuted)
-                    Text(GlanceText.elapsed(now.timeIntervalSince(last)))
-                        .watchText(.mainTime)
-                        .foregroundStyle(palette.text)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Last feed \(GlanceText.spokenElapsed(now.timeIntervalSince(last))) ago")
-                WatchWindowBar(state: state, window: window, now: now)
-            } else {
-                Text("No feeds logged yet").watchText(.line).foregroundStyle(palette.textMuted)
-            }
-            if waiting { WaitingLine() }
-            if state.bottleOnly {
-                // One button per milk, as on the phone. The double tap presses the milk used last.
-                HStack(spacing: 6) {
-                    ForEach([MilkKind.formula, .expressed], id: \.self) { milk in
-                        WatchBigButton(title: milk == .formula ? "Formula" : "Expressed", bottle: true,
-                                       doubleTap: milk == (state.lastMilk ?? .formula), compact: true) { start(milk) }
-                            .accessibilityLabel(milk == .formula ? "Start a formula feed" : "Start an expressed milk feed")
-                    }
-                }
-                .padding(.top, 4)
-                if let name = state.breastfeederName {
-                    // Not the double tap: that stays on the bottle used most (4B).
-                    WatchBigButton(title: "Breastfeed (\(name))", prominent: false, compact: true) { breastfeed() }
-                        .accessibilityLabel("Start \(name)'s breastfeed")
-                }
-            } else {
-                WatchBigButton(title: "Start feed", bottle: true, doubleTap: true) { start(nil) }
-                    .padding(.top, 4)
-            }
-        }
-    }
-}
-
-/// The window bar, as on the phone (the users' choices of 21 Nov 2026): the line in words, where
-/// now is in bold and what comes next muted; the bar in its three colours with the needle at now;
-/// and under it when the window opened and the backup alarm's time.
-private struct WatchWindowBar: View {
-    let state: WatchState
-    let window: FeedWindow
-    let now: Date
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        let steps = WindowSteps(window: window, settings: state.window, now: now)
-        let line = steps.line(state.clock)
-        VStack(alignment: .leading, spacing: 3) {
-            Text("\(Text(line.main).fontWeight(.semibold).foregroundStyle(palette.text))\(Text(line.more).foregroundStyle(palette.textMuted))")
-                .watchText(.line)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            WatchWindowTrack(steps: steps, palette: palette, height: 12)
-            WatchBarTimes(steps: steps, state: state, palette: palette)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(steps.spoken(state.clock))
-    }
-}
-
 /// Under the bar: "from 22:58" where the window starts, and the backup alarm's time at the end;
 /// "from" goes when the two would touch.
-private struct WatchBarTimes: View {
+struct WatchBarTimes: View {
     let steps: WindowSteps
     let state: WatchState
     let palette: WatchPalette
@@ -334,108 +374,6 @@ private struct WatchBarTimes: View {
         .watchText(.line)
         .foregroundStyle(palette.text)
         .lineLimit(1)
-    }
-}
-
-// MARK: - A feed running
-
-/// This parent's own feed: the time running, Left and Right (not for a bottle-only parent), Finish
-/// and, lower down, Stop · discard.
-private struct RunningScreen: View {
-    let state: WatchState
-    let feed: WatchFeed
-    let waiting: Bool
-    let send: (WatchCommand) -> Void
-    @State private var discarding = false
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        VStack(alignment: .leading, spacing: 7) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Your feed · started \(GlanceText.clock(feed.startedAt, timeZoneID: state.timeZoneID))")
-                    .watchText(.label)
-                    .foregroundStyle(palette.textMuted)
-                    .lineLimit(2)
-                RunningTime(since: feed.startedAt)
-            }
-            if let milk = feed.bottles.first?.milk {
-                HStack(spacing: 5) {
-                    BottleShape().fill(palette.bottle).frame(width: 15, height: 15)
-                    Text(milk == .formula ? "Formula" : "Expressed milk").watchText(.line)
-                }
-                .foregroundStyle(palette.text)
-            }
-            if waiting { WaitingLine() }
-            // A breastfeed shows Left and Right on a bottle-only watch too (DD15, Codex 7).
-            if !state.bottleOnly || feed.breastfeed == true {
-                HStack(spacing: 6) {
-                    ForEach(BreastSide.allCases, id: \.self) { side in
-                        WatchSideButton(side: side, selected: feed.side == side,
-                                        suggested: feed.side == nil && state.nextSide == side) {
-                            guard feed.side != side else { return }
-                            send(.switchSide(feedID: feed.id, side: side))
-                        }
-                    }
-                }
-            }
-            WatchBigButton(title: "Finish", systemImage: "stopwatch", doubleTap: true) {
-                send(.finish(feedID: feed.id))
-            }
-            // For a feed started by mistake (a stray double tap): asks first, as on the phone.
-            WatchBigButton(title: "Stop · discard", prominent: false, compact: true) { discarding = true }
-                .padding(.top, 10)
-                .accessibilityLabel("Stop and discard this feed")
-        }
-        .confirmationDialog("Remove this feed?", isPresented: $discarding, titleVisibility: .visible) {
-            Button("Remove feed", role: .destructive) { send(.discard(feedID: feed.id)) }
-        } message: {
-            Text("It will not be logged. To end a real feed, tap Finish.")
-        }
-    }
-}
-
-/// The other parent's feed: only they choose the sides, so this watch can only finish it for them.
-private struct OthersFeedScreen: View {
-    let state: WatchState
-    let feed: WatchFeed
-    let waiting: Bool
-    let finish: () -> Void
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        VStack(alignment: .leading, spacing: 7) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 5) {
-                    Circle().fill(WatchPalette.parent(feed.byColour, look: look)).frame(width: 9, height: 9)
-                    Text("\(feed.byName)'s feed · started \(GlanceText.clock(feed.startedAt, timeZoneID: state.timeZoneID))")
-                        .watchText(.label)
-                        .foregroundStyle(palette.textMuted)
-                        .lineLimit(2)
-                }
-                RunningTime(since: feed.startedAt)
-            }
-            if waiting { WaitingLine() }
-            // Soft, and no double tap: the other parent is the one feeding.
-            WatchBigButton(title: "Finish for \(feed.byName)", prominent: false, action: finish)
-                .padding(.top, 4)
-                .accessibilityHint("\(feed.byName) adds the sides and bottles. Their phone offers to add them after.")
-        }
-    }
-}
-
-/// "12:04", ticking.
-private struct RunningTime: View {
-    let since: Date
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        Text(timerInterval: since...Date.distantFuture, countsDown: false)
-            .watchText(.mainTime)
-            .foregroundStyle(WatchPalette.of(look).text)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
     }
 }
 
@@ -482,113 +420,6 @@ private struct MilkScreen: View {
     }
 }
 
-// MARK: - After Finish
-
-/// "How much formula?": the amount on the Digital Crown, every 5 ml from 5 to 300, starting at the
-/// last bottle's amount. Turning saves nothing; Save does. Done closes with no amount, as on the
-/// phone.
-private struct AmountScreen: View {
-    let ask: AmountAsk
-    let done: (Int?) -> Void
-    @State private var crown: Double
-    @State private var saved = 0
-    /// The amount box takes the crown as soon as the screen opens. Without this, nothing had it,
-    /// so the crown did nothing (found on the real watch, 16 Nov 2026).
-    @FocusState private var crownFocused: Bool
-    @Environment(\.watchLook) private var look
-
-    init(ask: AmountAsk, start: Int, done: @escaping (Int?) -> Void) {
-        self.ask = ask
-        self.done = done
-        _crown = State(initialValue: Double(min(300, max(5, (start / 5) * 5))))
-    }
-
-    private var ml: Int { Int(crown.rounded()) }
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        let milk = ask.bottle.milk == .formula ? "formula" : "expressed milk"
-        VStack(alignment: .leading, spacing: 8) {
-            Text("How much \(milk)?").watchText(.label).foregroundStyle(palette.textMuted)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("\(ml)").watchText(.amount).contentTransition(.numericText(value: crown))
-                Text("ml").watchText(.line)
-                Spacer(minLength: 0)
-                Image(systemName: "digitalcrown.horizontal.arrow.counterclockwise")
-                    .foregroundStyle(palette.primary)
-                    .accessibilityHidden(true)
-            }
-            .foregroundStyle(palette.text)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
-            .overlay(RoundedRectangle(cornerRadius: 16).stroke(palette.primary, lineWidth: 2))
-            .focusable()
-            .focused($crownFocused)
-            .digitalCrownRotation($crown, from: 5, through: 300, by: 5, sensitivity: .low, isContinuous: false,
-                                  isHapticFeedbackEnabled: true)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("How much \(milk)")
-            .accessibilityValue("\(ml) millilitres")
-            .accessibilityAdjustableAction { direction in
-                switch direction {
-                case .increment: crown = min(300, crown + 5)
-                case .decrement: crown = max(5, crown - 5)
-                @unknown default: break
-                }
-            }
-            // − and + for a finger, 5 ml a tap (the user's choice of 16 Nov 2026): the box
-            // answered only the crown, and a finger on it did nothing.
-            HStack(spacing: 8) {
-                StepButton(symbol: "minus", label: "5 millilitres less", enabled: ml > 5) {
-                    crown = max(5, crown - 5)
-                }
-                StepButton(symbol: "plus", label: "5 millilitres more", enabled: ml < 300) {
-                    crown = min(300, crown + 5)
-                }
-            }
-            Spacer(minLength: 0)
-            HStack(spacing: 6) {
-                WatchBigButton(title: "Done", prominent: false, compact: true) { done(nil) }
-                    .frame(maxWidth: 70)
-                    .accessibilityLabel("Done, with no amount")
-                WatchBigButton(title: "Save", bottle: true, doubleTap: true, compact: true) {
-                    saved += 1
-                    done(ml)
-                }
-                .accessibilityLabel("Save \(ml) millilitres")
-            }
-        }
-        .sensoryFeedback(.success, trigger: saved)
-        .onAppear { crownFocused = true }
-    }
-}
-
-/// − or + under the amount: a soft round-ended button with the symbol in coral.
-private struct StepButton: View {
-    let symbol: String
-    let label: String
-    let enabled: Bool
-    let action: () -> Void
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: look == .night ? .semibold : .bold))
-                .foregroundStyle(palette.primary)
-                .frame(maxWidth: .infinity, minHeight: 34)
-                .background(palette.surface, in: Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-        .opacity(enabled ? 1 : 0.4)
-        .accessibilityLabel(label)
-    }
-}
-
 // MARK: - Parts
 
 /// A big button (`DESIGN.md`, "Big button"), at watch size: coral for the main action, the tile
@@ -632,43 +463,6 @@ struct WatchBigButton: View {
         .buttonStyle(.plain)
         .handGestureShortcut(.primaryAction, isEnabled: doubleTap && doubleTapAllowed)
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
-    }
-}
-
-/// Left or Right during a feed (`DESIGN.md`, "Side buttons"): the half-moon above the word. The
-/// side being fed fills with the breast colour.
-private struct WatchSideButton: View {
-    let side: BreastSide
-    let selected: Bool
-    let suggested: Bool
-    let action: () -> Void
-    @State private var taps = 0
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        let title = side == .left ? "Left" : "Right"
-        Button {
-            taps += 1
-            action()
-        } label: {
-            VStack(spacing: 1) {
-                Image(systemName: side == .left ? "circle.lefthalf.filled" : "circle.righthalf.filled")
-                    .imageScale(.small)
-                Text(title).watchText(.side).lineLimit(1).minimumScaleFactor(0.7)
-                if suggested {
-                    Text("suggested").watchText(.hint).foregroundStyle(palette.textMuted)
-                }
-            }
-            .frame(maxWidth: .infinity, minHeight: 46)
-            .foregroundStyle(selected ? palette.onBreast : palette.text)
-            .background(selected ? palette.breast : palette.surface, in: RoundedRectangle(cornerRadius: 16))
-            .contentShape(RoundedRectangle(cornerRadius: 16))
-        }
-        .buttonStyle(.plain)
-        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
-        .accessibilityLabel(suggested ? "\(title), suggested" : title)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

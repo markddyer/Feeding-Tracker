@@ -27,10 +27,15 @@ final class WhoDidWhatFlowTests: XCTestCase {
         // The bar's heading is read as one line: "Nappies, 3: Sam 2, Alex 1".
         let nappies = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Nappies, '")).firstMatch
         XCTAssertTrue(nappies.waitForExistence(timeout: 8))
-        let number = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "^[A-Za-z]+ [0-9]+$"))
+        // The numbers on the row just under the Nappies bar; the first parent with any. The made-up
+        // week follows the time of day, so either parent may have none yesterday (at 23:40 on
+        // 21 Nov 2026 the first had "Sam 0").
+        let numbers = app.buttons.matching(NSPredicate(format: "label MATCHES %@", "^[A-Za-z]+ [0-9]+$"))
             .allElementsBoundByIndex.filter { $0.frame.minY > nappies.frame.minY }
-            .min { $0.frame.minY < $1.frame.minY }
-        guard let number else { return XCTFail("no parent's number under Nappies") }
+        let rowY = numbers.map(\.frame.minY).min() ?? 0
+        let number = numbers.filter { abs($0.frame.minY - rowY) < 4 }
+            .first { (Int($0.label.split(separator: " ").last ?? "") ?? 0) > 0 }
+        guard let number else { return XCTFail("no parent with a nappy under Nappies") }
         let count = Int(number.label.split(separator: " ").last ?? "") ?? -1
         let parent = String(number.label.split(separator: " ").first ?? "")
         XCTAssertGreaterThan(count, 0, "the sample day has nappies for this parent: \(number.label)")

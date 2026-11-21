@@ -27,6 +27,19 @@ enum WatchSamples {
         // Awake for 25 minutes after a sleep of 1h 50m, and a wet and dirty nappy 40 minutes ago.
         state.sleep = WatchSleep(id: "sample-sleep", start: now.addingTimeInterval(-135 * 60), end: now.addingTimeInterval(-25 * 60))
         state.lastNappy = WatchNappy(id: "sample-nappy", at: now.addingTimeInterval(-40 * 60), wee: true, poo: true)
+        // Step 1 of `11-watch-parity.md`: a phone that understands the new taps, one medicine, a
+        // bath yesterday, and the two parents ("Alex" wears this watch; both names are made up).
+        state.capabilities = WatchCapability.all
+        state.medicines = [WatchMedicine(name: "Vitamin D", lastGiven: now.addingTimeInterval(-12 * 3600))]
+        state.lastBath = now.addingTimeInterval(-26 * 3600)
+        state.me = MemberID(rawValue: "sample-alex")
+        state.members = [WatchMember(id: MemberID(rawValue: "sample-alex"), name: "Alex", colour: "lavender"),
+                         WatchMember(id: MemberID(rawValue: "sample-sam"), name: "Sam", colour: "teal")]
+        if UserDefaults.standard.bool(forKey: "sampleMedicines") {
+            state.medicines = ["Vitamin D", "Infant paracetamol", "Gaviscon"].map {
+                WatchMedicine(name: $0, lastGiven: now.addingTimeInterval(-3 * 3600))
+            }
+        }
         switch name {
         case "running":
             state.running = WatchFeed(id: "sample", startedAt: started, mine: true, byName: "", byColour: "lavender",
@@ -68,9 +81,26 @@ enum WatchSamples {
         return state
     }
 
-    /// The page the app opens on: page two for `asleep` and `awake`, or with `-watchPage 2`.
+    /// The page the app opens on: page two for `asleep` and `awake`, or with `-watchPage 2`;
+    /// page three with `-watchPage 3` (add `-sampleMedicines YES` for three medicines).
     static func page() -> WatchPage {
-        name == "asleep" || name == "awake" || UserDefaults.standard.integer(forKey: "watchPage") == 2 ? .care : .feeds
+        let number = UserDefaults.standard.integer(forKey: "watchPage")
+        if number == 3 { return .today }
+        return name == "asleep" || name == "awake" || number == 2 ? .care : .feeds
+    }
+
+    /// `-watchScreen logged` (the Logged card after Wee), `pooDetails` (after Poo), `pump`
+    /// (Pumping's first question) or `medicines` (the medicine list; add `-sampleMedicines YES`):
+    /// the screens a tap opens, for screenshots.
+    static var screen: String? { UserDefaults.standard.string(forKey: "watchScreen") }
+
+    static func logged(now: Date = Date()) -> LoggedCard? {
+        guard screen == "logged" else { return nil }
+        return LoggedCard(id: "sample-tap", entryID: "sample-nappy", title: "Wee logged", at: now, mark: .nappy(wee: true, poo: false))
+    }
+
+    static func pooAsk() -> PooAsk? {
+        screen == "pooDetails" ? PooAsk(nappyID: "sample-nappy", requestID: nil, card: nil) : nil
     }
 
     /// The amount screen, for `-sampleWatch amount`.
@@ -88,7 +118,8 @@ enum WatchSamples {
     static var showsWaiting: Bool { name == "waiting" }
 
     /// `-watchSendTest start` (or `finish`, `sleep` for Fell asleep or Woke up, `nappy` for a wet
-    /// and dirty nappy): sends that tap two seconds after the link is up, to test the link with a
+    /// and dirty nappy, `bath`, or `pooDetails` for a poo and then its colour and consistency):
+    /// sends that tap two seconds after the link is up, to test the link with a
     /// paired phone simulator, where nothing can tap the watch.
     static func runSendTest(_ link: PhoneLink) {
         guard let test = UserDefaults.standard.string(forKey: "watchSendTest") else { return }
@@ -103,6 +134,14 @@ enum WatchSamples {
                 if let command = link.shown?.sleepTap() { link.send(command) }
             case "nappy":
                 link.send(.nappy(nappyID: UUID().uuidString, wee: true, poo: true))
+            case "bath":
+                // Step 1 of `11-watch-parity.md`: a new tap, with the phone's answer.
+                link.send(.bath(id: UUID().uuidString))
+            case "pooDetails":
+                // A poo, then its details, which wait for the poo on the phone.
+                let id = UUID().uuidString
+                let poo = link.send(.nappy(nappyID: id, wee: false, poo: true))
+                link.send(.pooDetails(nappyID: id, colour: .yellow, consistency: .loose), after: poo)
             default:
                 break
             }

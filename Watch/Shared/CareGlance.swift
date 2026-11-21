@@ -34,6 +34,38 @@ enum CareText {
         }
     }
 
+    /// A poo's colour, as the phone names it (`App/Home/CareText.swift`), in lower case for a line.
+    static func colourName(_ colour: PooColour) -> String {
+        switch colour {
+        case .brown: "brown"
+        case .yellow: "yellow"
+        case .green: "green"
+        case .other: "other colour"
+        default: colour.rawValue
+        }
+    }
+
+    static func consistencyName(_ consistency: PooConsistency) -> String {
+        switch consistency {
+        case .liquid: "liquid"
+        case .loose: "loose"
+        case .firm: "firm"
+        default: consistency.rawValue
+        }
+    }
+
+    /// "09:10" today, "yesterday", or "19 Nov": the phone's Medicine and Bath tiles' words, shorter
+    /// for the watch (no time for an earlier day).
+    static func lastGiven(_ date: Date, now: Date, timeZoneID: String) -> String {
+        let zone = TimeZone(identifier: timeZoneID) ?? .current
+        let time = GlanceText.clock(date, timeZoneID: timeZoneID)
+        let day = PlainDate(date, in: zone)
+        let today = PlainDate(now, in: zone)
+        if day == today { return time }
+        if day == today.adding(days: -1) { return "yesterday" }
+        return date.formatted(Date.FormatStyle(timeZone: zone).day().month(.abbreviated))
+    }
+
     /// "Nappy, wee and poo, 40 minutes ago", for VoiceOver.
     static func spokenNappy(_ nappy: WatchNappy?, now: Date) -> String {
         guard let nappy else { return "No nappy logged yet" }

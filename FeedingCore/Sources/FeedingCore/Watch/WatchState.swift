@@ -66,20 +66,31 @@ public struct WatchNappy: Codable, Hashable, Sendable {
     public var at: Date
     public var wee: Bool
     public var poo: Bool
+    /// A poo's colour and consistency, once added (state version 3; nil from an older phone).
+    public var colour: PooColour?
+    public var consistency: PooConsistency?
+    /// Who changed it, once a parent chose (state version 3).
+    public var doneBy: MemberID?
 
-    public init(id: String, at: Date, wee: Bool, poo: Bool) {
+    public init(id: String, at: Date, wee: Bool, poo: Bool, colour: PooColour? = nil, consistency: PooConsistency? = nil,
+                doneBy: MemberID? = nil) {
         self.id = id
         self.at = at
         self.wee = wee
         self.poo = poo
+        self.colour = colour
+        self.consistency = consistency
+        self.doneBy = doneBy
     }
 }
 
 /// Everything the watch shows, made by the phone.
 public struct WatchState: Codable, Hashable, Sendable {
     /// Raised when a field the watch must understand is added. 2 (17 Nov 2026): the sleep and the
-    /// last nappy. Both are optional, so a state from either version still reads.
-    public static let currentVersion = 2
+    /// last nappy. 3 (21 Nov 2026, `11-watch-parity.md` step 1): the new taps the phone
+    /// understands, its answers, the medicines, the last bath, the parents, and the last nappy's
+    /// details. All are optional, so a state from any of these versions still reads.
+    public static let currentVersion = 3
     public var version: Int
     /// When the phone made it.
     public var madeAt: Date
@@ -116,6 +127,18 @@ public struct WatchState: Codable, Hashable, Sendable {
     /// older phone.
     public var breastfeeder: MemberID?
     public var breastfeederName: String?
+    /// The new taps this phone understands (`WatchCapability`); nil from an older phone, which
+    /// understands none, so the watch shows none of their buttons.
+    public var capabilities: [String]?
+    /// The phone's answers to the latest taps, newest last.
+    public var results: [WatchResult]?
+    /// The household's medicines and when each was last given.
+    public var medicines: [WatchMedicine]?
+    /// When the last bath was.
+    public var lastBath: Date?
+    /// The household's parents, for "Done by", and which one wears this watch.
+    public var members: [WatchMember]?
+    public var me: MemberID?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
@@ -255,9 +278,12 @@ public struct WatchRequest: Codable, Hashable, Sendable, Identifiable {
 /// The phone replies with its state.
 public struct WatchMessage: Codable, Hashable, Sendable {
     public var request: WatchRequest?
+    /// A new tap (`WatchAction`). An older phone doesn't read it, and answers with its state.
+    public var action: WatchActionRequest?
 
-    public init(request: WatchRequest?) {
+    public init(request: WatchRequest?, action: WatchActionRequest? = nil) {
         self.request = request
+        self.action = action
     }
 }
 
@@ -266,15 +292,32 @@ public struct WatchMessage: Codable, Hashable, Sendable {
 public struct WatchSaved: Codable, Hashable, Sendable {
     public var phone: WatchState?
     public var pending: [WatchRequest]
+    /// The new taps the phone hasn't answered yet (`WatchAction`), oldest first. Read one by one,
+    /// so one this build can't read (from a newer one) never loses the rest.
+    public var actions: [WatchActionRequest]
 
-    public init(phone: WatchState? = nil, pending: [WatchRequest] = []) {
+    public init(phone: WatchState? = nil, pending: [WatchRequest] = [], actions: [WatchActionRequest] = []) {
         self.phone = phone
         self.pending = pending
+        self.actions = actions
     }
 
-    /// What the watch shows: the phone's state with the waiting taps on top.
+    private enum CodingKeys: String, CodingKey { case phone, pending, actions }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        phone = try? container.decodeIfPresent(WatchState.self, forKey: .phone)
+        pending = (try? container.decodeIfPresent([Lossy<WatchRequest>].self, forKey: .pending))?.compactMap(\.value) ?? []
+        actions = (try? container.decodeIfPresent([Lossy<WatchActionRequest>].self, forKey: .actions))?.compactMap(\.value) ?? []
+    }
+
+    /// What the watch shows: the phone's state with the waiting taps on top. A tap undone before
+    /// the phone answered it isn't shown at all.
     public var shown: WatchState? {
-        pending.reduce(phone) { state, request in state?.applying(request) }
+        let undone = Set(actions.compactMap { if case .undo(let id) = $0.action { id } else { nil } })
+        let state = pending.reduce(phone) { state, request in state?.applying(request) }
+        return actions.filter { !undone.contains($0.entryID) || $0.action == .undo(id: $0.entryID) }
+            .reduce(state) { state, request in state?.applying(request) }
     }
 
     /// Takes a state from the phone, unless it is older than the one already held (messages can
@@ -288,6 +331,11 @@ public struct WatchSaved: Codable, Hashable, Sendable {
         if let phone, state.madeAt < phone.madeAt, phone.madeAt <= now { return false }
         phone = state
         pending.removeAll { state.handled.contains($0.id) }
+        // A new tap stays until the phone has answered it, other than "waiting".
+        actions.removeAll { action in
+            guard let outcome = state.results?.last(where: { $0.id == action.id })?.outcome else { return false }
+            return outcome != .waiting
+        }
         return true
     }
 
@@ -295,6 +343,7 @@ public struct WatchSaved: Codable, Hashable, Sendable {
     /// anyway, as newer feeds have been logged since.
     public mutating func dropStale(now: Date) {
         pending.removeAll { now.timeIntervalSince($0.at) > 24 * 3600 }
+        actions.removeAll { now.timeIntervalSince($0.at) > 24 * 3600 }
     }
 }
 
@@ -304,6 +353,8 @@ public enum WatchKey {
     public static let state = "state"
     /// A `WatchRequest`, in a transfer kept while the phone was out of reach.
     public static let request = "request"
+    /// A `WatchActionRequest`, the same way. An older phone ignores it.
+    public static let action = "action"
 }
 
 /// What travels between the phone and the watch, as JSON.
@@ -348,16 +399,31 @@ public struct WatchTapLog: Hashable, Sendable {
 
     /// The latest taps, for the watch's `handled`.
     public var latest: [String] { Array(ids.suffix(Self.told)) }
+
+    /// True when this tap was handled before.
+    public func contains(_ id: String) -> Bool { ids.contains(id) }
+
+    /// Notes a tap as handled, once its change is saved (outside review of `11-watch-parity.md`:
+    /// noted before the change, a tap lost with the app could never be applied again).
+    public mutating func record(_ id: String) {
+        guard !ids.contains(id) else { return }
+        ids = Array((ids + [id]).suffix(Self.kept))
+    }
 }
 
 extension HouseholdData {
     /// The watch's state. `names` and `colours` are by member; `colours` holds colour names.
     public func watchState(me: MemberID, names: [MemberID: String], colours: [MemberID: String], bottleOnly: Bool,
-                           lookSetting: LookSetting, handled: [String] = [], now: Date) -> WatchState {
+                           lookSetting: LookSetting, handled: [String] = [], results: [WatchResult] = [],
+                           now: Date) -> WatchState {
         let settings = householdSettings
         var state = WatchState(madeAt: now, setUp: false, window: settings.window, timeZoneID: settings.timeZoneID,
                                dayHours: settings.dayHours, lookSetting: lookSetting, bottleOnly: bottleOnly,
                                myColour: colours[me] ?? "sunflower", handled: handled)
+        state.capabilities = WatchCapability.all
+        state.results = results
+        state.me = me
+        state.members = names.keys.sorted().map { WatchMember(id: $0, name: names[$0] ?? "Parent", colour: colours[$0] ?? "stone") }
         guard let babyID = currentBaby?.name else { return state }
         state.setUp = true
         let feeds = allEvents.filter { $0.isLiveFeed && $0.babyID == babyID }
@@ -391,8 +457,13 @@ extension HouseholdData {
         if let last = liveSleeps(allEvents, babyID: babyID, now: now).last {
             state.sleep = WatchSleep(id: last.id, start: last.startedAt, end: last.endedAt.flatMap { $0 <= now ? $0 : nil })
         }
-        state.lastNappy = lastNappy(snapshots, babyID: babyID, now: now)
-            .map { WatchNappy(id: $0.id, at: $0.at, wee: $0.wee, poo: $0.poo) }
+        state.lastNappy = lastNappy(snapshots, babyID: babyID, now: now).map { last in
+            let details = events[last.id]?.snapshot.payload?.nappy
+            return WatchNappy(id: last.id, at: last.at, wee: last.wee, poo: last.poo, colour: details?.colour,
+                              consistency: details?.consistency, doneBy: events[last.id]?.event.doneBy)
+        }
+        state.medicines = watchMedicines(babyID: babyID, now: now)
+        state.lastBath = lastBath(babyID: babyID, now: now)
         return state
     }
 
@@ -576,5 +647,14 @@ extension WatchState {
         case .expressed: lastExpressedML = ml
         }
         lastMilk = milk
+    }
+}
+
+/// One item of a list, or nil when this build can't read it.
+struct Lossy<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: any Decoder) throws {
+        value = try? Value(from: decoder)
     }
 }

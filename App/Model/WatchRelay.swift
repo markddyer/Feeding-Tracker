@@ -19,6 +19,22 @@ final class WatchRelay: NSObject {
         set { UserDefaults.standard.set(newValue.ids, forKey: "watch.handled") }
     }
 
+    /// The answers to the latest taps, newest last, for the watch's Logged card
+    /// (`11-watch-parity.md`, step 1). Kept, as the app may be woken for each tap separately.
+    private var results: [WatchResult] {
+        get {
+            UserDefaults.standard.data(forKey: "watch.results").flatMap { WatchCoding.decode([WatchResult].self, from: $0) } ?? []
+        }
+        set {
+            let kept = Array(newValue.suffix(WatchTapLog.told))
+            UserDefaults.standard.set(try? WatchCoding.encode(kept), forKey: "watch.results")
+        }
+    }
+
+    private func answer(_ id: String, _ outcome: WatchOutcome) {
+        results = results.filter { $0.id != id } + [WatchResult(id: id, outcome: outcome)]
+    }
+
     private var session: WCSession? {
         WCSession.isSupported() ? WCSession.default : nil
     }
@@ -36,7 +52,7 @@ final class WatchRelay: NSObject {
         let look = UserDefaults.standard.string(forKey: LookSetting.storageKey).flatMap(LookSetting.init(rawValue:))
         return model.store.data.watchState(me: me, names: model.memberNames, colours: model.memberColours.mapValues(\.rawValue),
                                            bottleOnly: QuickFeedRunner.isBottleOnly, lookSetting: look ?? .automatic,
-                                           handled: handled.latest, now: now)
+                                           handled: handled.latest, results: results, now: now)
     }
 
     /// Sends the watch its state, when something it shows has changed.
@@ -74,15 +90,21 @@ final class WatchRelay: NSObject {
         guard let request, let me = model.me, let baby = model.baby else { return state(of: model) }
         // A tap seen before (the watch's kept copy, after the message) is never applied again: a
         // Start turned down while a feed ran would start a feed at the old tap.
-        var log = handled
-        guard log.firstSight(of: request.id) else {
+        guard !handled.contains(request.id) else {
             update(model)
             return state(of: model)
         }
-        handled = log
-        let changed = model.store.change {
+        // One the system carried for longer than the watch keeps its own is turned down.
+        let tooOld = Date().timeIntervalSince(request.at) > watchTapLifetime
+        let changed = !tooOld && model.store.change {
             $0.applyWatch(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier)
         }
+        // Noted once the change is saved: a tap lost with the app can be sent again, and applying
+        // it twice changes nothing (each tap names what it creates).
+        var log = handled
+        log.record(request.id)
+        handled = log
+        answer(request.id, tooOld ? .refused : changed ? .applied : .unchanged)
         // Nothing changed (a feed already finished, or a start while a feed runs): the watch still
         // needs to hear that the tap was handled.
         if !changed { update(model) }
@@ -92,6 +114,41 @@ final class WatchRelay: NSObject {
             UserDefaults.standard.set(id, forKey: FeedControls.detailsKey)
         }
         if changed {
+            let application = UIApplication.shared
+            let task = application.beginBackgroundTask(withName: "Watch tap")
+            Task { @MainActor in
+                await QuickFeedRunner.settle()
+                application.endBackgroundTask(task)
+            }
+        }
+        return state(of: model)
+    }
+
+    /// Applies a new tap from the watch (`WatchAction`, `11-watch-parity.md` step 1) and answers
+    /// it. One that depends on a tap not handled yet waits: the watch sends it again.
+    fileprivate func handle(_ request: WatchActionRequest) -> WatchState {
+        let model = AppModel.shared
+        guard let me = model.me, let baby = model.baby else { return state(of: model) }
+        if handled.contains(request.id) {
+            update(model)
+            return state(of: model)
+        }
+        if let after = request.after, !handled.contains(after) {
+            answer(request.id, .waiting)
+            update(model)
+            return state(of: model)
+        }
+        var outcome = WatchOutcome.unchanged
+        model.store.change {
+            outcome = $0.applyWatchAction(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier,
+                                          now: Date())
+        }
+        var log = handled
+        log.record(request.id)
+        handled = log
+        answer(request.id, outcome)
+        update(model)
+        if outcome == .applied {
             let application = UIApplication.shared
             let task = application.beginBackgroundTask(withName: "Watch tap")
             Task { @MainActor in
@@ -132,15 +189,19 @@ extension WatchRelay: WCSessionDelegate {
     nonisolated func session(_ session: WCSession, didReceiveMessageData messageData: Data,
                              replyHandler: @escaping (Data) -> Void) {
         let reply = Reply(send: replyHandler)
-        let request = WatchCoding.decode(WatchMessage.self, from: messageData)?.request
+        let message = WatchCoding.decode(WatchMessage.self, from: messageData)
         Task { @MainActor in
-            let state = self.handle(request)
+            let state = if let action = message?.action { self.handle(action) } else { self.handle(message?.request) }
             reply.send((try? WatchCoding.encode(state)) ?? Data())
         }
     }
 
     /// A tap kept while this phone was out of reach.
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
+        if let data = userInfo[WatchKey.action] as? Data, let action = WatchCoding.decode(WatchActionRequest.self, from: data) {
+            Task { @MainActor in _ = self.handle(action) }
+            return
+        }
         guard let data = userInfo[WatchKey.request] as? Data,
               let request = WatchCoding.decode(WatchRequest.self, from: data) else { return }
         Task { @MainActor in _ = self.handle(request) }

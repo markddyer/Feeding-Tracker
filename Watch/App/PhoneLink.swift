@@ -27,7 +27,7 @@ final class PhoneLink {
     var shown: WatchState? { saved.shown }
 
     /// Taps are waiting and the phone is out of reach.
-    var waitingForPhone: Bool { !saved.pending.isEmpty && !reachable }
+    var waitingForPhone: Bool { (!saved.pending.isEmpty || !saved.actions.isEmpty) && !reachable }
 
     private init() {
         saved = WatchFile.load()
@@ -60,10 +60,33 @@ final class PhoneLink {
     /// Sends a tap to the phone and shows it at once. Any earlier tap the phone hasn't handled goes
     /// again first, in order, so a Finish can't overtake its Start (one kept as a transfer while
     /// the phone was out of reach, the next sent as a message). The phone applies each tap once.
-    func send(_ command: WatchCommand, now: Date = Date()) {
+    /// Returns the tap's ID, for the Logged card to follow the phone's answer.
+    @discardableResult
+    func send(_ command: WatchCommand, now: Date = Date()) -> String {
         let request = WatchRequest(command: command, at: now)
         change { $0.pending.append(request) }
         deliverWaiting()
+        return request.id
+    }
+
+    /// Sends a new tap (`WatchAction`, `11-watch-parity.md` step 1), after `after` if it depends on
+    /// one, and shows it at once. Only sent once the phone has said it understands it.
+    @discardableResult
+    func send(_ action: WatchAction, after: String? = nil, now: Date = Date()) -> String {
+        let request = WatchActionRequest(action: action, at: now, after: after)
+        change { $0.actions.append(request) }
+        deliverWaiting()
+        return request.id
+    }
+
+    /// The phone's answer to a tap, once it has given one.
+    func result(of id: String) -> WatchOutcome? {
+        saved.phone?.result(of: id)
+    }
+
+    /// True while a tap is still on its way, or the phone asked for it again later.
+    func isWaiting(_ id: String) -> Bool {
+        saved.pending.contains { $0.id == id } || saved.actions.contains { $0.id == id }
     }
 
     /// Remembers an amount saved here, so the crown starts there next time.
@@ -87,6 +110,26 @@ final class PhoneLink {
         })
     }
 
+    private func deliver(_ request: WatchActionRequest) {
+        guard let session, session.activationState == .activated else { return }
+        guard session.isReachable, let data = try? WatchCoding.encode(WatchMessage(request: nil, action: request)) else {
+            transfer(request)
+            return
+        }
+        session.sendMessageData(data, replyHandler: { @Sendable reply in
+            let state = WatchCoding.decode(WatchState.self, from: reply)
+            Task { @MainActor in if let state { self.receive(state) } }
+        }, errorHandler: { @Sendable _ in
+            Task { @MainActor in self.transfer(request) }
+        })
+    }
+
+    private func transfer(_ request: WatchActionRequest) {
+        guard let session, session.activationState == .activated,
+              !queuedIDs(session).contains(request.id), let data = try? WatchCoding.encode(request) else { return }
+        session.transferUserInfo([WatchKey.action: data])
+    }
+
     /// Kept by the system until the phone is near.
     private func transfer(_ request: WatchRequest) {
         guard let session, session.activationState == .activated,
@@ -97,6 +140,7 @@ final class PhoneLink {
     private func queuedIDs(_ session: WCSession) -> Set<String> {
         Set(session.outstandingUserInfoTransfers.compactMap { transfer in
             (transfer.userInfo[WatchKey.request] as? Data).flatMap { WatchCoding.decode(WatchRequest.self, from: $0)?.id }
+                ?? (transfer.userInfo[WatchKey.action] as? Data).flatMap { WatchCoding.decode(WatchActionRequest.self, from: $0)?.id }
         })
     }
 
@@ -106,6 +150,11 @@ final class PhoneLink {
         guard let session, session.activationState == .activated else { return }
         let queued = queuedIDs(session)
         for request in saved.pending where !queued.contains(request.id) || session.isReachable {
+            deliver(request)
+        }
+        // The new taps after the first kind, oldest first: one that depends on another names it,
+        // and the phone holds it ("waiting") until that one is handled.
+        for request in saved.actions where !queued.contains(request.id) || session.isReachable {
             deliver(request)
         }
     }

@@ -1,6 +1,6 @@
 # 11 · The watch does what the phone does
 
-Status: decided 21 Nov 2026 (the parents' choices below); reviewed by Codex the same night (below); the alarm fix it led to is built; the watch work is next, in three steps.
+Status: decided 21 Nov 2026 (the parents' choices below); reviewed by Codex the same night (below); the alarm fix it led to is built (`c4f74e1`); **step 1 is built** (the three no-scroll pages, Bath, Medicine, poo details, Pumping, the Logged card with Undo, Earlier and Done by, the phone's answers, capabilities, the new taps' own message and queue); steps 2 and 3 are next.
 Mockups (outside the repo, in this project's gstack design folder):
 `designs/watch-parity-20261121/` (round1 to round5; approved: `round5-square.html`), and
 `designs/watch-bar-20261121/built.html` (the new watch bar, built in `8fb7a19`).
@@ -159,7 +159,7 @@ itself (the watch still talks only to its own iPhone).
 - **Build in three steps, safest first (A).** Step 1: the no-scroll pages, Bath, Medicine, poo
   details and Pumping, and the Logged card for these. Step 2: the feed extras. Step 3: Undo of
   Start or Finish, the night rota, who got up.
-- **Page 3 scrolls when there are many medicines (B)**, as drawn; the other pages never scroll.
+- **Page 3 scrolls when there are many medicines (B)**, as drawn; the other pages never scroll. Changed later the same night to **A**: three rows that always fit (Bath; one medicine with its Given, or "Medicine ›" opening a list for two or more; Tonight in step 3).
 
 To be built into the steps (from the review):
 - Request results: the phone answers each tap (applied, already applied, refused, too old), and
@@ -189,3 +189,19 @@ To be built into the steps (from the review):
   large text; the label beside the clock is tried first and falls back to a small first line if
   watchOS 27 won't place it there. The Digital Crown takes focus explicitly on each screen that
   uses it; the double tap only presses the visible page's main button.
+
+## Step 1, as built (21 Nov 2026)
+
+- FeedingCore `Watch/WatchActions.swift`: `WatchAction` (bath, medicine, pump, pooDetails, earlier,
+  doneBy, undo) in `WatchActionRequest` (with `after`, the tap it depends on), `WatchOutcome`
+  (applied, unchanged, refused, waiting), `applyWatchAction`, the capabilities and `WatchState`
+  3's new fields; `WatchSaved.actions`, read item by item (`Lossy`). `WatchActionsTests`.
+- The phone (`WatchRelay`): a new tap comes in `WatchMessage.action` or under `WatchKey.action`;
+  one whose `after` isn't handled yet is answered `waiting`; every tap is noted as handled only
+  after its change is saved, and answered in `WatchState.results`; a tap older than 25 hours is
+  refused.
+- The watch: `WatchPages.swift` (the three pages, `WatchPageFrame`, `WatchMetrics`, the round and
+  oblong buttons, tiles), `WatchLogged.swift` (the Logged card, poo details, Pumping, the shared
+  amount picker); `PhoneLink.send` returns the tap's ID.
+- Left for step 2: Just finished, Earlier feed, a bottle during a feed, sides and bottles after
+  Finish. Step 3: Undo of Start or Finish, Woke up's Earlier, Undo and "who got up", the night rota.
