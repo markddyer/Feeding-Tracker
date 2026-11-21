@@ -8,15 +8,19 @@ import Foundation
 /// `-sampleLook night` for the night look, and `-sampleBreastfeeder YES` for "Breastfeed (Sam)" on
 /// a bottle-only watch (design DD15). `asleep` and `awake` open on page two (sleep and nappy); `-watchPage 2`
 /// opens any state there. Every state but `firstFeed` has a nappy 40 minutes ago. "Sam" is a
-/// made-up name.
+/// made-up name. `-sampleFeedAgo 185` puts the last feed that many minutes ago (100 by default),
+/// to see the window bar at any moment; `-watchFaceGallery YES` shows the big watch face piece's
+/// words and bar at four moments (`WatchFaceGallery`).
 enum WatchSamples {
     private static var name: String? { UserDefaults.standard.string(forKey: "sampleWatch") }
 
     static func fromLaunchArguments(now: Date = Date()) -> WatchState? {
         guard let name else { return nil }
         let look: LookSetting = UserDefaults.standard.string(forKey: "sampleLook") == "night" ? .alwaysNight : .alwaysDay
-        var state = WatchState(madeAt: now, setUp: true, lastFeedStart: now.addingTimeInterval(-100 * 60),
-                               previousFeedStart: now.addingTimeInterval(-100 * 60), lookSetting: look,
+        let ago = UserDefaults.standard.double(forKey: "sampleFeedAgo")
+        let lastFeed = now.addingTimeInterval(-(ago > 0 ? ago : 100) * 60)
+        var state = WatchState(madeAt: now, setUp: true, lastFeedStart: lastFeed,
+                               previousFeedStart: lastFeed, lookSetting: look,
                                nextSide: .right, lastFormulaML: 90, lastExpressedML: 60, lastMilk: .formula,
                                myColour: "lavender")
         let started = now.addingTimeInterval(-(12 * 60 + 4))
@@ -103,6 +107,51 @@ enum WatchSamples {
                 break
             }
         }
+    }
+}
+
+import SwiftUI
+
+/// `-watchFaceGallery YES`: the big watch face piece (`WatchLastFeedView`, rectangular) as it reads
+/// at four moments after the sample's last feed, drawn with the same parts, for screenshots. Full
+/// colour only: the simulator can't show a tinted face here.
+struct WatchFaceGallery: View {
+    let state: WatchState
+    @Environment(\.watchLook) private var look
+
+    static var isOn: Bool { UserDefaults.standard.bool(forKey: "watchFaceGallery") }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach([60.0, 185, 255, 760], id: \.self) { minutes in
+                    if let last = state.lastFeedStart {
+                        piece(at: last.addingTimeInterval(minutes * 60), last: last)
+                    }
+                }
+            }
+        }
+    }
+
+    private func piece(at now: Date, last: Date) -> some View {
+        let palette = WatchPalette.of(look)
+        return VStack(alignment: .leading, spacing: 2) {
+            Text("Last feed \(GlanceText.elapsed(now.timeIntervalSince(last))) ago")
+                .font(.system(.headline, design: .rounded).monospacedDigit())
+                .foregroundStyle(palette.text)
+            if let steps = state.windowSteps(at: now) {
+                Text(steps.line(state.clock).main)
+                    .font(.system(.body, design: .rounded).monospacedDigit())
+                    .foregroundStyle(palette.text)
+                WatchWindowTrack(steps: steps, palette: palette, height: 8, bell: false)
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .padding(6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.black)
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.gray.opacity(0.4)))
     }
 }
 #endif

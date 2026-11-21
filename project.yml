@@ -151,6 +151,7 @@ targetTemplates:
       - path: Watch/Shared
       - path: Shared/GlanceText.swift
       - path: Shared/FeedShapes.swift
+      - path: Shared/WindowSteps.swift
       - path: App/Fonts/Fredoka.ttf
     dependencies:
       - package: FeedingCore
@@ -197,6 +198,7 @@ targetTemplates:
       - path: Watch/Shared
       - path: Shared/GlanceText.swift
       - path: Shared/FeedShapes.swift
+      - path: Shared/WindowSteps.swift
     dependencies:
       - package: FeedingCore
     settings:

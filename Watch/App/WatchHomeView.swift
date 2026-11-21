@@ -123,6 +123,19 @@ struct WatchHomeView: View {
 
     @ViewBuilder
     private func screen(_ state: WatchState?, now: Date) -> some View {
+        #if FEEDING_DEV
+        if WatchFaceGallery.isOn, let state {
+            WatchFaceGallery(state: state)
+        } else {
+            mainScreen(state, now: now)
+        }
+        #else
+        mainScreen(state, now: now)
+        #endif
+    }
+
+    @ViewBuilder
+    private func mainScreen(_ state: WatchState?, now: Date) -> some View {
         if let question, let state {
             AmountScreen(ask: question, start: state.startAmount(for: question.bottle.milk) ?? 60) { ml in
                 if let ml {
@@ -264,8 +277,9 @@ private struct IdleScreen: View {
     }
 }
 
-/// The window bar, as on the phone: the time so far, the shaded window, then the window's time
-/// and the alarm's.
+/// The window bar, as on the phone (the users' choices of 21 Nov 2026): the line in words, where
+/// now is in bold and what comes next muted; the bar in its three colours with the needle at now;
+/// and under it when the window opened and the backup alarm's time.
 private struct WatchWindowBar: View {
     let state: WatchState
     let window: FeedWindow
@@ -274,45 +288,52 @@ private struct WatchWindowBar: View {
 
     var body: some View {
         let palette = WatchPalette.of(look)
-        let settings = state.window
-        let opensShare = min(1, max(0, settings.opensAfter / max(1, settings.closesAfter)))
-        let progress = state.glance?.windowProgress(at: now) ?? 0
-        let clock = { (date: Date) in GlanceText.clock(date, timeZoneID: state.timeZoneID) }
-        VStack(alignment: .leading, spacing: 5) {
-            GeometryReader { proxy in
-                let width = proxy.size.width
-                ZStack(alignment: .leading) {
-                    Capsule().fill(palette.track)
-                    UnevenRoundedRectangle(bottomTrailingRadius: 4, topTrailingRadius: 4)
-                        .fill(palette.window)
-                        .frame(width: width * (1 - opensShare))
-                        .offset(x: width * opensShare)
-                    Capsule().fill(palette.primary).frame(width: max(8, width * progress))
-                }
-            }
-            .frame(height: 8)
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("Window \(Text(clock(window.opensAt)).foregroundStyle(palette.text))")
-                    .foregroundStyle(palette.textMuted)
-                Spacer(minLength: 4)
-                if settings.alertsEnabled {
-                    HStack(spacing: 3) {
-                        Image(systemName: "bell").imageScale(.small)
-                        Text(clock(window.closesAt))
-                    }
-                    .foregroundStyle(palette.text)
-                } else {
-                    Text("Alerts off").foregroundStyle(palette.textMuted)
-                }
-            }
-            .watchText(.line)
-            .lineLimit(1)
-            .minimumScaleFactor(0.8)
+        let steps = WindowSteps(window: window, settings: state.window, now: now)
+        let line = steps.line(state.clock)
+        VStack(alignment: .leading, spacing: 3) {
+            Text("\(Text(line.main).fontWeight(.semibold).foregroundStyle(palette.text))\(Text(line.more).foregroundStyle(palette.textMuted))")
+                .watchText(.line)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            WatchWindowTrack(steps: steps, palette: palette, height: 12)
+            WatchBarTimes(steps: steps, state: state, palette: palette)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(settings.alertsEnabled
-            ? "Feeding window opens at \(clock(window.opensAt)). Alert at \(clock(window.closesAt))."
-            : "Feeding window opens at \(clock(window.opensAt)). Alerts are off.")
+        .accessibilityLabel(steps.spoken(state.clock))
+    }
+}
+
+/// Under the bar: "from 22:58" where the window starts, and the backup alarm's time at the end;
+/// "from" goes when the two would touch.
+private struct WatchBarTimes: View {
+    let steps: WindowSteps
+    let state: WatchState
+    let palette: WatchPalette
+
+    var body: some View {
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            let frames = steps.frames(width: width, gap: WatchWindowTrack.gap, minimum: WatchWindowTrack.minimumPart)
+            let windowX = frames.first { $0.part.kind == .window }?.x
+            let backup = steps.labelled.first { $0.kind == .backup }.map { steps.label($0.kind, state.clock).time }
+            ZStack(alignment: .topLeading) {
+                if let windowX {
+                    ViewThatFits(in: .horizontal) {
+                        Text(steps.label(.window, state.clock).time)
+                        Text(state.clock(steps.opensAt))
+                    }
+                    .frame(width: max(0, width - windowX - (backup == nil ? 0 : 44)), alignment: .leading)
+                    .offset(x: windowX)
+                }
+                if let backup {
+                    Text(backup).frame(width: width, alignment: .trailing)
+                }
+            }
+        }
+        .frame(height: 15)
+        .watchText(.line)
+        .foregroundStyle(palette.text)
+        .lineLimit(1)
     }
 }
 

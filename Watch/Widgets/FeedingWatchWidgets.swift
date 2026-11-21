@@ -20,6 +20,8 @@ struct WatchEntry: TimelineEntry {
     let glance: FeedGlance?
     /// The side being fed now, during a feed.
     var side: BreastSide?
+    /// What the watch app last heard, for the window bar's parts and words and the look.
+    var state: WatchState?
 }
 
 /// One entry a minute for two hours, then one every five minutes up to six hours, as on the
@@ -27,9 +29,8 @@ struct WatchEntry: TimelineEntry {
 struct WatchProvider: TimelineProvider {
     func placeholder(in context: Context) -> WatchEntry {
         let now = Date()
-        return WatchEntry(date: now, glance: FeedGlance(lastFeedStart: now.addingTimeInterval(-6000),
-                                                        windowOpens: now.addingTimeInterval(1200),
-                                                        windowCloses: now.addingTimeInterval(8400)))
+        let state = WatchState(madeAt: now, setUp: true, lastFeedStart: now.addingTimeInterval(-6000))
+        return WatchEntry(date: now, glance: state.glance, state: state)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (WatchEntry) -> Void) {
@@ -42,14 +43,14 @@ struct WatchProvider: TimelineProvider {
         let start = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
         let offsets = Array(stride(from: 0, to: 120, by: 1)) + Array(stride(from: 120, through: 360, by: 5))
         let entries = offsets.map {
-            WatchEntry(date: start.addingTimeInterval(Double($0) * 60), glance: read.glance, side: read.side)
+            WatchEntry(date: start.addingTimeInterval(Double($0) * 60), glance: read.glance, side: read.side, state: read.state)
         }
         completion(Timeline(entries: entries, policy: .atEnd))
     }
 
     private func read(now: Date) -> WatchEntry {
         let state = WatchFile.load().shown
-        return WatchEntry(date: now, glance: state?.glance, side: state?.running?.side)
+        return WatchEntry(date: now, glance: state?.glance, side: state?.running?.side, state: state)
     }
 }
 
@@ -71,6 +72,13 @@ struct WatchLastFeedWidget: Widget {
 struct WatchLastFeedView: View {
     let entry: WatchEntry
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    /// The ring in the bar's colours on a full-colour face; the face's own colour otherwise.
+    private func ring(_ steps: WindowSteps?) -> AnyShapeStyle {
+        guard renderingMode == .fullColor, let steps, let state = entry.state else { return AnyShapeStyle(.tint) }
+        return AnyShapeStyle(WatchWindowTrack.ringGradient(steps, palette: WatchPalette.of(state.look(at: entry.date))))
+    }
 
     var body: some View {
         if let glance = entry.glance {
@@ -89,7 +97,8 @@ struct WatchLastFeedView: View {
         let since = glance.lastFeedStart.map { now.timeIntervalSince($0) }
         switch family {
         case .accessoryCircular:
-            Gauge(value: running == nil ? glance.windowProgress(at: now) : 1) {
+            let steps = running == nil ? entry.state?.windowSteps(at: now) : nil
+            Gauge(value: steps.map(WatchWindowTrack.ringProgress) ?? (running == nil ? glance.windowProgress(at: now) : 1)) {
                 Image(systemName: running == nil ? "waterbottle" : "stopwatch")
             } currentValueLabel: {
                 Text(GlanceText.compactElapsed(running ?? since ?? 0))
@@ -97,6 +106,7 @@ struct WatchLastFeedView: View {
                     .minimumScaleFactor(0.6)
             }
             .gaugeStyle(.accessoryCircular)
+            .tint(ring(steps))
             .widgetAccentable()
         case .accessoryCorner:
             Text(GlanceText.compactElapsed(running ?? since ?? 0))
@@ -105,6 +115,9 @@ struct WatchLastFeedView: View {
                 .widgetLabel {
                     if running != nil {
                         Text("Feed running")
+                    } else if let steps = entry.state?.windowSteps(at: now) {
+                        Gauge(value: WatchWindowTrack.ringProgress(steps)) { Text("Last feed") }
+                            .tint(ring(steps))
                     } else {
                         Gauge(value: glance.windowProgress(at: now)) { Text("Last feed") }
                     }
@@ -136,13 +149,18 @@ struct WatchLastFeedView: View {
                 Text("Last feed \(GlanceText.elapsed(since)) ago")
                     .font(.system(.headline, design: .rounded).monospacedDigit())
                     .widgetAccentable()
-                if let opens = glance.windowOpens {
-                    Text("Feeding window \(GlanceText.clock(opens, timeZoneID: glance.timeZoneID))")
+                if let state = entry.state, let steps = state.windowSteps(at: entry.date) {
+                    // The phone's words and bar (the users' choices of 21 Nov 2026): where now is,
+                    // then the three coloured parts with the needle at now.
+                    let palette = WatchPalette.of(state.look(at: entry.date))
+                    Text(steps.line(state.clock).main)
+                        .font(.system(.body, design: .rounded).monospacedDigit())
+                        .foregroundStyle(renderingMode == .fullColor ? palette.text : .white)
+                    WatchWindowTrack(steps: steps, palette: palette, height: 8, bell: false)
+                } else if let opens = glance.windowOpens {
+                    Text("Window opens \(GlanceText.clock(opens, timeZoneID: glance.timeZoneID))")
                         .font(.system(.body, design: .rounded).monospacedDigit())
                 }
-                Gauge(value: glance.windowProgress(at: entry.date)) {}
-                    .gaugeStyle(.accessoryLinearCapacity)
-                    .widgetAccentable()
             } else {
                 Text("No feeds logged yet").font(.system(.headline, design: .rounded))
             }
@@ -176,8 +194,9 @@ struct WatchLastFeedView: View {
             return "Feed running \(GlanceText.spokenElapsed(now.timeIntervalSince(start)))"
         }
         guard let last = glance.lastFeedStart else { return "No feeds logged yet" }
-        let window = glance.windowOpens.map { ". Feeding window \(GlanceText.clock($0, timeZoneID: glance.timeZoneID))" } ?? ""
-        return "Last feed \(GlanceText.spokenElapsed(now.timeIntervalSince(last))) ago\(window)"
+        let window = entry.state.flatMap { state in state.windowSteps(at: now).map { " " + $0.spoken(state.clock) } }
+            ?? glance.windowOpens.map { ". Feeding window opens at \(GlanceText.clock($0, timeZoneID: glance.timeZoneID))." } ?? ""
+        return "Last feed \(GlanceText.spokenElapsed(now.timeIntervalSince(last))) ago.\(window)"
     }
 }
 
@@ -193,7 +212,7 @@ struct WatchLastFeedView: View {
 struct WatchStartWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "WatchStart", provider: FaceButtonProvider()) { entry in
-            WatchStartView(button: entry.button)
+            WatchStartView(button: entry.button, look: entry.look)
                 .widgetURL(entry.link)
                 .containerBackground(for: .widget) { Color.clear }
         }
@@ -205,7 +224,14 @@ struct WatchStartWidget: Widget {
 
 struct WatchStartView: View {
     let button: WatchFaceButton
+    var look: Look = .night
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    /// Coral on a full-colour face (the app's Start feed button); the face's colour otherwise.
+    private var coral: AnyShapeStyle {
+        renderingMode == .fullColor ? AnyShapeStyle(WatchPalette.of(look).primary) : AnyShapeStyle(.primary)
+    }
 
     var body: some View {
         Group {
@@ -224,6 +250,7 @@ struct WatchStartView: View {
     private var start: some View {
         if family == .accessoryCorner {
             BottleShape()
+                .fill(coral)
                 .frame(width: 24, height: 24)
                 .widgetAccentable()
                 .widgetLabel("Start feed")
@@ -231,7 +258,7 @@ struct WatchStartView: View {
             ZStack {
                 AccessoryWidgetBackground()
                 VStack(spacing: 1) {
-                    BottleShape().frame(width: 20, height: 20).widgetAccentable()
+                    BottleShape().fill(coral).frame(width: 20, height: 20).widgetAccentable()
                     Text("Start").font(.system(size: 11, weight: .semibold, design: .rounded))
                 }
             }
@@ -244,6 +271,7 @@ struct WatchStartView: View {
         if family == .accessoryCorner {
             Image(systemName: "stopwatch")
                 .font(.system(size: 22, weight: .semibold))
+                .foregroundStyle(coral)
                 .widgetAccentable()
                 .widgetLabel {
                     Text(since, style: .timer)
@@ -255,6 +283,7 @@ struct WatchStartView: View {
                 VStack(spacing: 0) {
                     Image(systemName: "stopwatch")
                         .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(coral)
                         .widgetAccentable()
                     Text(since, style: .timer)
                         .font(.system(size: 12, weight: .semibold, design: .rounded).monospacedDigit())
@@ -282,6 +311,7 @@ struct FaceButtonProvider: TimelineProvider {
     struct Entry: TimelineEntry {
         let date: Date
         let button: WatchFaceButton
+        var look: Look = .night
 
         /// Where a tap goes: Start feed, this parent's Finish, or the app on the other parent's feed.
         var link: URL? {
@@ -304,6 +334,7 @@ struct FaceButtonProvider: TimelineProvider {
     }
 
     private func read() -> Entry {
-        Entry(date: Date(), button: WatchFile.load().shown?.faceButton ?? .notReady)
+        let shown = WatchFile.load().shown
+        return Entry(date: Date(), button: shown?.faceButton ?? .notReady, look: shown?.look(at: Date()) ?? .night)
     }
 }

@@ -13,6 +13,8 @@ struct CareEntry: TimelineEntry {
     let setUp: Bool
     let sleep: WatchSleep?
     let nappy: WatchNappy?
+    /// Day or night, for the pieces' colours on a full-colour face.
+    var look: Look = .night
 }
 
 /// One entry a minute for two hours, then one every five minutes up to six hours, as for the
@@ -34,14 +36,16 @@ struct CareProvider: TimelineProvider {
         let start = Date(timeIntervalSince1970: (now.timeIntervalSince1970 / 60).rounded(.down) * 60)
         let offsets = Array(stride(from: 0, to: 120, by: 1)) + Array(stride(from: 120, through: 360, by: 5))
         let entries = offsets.map {
-            CareEntry(date: start.addingTimeInterval(Double($0) * 60), setUp: read.setUp, sleep: read.sleep, nappy: read.nappy)
+            CareEntry(date: start.addingTimeInterval(Double($0) * 60), setUp: read.setUp, sleep: read.sleep, nappy: read.nappy,
+                      look: read.look)
         }
         completion(Timeline(entries: entries, policy: .atEnd))
     }
 
     private func read(now: Date) -> CareEntry {
         let state = WatchFile.load().shown
-        return CareEntry(date: now, setUp: state?.setUp ?? false, sleep: state?.sleep, nappy: state?.lastNappy)
+        return CareEntry(date: now, setUp: state?.setUp ?? false, sleep: state?.sleep, nappy: state?.lastNappy,
+                         look: state?.look(at: now) ?? .night)
     }
 }
 
@@ -65,6 +69,7 @@ struct WatchSleepWidget: Widget {
 struct WatchSleepView: View {
     let entry: CareEntry
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
 
     var body: some View {
         let sleep = entry.sleep
@@ -93,12 +98,17 @@ struct WatchSleepView: View {
         .accessibilityLabel(spoken)
     }
 
+    /// The moon in the sleep colour, the sun in the wee's yellow, on a full-colour face (the
+    /// users' ask, 21 Nov 2026); the face's own colour on a tinted one.
     @ViewBuilder
     private func icon(size: CGFloat) -> some View {
+        let palette = WatchPalette.of(entry.look)
+        let full = renderingMode == .fullColor
         if let sleep = entry.sleep, !sleep.asleep {
             Image(systemName: "sun.max.fill").font(.system(size: size * 0.82, weight: .semibold))
+                .foregroundStyle(full ? AnyShapeStyle(palette.wee) : AnyShapeStyle(.primary))
         } else {
-            MoonShape().frame(width: size, height: size)
+            MoonShape().fill(full ? AnyShapeStyle(palette.sleep) : AnyShapeStyle(.primary)).frame(width: size, height: size)
         }
     }
 
@@ -128,20 +138,28 @@ struct WatchNappyWidget: Widget {
 struct WatchNappyView: View {
     let entry: CareEntry
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetRenderingMode) private var renderingMode
+
+    /// The wee's yellow and the poo's brown on a full-colour face; the face's colour otherwise.
+    private var colours: (wee: Color?, poo: Color?) {
+        guard renderingMode == .fullColor else { return (nil, nil) }
+        let palette = WatchPalette.of(entry.look)
+        return (palette.wee, palette.poo)
+    }
 
     var body: some View {
         let nappy = entry.nappy
         let time = nappy.map { GlanceText.compactElapsed(entry.date.timeIntervalSince($0.at)) } ?? "Nappy"
         Group {
             if family == .accessoryCorner {
-                NappyMark(wee: nappy?.wee ?? true, poo: nappy?.poo ?? true, size: 18)
+                NappyMark(wee: nappy?.wee ?? true, poo: nappy?.poo ?? true, size: 18, weeColour: colours.wee, pooColour: colours.poo)
                     .widgetAccentable()
                     .widgetLabel(nappy.map { "Nappy \(CareText.ago($0.at, now: entry.date))" } ?? "Nappy")
             } else {
                 ZStack {
                     AccessoryWidgetBackground()
                     VStack(spacing: 1) {
-                        NappyMark(wee: nappy?.wee ?? true, poo: nappy?.poo ?? true, size: 15)
+                        NappyMark(wee: nappy?.wee ?? true, poo: nappy?.poo ?? true, size: 15, weeColour: colours.wee, pooColour: colours.poo)
                             .frame(height: 17)
                             .widgetAccentable()
                         Text(time)
