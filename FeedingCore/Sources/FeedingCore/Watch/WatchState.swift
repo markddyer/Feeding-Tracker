@@ -23,9 +23,13 @@ public struct WatchFeed: Codable, Hashable, Sendable {
     /// The side being fed now, if any.
     public var side: BreastSide?
     public var bottles: [Bottle]
+    /// A breastfeed: it has a side, or counts for the parent who breastfeeds with no bottle. A
+    /// bottle-only watch then shows Left and Right too (design DD15, Codex 7). Nil from an older
+    /// phone: no.
+    public var breastfeed: Bool?
 
     public init(id: String, startedAt: Date, mine: Bool, byName: String, byColour: String, side: BreastSide?,
-                bottles: [Bottle]) {
+                bottles: [Bottle], breastfeed: Bool? = nil) {
         self.id = id
         self.startedAt = startedAt
         self.mine = mine
@@ -33,6 +37,7 @@ public struct WatchFeed: Codable, Hashable, Sendable {
         self.byColour = byColour
         self.side = side
         self.bottles = bottles
+        self.breastfeed = breastfeed
     }
 }
 
@@ -106,13 +111,19 @@ public struct WatchState: Codable, Hashable, Sendable {
     public var sleep: WatchSleep?
     /// The last nappy change. Nil before the first.
     public var lastNappy: WatchNappy?
+    /// On a bottle-only watch, the other parent named in "Who breastfeeds?" (design DD15, 4B):
+    /// Start feed then offers "Breastfeed (Sam)", sent with their ID. Nil otherwise, and from an
+    /// older phone.
+    public var breastfeeder: MemberID?
+    public var breastfeederName: String?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
                 dayHours: DayHours = .standard, lookSetting: LookSetting = .automatic, running: WatchFeed? = nil,
                 bottleOnly: Bool = false, nextSide: BreastSide? = nil, lastFormulaML: Int? = nil,
                 lastExpressedML: Int? = nil, lastMilk: MilkKind? = nil, myColour: String = "sunflower",
-                handled: [String] = [], sleep: WatchSleep? = nil, lastNappy: WatchNappy? = nil) {
+                handled: [String] = [], sleep: WatchSleep? = nil, lastNappy: WatchNappy? = nil,
+                breastfeeder: MemberID? = nil, breastfeederName: String? = nil) {
         self.version = version
         self.madeAt = madeAt
         self.setUp = setUp
@@ -132,6 +143,8 @@ public struct WatchState: Codable, Hashable, Sendable {
         self.handled = handled
         self.sleep = sleep
         self.lastNappy = lastNappy
+        self.breastfeeder = breastfeeder
+        self.breastfeederName = breastfeederName
     }
 
     public var timeZone: TimeZone {
@@ -204,8 +217,10 @@ public enum WatchFaceStart: Hashable, Sendable {
 
 /// What a tap on the watch asks the phone to do.
 public enum WatchCommand: Codable, Hashable, Sendable {
-    /// Start feed, with the bottle on a bottle-only watch. The watch picks both IDs.
-    case start(feedID: String, bottle: MilkKind?, bottleID: String)
+    /// Start feed, with the bottle on a bottle-only watch. The watch picks both IDs. `doneBy`:
+    /// "Breastfeed (Sam)" on a bottle-only watch, a breastfeed saved as Sam's at once (4B); an
+    /// older phone ignores it and starts a feed with nothing chosen.
+    case start(feedID: String, bottle: MilkKind?, bottleID: String, doneBy: MemberID? = nil)
     case switchSide(feedID: String, side: BreastSide)
     /// Finish, or "Finish for Sam".
     case finish(feedID: String)
@@ -354,9 +369,15 @@ extension HouseholdData {
             state.running = WatchFeed(id: running.id, startedAt: running.event.startedAt, mine: by == me,
                                       byName: names[by] ?? "Other parent", byColour: colours[by] ?? "teal",
                                       side: details.breast.last.flatMap { $0.durationSeconds == nil ? $0.side : nil },
-                                      bottles: details.bottles)
+                                      bottles: details.bottles,
+                                      breastfeed: isBreastfeed(running) ? true : nil)
         } else {
             state.previousFeedStart = state.lastFeedStart
+        }
+        // "Breastfeed (Sam)" on a bottle-only watch (DD15): only when the other parent is named.
+        if bottleOnly, let other = breastfeeder?.member, other != me, let name = names[other] {
+            state.breastfeeder = other
+            state.breastfeederName = name
         }
         let visible = visibleSnapshots(babyID: babyID)
         state.nextSide = suggestedNextSide(visible, babyID: babyID, now: now)
@@ -386,7 +407,7 @@ extension HouseholdData {
         /// Other records the tap changed, sent at once too.
         var alsoChanged: [String] = []
         switch request.command {
-        case .start(let feedID, let bottle, let bottleID):
+        case .start(let feedID, let bottle, let bottleID, let doneBy):
             id = feedID
             guard events[feedID] == nil, feedInProgress(babyID: babyID) == nil else { return false }
             // A start kept while the phone was out of reach, from before a feed logged since:
@@ -395,7 +416,7 @@ extension HouseholdData {
             guard !later else { return false }
             add(id: feedID, kind: .feed, babyID: babyID, startedAt: at,
                 payload: EventPayload(feed: FeedDetails(bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [])),
-                by: me, timeZoneID: timeZoneID, now: at)
+                by: me, doneBy: bottle == nil ? doneBy : nil, timeZoneID: timeZoneID, now: at)
             // Start feed ends a running sleep, as in the app (the users' choice O).
             alsoChanged = endSleepForFeed(babyID: babyID, start: at, feedID: feedID, by: me, now: at)
             changed = true
@@ -472,13 +493,14 @@ extension WatchState {
     public func applying(_ request: WatchRequest) -> WatchState {
         var state = self
         switch request.command {
-        case .start(let feedID, let bottle, let bottleID):
+        case .start(let feedID, let bottle, let bottleID, let doneBy):
             guard state.setUp, state.running == nil else { break }
             // Start feed ends a running sleep, as on the phone (the users' choice O).
             if let sleep = state.sleep, sleep.asleep, sleep.start < request.at { state.sleep?.end = request.at }
             state.previousFeedStart = state.lastFeedStart
             state.running = WatchFeed(id: feedID, startedAt: request.at, mine: true, byName: "", byColour: myColour,
-                                      side: nil, bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [])
+                                      side: nil, bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [],
+                                      breastfeed: bottle == nil && doneBy != nil ? true : nil)
             state.lastFeedStart = max(request.at, state.lastFeedStart ?? request.at)
             if let bottle { state.lastMilk = bottle }
         case .switchSide(let feedID, let side):

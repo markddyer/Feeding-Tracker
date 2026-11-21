@@ -96,6 +96,61 @@ struct WatchStateTests {
         #expect(data.eventsToUpload(now: tap).count == 1)
     }
 
+    // MARK: "Breastfeed (Sam)" on a bottle-only watch (design DD15, 4B; Codex 4, 7)
+
+    @Test func aBottleOnlyWatchOffersTheOtherParentsBreastfeedOnlyWhenNamed() {
+        var data = household()
+        #expect(state(data, bottleOnly: true).breastfeederName == nil, "no answer: nothing changes")
+        data.setBreastfeeder(.nobody, now: now)
+        #expect(state(data, bottleOnly: true).breastfeederName == nil, "Nobody: nothing changes")
+        data.setBreastfeeder(.member(parentA), now: now.addingTimeInterval(1))
+        #expect(state(data, me: parentA, bottleOnly: true).breastfeederName == nil, "not this phone's own parent")
+        data.setBreastfeeder(.member(parentB), now: now.addingTimeInterval(2))
+        let offered = state(data, me: parentA, bottleOnly: true)
+        #expect(offered.breastfeeder == parentB)
+        #expect(offered.breastfeederName == "Sam")
+        #expect(state(data, me: parentA, bottleOnly: false).breastfeederName == nil, "only a bottle-only watch asks")
+    }
+
+    @Test func breastfeedSamStartsAFeedSavedAsSamsWithLeftAndRight() throws {
+        var data = household()
+        data.setBreastfeeder(.member(parentB), now: now)
+        let tap = now.addingTimeInterval(-30)
+        let start = request(.start(feedID: "f", bottle: nil, bottleID: "b", doneBy: parentB), at: tap)
+        // The watch shows it at once with Left and Right.
+        #expect(state(data, bottleOnly: true).applying(start).running?.breastfeed == true)
+        let applied = data.applyWatch(start, babyID: baby, by: parentA, timeZoneID: "Europe/London")
+        #expect(applied)
+        let running = try #require(data.feedInProgress(babyID: baby))
+        #expect(running.event.loggedBy == parentA)
+        #expect(running.event.doneBy == parentB, "saved as Sam's at once (4B)")
+        #expect(data.isBreastfeed(running))
+        #expect(state(data, bottleOnly: true).running?.breastfeed == true)
+        // A later change of "Who breastfeeds?" doesn't move it.
+        data.setBreastfeeder(.nobody, now: now.addingTimeInterval(60))
+        #expect(data.whoDidIt(babyID: baby, now: now).doneBy("f") == .init(member: parentB, saved: true))
+    }
+
+    @Test func aBottleStartIgnoresDoneByAndAPlainBottleFeedIsNoBreastfeed() throws {
+        var data = household()
+        data.setBreastfeeder(.member(parentB), now: now)
+        data.applyWatch(request(.start(feedID: "f", bottle: .formula, bottleID: "b", doneBy: parentB), at: now),
+                        babyID: baby, by: parentA, timeZoneID: "Europe/London")
+        let running = try #require(data.feedInProgress(babyID: baby))
+        #expect(running.event.doneBy == nil)
+        #expect(!data.isBreastfeed(running))
+        #expect(state(data, bottleOnly: true).running?.breastfeed == nil)
+    }
+
+    @Test func aStartFromAnOlderWatchStillReads() throws {
+        // An older watch sends no "doneBy"; a newer one's is read back.
+        let old = #"{"start":{"feedID":"f","bottle":"formula","bottleID":"b"}}"#
+        let command = try JSONDecoder().decode(WatchCommand.self, from: Data(old.utf8))
+        #expect(command == .start(feedID: "f", bottle: .formula, bottleID: "b", doneBy: nil))
+        let new = WatchCommand.start(feedID: "f", bottle: nil, bottleID: "b", doneBy: parentB)
+        #expect(try JSONDecoder().decode(WatchCommand.self, from: JSONEncoder().encode(new)) == new)
+    }
+
     @Test func aRequestThatArrivesTwiceChangesNothingTheSecondTime() {
         var data = household()
         let start = request(.start(feedID: "w-feed", bottle: nil, bottleID: "b"), at: now)

@@ -139,6 +139,10 @@ struct WatchHomeView: View {
                     link.send(.start(feedID: UUID().uuidString, bottle: milk, bottleID: UUID().uuidString), now: tap)
                 }
                 milkAsk = nil
+            } breastfeed: {
+                link.send(.start(feedID: UUID().uuidString, bottle: nil, bottleID: UUID().uuidString,
+                                 doneBy: state.breastfeeder), now: tap)
+                milkAsk = nil
             }
         } else if let state, state.setUp {
             // Two pages, one above the other. The feed page is as it was; its double tap works
@@ -183,6 +187,9 @@ struct WatchHomeView: View {
             } else {
                 IdleScreen(state: state, now: now, waiting: link.waitingForPhone) { bottle in
                     link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
+                } breastfeed: {
+                    link.send(.start(feedID: UUID().uuidString, bottle: nil, bottleID: UUID().uuidString,
+                                     doneBy: state.breastfeeder))
                 }
             }
         }
@@ -211,6 +218,8 @@ private struct IdleScreen: View {
     let now: Date
     let waiting: Bool
     let start: (MilkKind?) -> Void
+    /// "Breastfeed (Sam)" on a bottle-only watch (design DD15, 4B).
+    let breastfeed: () -> Void
     @Environment(\.watchLook) private var look
 
     var body: some View {
@@ -242,6 +251,11 @@ private struct IdleScreen: View {
                     }
                 }
                 .padding(.top, 4)
+                if let name = state.breastfeederName {
+                    // Not the double tap: that stays on the bottle used most (4B).
+                    WatchBigButton(title: "Breastfeed (\(name))", prominent: false, compact: true) { breastfeed() }
+                        .accessibilityLabel("Start \(name)'s breastfeed")
+                }
             } else {
                 WatchBigButton(title: "Start feed", bottle: true, doubleTap: true) { start(nil) }
                     .padding(.top, 4)
@@ -332,7 +346,8 @@ private struct RunningScreen: View {
                 .foregroundStyle(palette.text)
             }
             if waiting { WaitingLine() }
-            if !state.bottleOnly {
+            // A breastfeed shows Left and Right on a bottle-only watch too (DD15, Codex 7).
+            if !state.bottleOnly || feed.breastfeed == true {
                 HStack(spacing: 6) {
                     ForEach(BreastSide.allCases, id: \.self) { side in
                         WatchSideButton(side: side, selected: feed.side == side,
@@ -412,6 +427,8 @@ private struct MilkScreen: View {
     let state: WatchState
     let tappedAt: Date
     let choose: (MilkKind?) -> Void
+    /// "Breastfeed (Sam)" (design DD15, 4B), offered when the phone names who breastfeeds.
+    let breastfeed: () -> Void
     @Environment(\.watchLook) private var look
 
     var body: some View {
@@ -419,7 +436,8 @@ private struct MilkScreen: View {
         let time = GlanceText.clock(tappedAt, timeZoneID: state.timeZoneID)
         ScrollView {
             VStack(alignment: .leading, spacing: 7) {
-                Text("Formula or expressed?").watchText(.label).foregroundStyle(palette.textMuted)
+                Text(state.breastfeederName == nil ? "Formula or expressed?" : "Start a feed")
+                    .watchText(.label).foregroundStyle(palette.textMuted)
                 Text("Feed from \(Text(time).foregroundStyle(palette.text))")
                     .watchText(.line)
                     .foregroundStyle(palette.textMuted)
@@ -429,6 +447,10 @@ private struct MilkScreen: View {
                     WatchBigButton(title: milk == .formula ? "Formula" : "Expressed milk", bottle: true,
                                    doubleTap: milk == (state.lastMilk ?? .formula)) { choose(milk) }
                         .accessibilityLabel(milk == .formula ? "Start a formula feed" : "Start an expressed milk feed")
+                }
+                if let name = state.breastfeederName {
+                    WatchBigButton(title: "Breastfeed (\(name))", bottle: false) { breastfeed() }
+                        .accessibilityLabel("Start \(name)'s breastfeed")
                 }
                 WatchBigButton(title: "Not now", prominent: false, compact: true) { choose(nil) }
                     .padding(.top, 8)

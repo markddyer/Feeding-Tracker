@@ -63,6 +63,19 @@ struct FeedControls: View {
     private var store: HouseholdStore { AppModel.shared.store }
     private var bottleOnly: Bool { feedingStyle == FeedingStyle.bottleOnly.rawValue }
 
+    /// On a bottle-only phone, the other parent named in "Who breastfeeds?": Start feed then
+    /// offers "Breastfeed (Sam)" too (design DD15, 4B). Nil with no answer or "Nobody".
+    private var breastfeedFor: (member: MemberID, name: String)? {
+        guard bottleOnly, let other = store.data.breastfeeder?.member, other != me,
+              let name = AppModel.shared.memberNames[other] else { return nil }
+        return (other, name)
+    }
+
+    /// The panel after Finish asks for sides on a breastfeed, even on a bottle-only phone.
+    private func panelBottleOnly(_ feed: EventSnapshot) -> Bool {
+        bottleOnly && !store.data.isBreastfeed(feed)
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             if let feed = facts.feedInProgress {
@@ -73,10 +86,10 @@ struct FeedControls: View {
                 }
             } else if let id = detailsFor, let feed = store.data.events[id]?.snapshot, feed.event.deletedAt == nil,
                       let ended = feed.event.endedAt, facts.now.timeIntervalSince(ended) < 2 * 3600 {
-                FeedDetailsPanel(feed: feed, me: me, bottleOnly: bottleOnly) { detailsFor = nil }
+                FeedDetailsPanel(feed: feed, me: me, bottleOnly: panelBottleOnly(feed)) { detailsFor = nil }
             } else if let offer = facts.feedFinishedForMe, offer.feed.id != detailsOfferAnswered {
                 let who = facts.name(offer.by).capitalizedFirst
-                FeedDetailsPanel(feed: offer.feed, me: me, bottleOnly: bottleOnly,
+                FeedDetailsPanel(feed: offer.feed, me: me, bottleOnly: panelBottleOnly(offer.feed),
                                  note: bottleOnly ? "\(who) finished your feed. Add the bottle amount?"
                                                   : "\(who) finished your feed. Add the sides and bottles?") {
                     detailsOfferAnswered = offer.feed.id
@@ -89,9 +102,13 @@ struct FeedControls: View {
             Button("Expressed milk") { addBottle(.expressed) }
             Button("Formula") { addBottle(.formula) }
         }
-        .confirmationDialog("Which bottle?", isPresented: $choosingStartBottle) {
+        .confirmationDialog(breastfeedFor == nil ? "Which bottle?" : "Start a feed", isPresented: $choosingStartBottle) {
             Button("Expressed milk") { startFeed(bottle: .expressed) }
             Button("Formula") { startFeed(bottle: .formula) }
+            // Saved as theirs at once, so a later change to "Who breastfeeds?" never moves it (4B).
+            if let parent = breastfeedFor {
+                Button("Breastfeed (\(parent.name))") { startFeed(bottle: nil, doneBy: parent.member) }
+            }
         }
         .confirmationDialog("Remove this feed?",
                             isPresented: Binding { stopping != nil } set: { if !$0 { stopping = nil } },
@@ -148,10 +165,11 @@ struct FeedControls: View {
             .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.smallButton))
     }
 
-    private func startFeed(bottle: MilkKind?) {
+    private func startFeed(bottle: MilkKind?, doneBy: MemberID? = nil) {
         // No Undo bar here: the feed has a Stop button for as long as it runs.
         store.change {
-            _ = $0.startFeed(babyID: babyID, side: nil, bottle: bottle, by: me, timeZoneID: TimeZone.current.identifier, now: Date())
+            _ = $0.startFeed(babyID: babyID, side: nil, bottle: bottle, doneBy: doneBy, by: me,
+                             timeZoneID: TimeZone.current.identifier, now: Date())
         }
     }
 
@@ -173,8 +191,8 @@ struct FeedControls: View {
         let bottles = feed.payload?.feed?.bottles ?? []
         return VStack(spacing: 8) {
             // A bottle-only parent has no side buttons: the bottle was chosen at Start feed, and
-            // the hero shows it.
-            if !bottleOnly {
+            // the hero shows it. A breastfeed shows them on any phone ("Breastfeed (Sam)", DD15).
+            if !bottleOnly || store.data.isBreastfeed(feed) {
                 HStack(spacing: 8) {
                     ForEach(BreastSide.allCases, id: \.self) { side in
                         SideButton(mark: .side(side), title: side == .left ? "Left" : "Right",

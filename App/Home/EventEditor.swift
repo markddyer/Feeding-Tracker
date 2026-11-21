@@ -73,8 +73,9 @@ struct EventEditor: View {
                 if isPump {
                     pumpSection
                 } else {
-                    // A bottle-only parent sees sides only on a feed that already has them.
-                    if feedingStyle != FeedingStyle.bottleOnly.rawValue || !(original.payload?.feed?.breast.isEmpty ?? true) {
+                    // A bottle-only parent sees sides only on a breastfeed: one that already has
+                    // them, or "Breastfeed (Sam)" (DD15).
+                    if feedingStyle != FeedingStyle.bottleOnly.rawValue || AppModel.shared.store.data.isBreastfeed(original) {
                         breastSection
                     }
                     bottlesSection

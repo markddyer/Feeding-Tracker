@@ -1112,7 +1112,7 @@ These add to the CEO review's T1 to T12 above (T5 to T9 there cover the same scr
   - Surfaced by: D4, 3A
   - Files: App/Home/HomeView.swift
   - Verify: simulator at 07:30 and 12:01; VoiceOver sentence
-- [ ] **DT5 (P1, human: ~1d / CC: ~45min)** — "Start a feed" with "Breastfeed (Sam)" on a bottle-only phone and watch; Left and Right in that phone's editors; explicit "done by"
+- [x] **DT5 (P1, human: ~1d / CC: ~45min)** — "Start a feed" with "Breastfeed (Sam)" on a bottle-only phone and watch; Left and Right in that phone's editors; explicit "done by" (built 21 Nov 2026: phone and watch; `isBreastfeed` decides the Left and Right buttons; `BottleOnlyBreastfeedFlowTests`; watch `-sampleWatch faceStart -sampleBreastfeeder YES` and `breastfeedRunning`, checked on the 42 mm Series 10)
   - Surfaced by: D15, 4B
   - Files: App/Home/FeedControls.swift, App/Home/EventEditor.swift, Watch/App/WatchHomeView.swift
   - Verify: tap test on a bottle-only phone; watch simulator with `-sampleWatch faceStart`
@@ -2228,7 +2228,7 @@ review's DT1 to DT9; CEO T10 ("storage per E1") is now ET1, ET2 and ET5; CEO T5'
   - Surfaced by: TD2 (D11 C), TD2b (D12 A)
   - Files: App/Home/HistoryView.swift, App/Home/FeedRows.swift
   - Verify: simulator with `-sampleDuplicate YES` widened to a nappy; unit tests in ET4
-- [ ] **ET11 (P1, human: ~4h / CC: ~30min)** — Outside-voice requirements inside the design tasks: the watch's start request carries the parent and is offered only when the phone names who breastfeeds (DT5); Left/Right from the feed, not the phone's setting (DT5); the poo panel carries the swap (DT2); "Checked with iCloud" from a completed household fetch (DT3)
+- [x] **ET11 (P1, human: ~4h / CC: ~30min)** — Outside-voice requirements inside the design tasks: the watch's start request carries the parent and is offered only when the phone names who breastfeeds (DT5); Left/Right from the feed, not the phone's setting (DT5); the poo panel carries the swap (DT2); "Checked with iCloud" from a completed household fetch (DT3) (built 21 Nov 2026: the start request carries `doneBy`, an older watch's request still reads; the poo panel carries the swap, `UndoCardFlowTests`; the iCloud line reads `lastCompletedFetchAt`)
   - Surfaced by: Codex 4, 7, 8, 9
   - Files: Watch/App/WatchHomeView.swift, FeedingCore/Sources/FeedingCore/Watch/WatchState.swift, App/Home/FeedControls.swift, App/Home/CareTiles.swift, App/Sync/HouseholdSync.swift
   - Verify: watch simulator `-sampleWatch faceStart`; tap test for the poo panel swap

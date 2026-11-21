@@ -267,13 +267,13 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// woke to feed).
     @discardableResult
     public mutating func startFeed(id: String = UUID().uuidString, babyID: String, side: BreastSide?,
-                                   bottle: MilkKind? = nil,
+                                   bottle: MilkKind? = nil, doneBy: MemberID? = nil,
                                    by member: MemberID, timeZoneID: String, now: Date) -> String {
         let breast = side.map { [BreastSegment(side: $0, startedAt: now)] } ?? []
         let bottles = bottle.map { [Bottle(milk: $0)] } ?? []
         let id = add(id: id, kind: .feed, babyID: babyID, startedAt: now,
                      payload: EventPayload(feed: FeedDetails(breast: breast, bottles: bottles)),
-                     by: member, timeZoneID: timeZoneID, now: now)
+                     by: member, doneBy: doneBy, timeZoneID: timeZoneID, now: now)
         endSleepForFeed(babyID: babyID, start: now, feedID: id, by: member, now: now)
         return id
     }

@@ -4,8 +4,9 @@ import Foundation
 
 /// Feeding Dev only: made-up states for screenshots in the watch simulator, with no phone. Launch
 /// with `-sampleWatch` and `idle`, `running`, `other`, `bottleOnly`, `bottleRunning`, `amount`,
-/// `faceStart`, `waiting`, `firstFeed`, `notSetUp`, `asleep` or `awake`; add `-sampleLook night`
-/// for the night look. `asleep` and `awake` open on page two (sleep and nappy); `-watchPage 2`
+/// `faceStart`, `breastfeedRunning`, `waiting`, `firstFeed`, `notSetUp`, `asleep` or `awake`; add
+/// `-sampleLook night` for the night look, and `-sampleBreastfeeder YES` for "Breastfeed (Sam)" on
+/// a bottle-only watch (design DD15). `asleep` and `awake` open on page two (sleep and nappy); `-watchPage 2`
 /// opens any state there. Every state but `firstFeed` has a nappy 40 minutes ago. "Sam" is a
 /// made-up name.
 enum WatchSamples {
@@ -33,6 +34,12 @@ enum WatchSamples {
             state.lastFeedStart = started
         case "bottleOnly", "faceStart":
             state.bottleOnly = true
+        case "breastfeedRunning":
+            // "Breastfeed (Sam)" started on this bottle-only watch: Left and Right show.
+            state.bottleOnly = true
+            state.running = WatchFeed(id: "sample", startedAt: started, mine: true, byName: "", byColour: "lavender",
+                                      side: nil, bottles: [], breastfeed: true)
+            state.lastFeedStart = started
         case "bottleRunning", "amount":
             state.bottleOnly = true
             state.running = WatchFeed(id: "sample", startedAt: started, mine: true, byName: "", byColour: "lavender",
@@ -49,6 +56,10 @@ enum WatchSamples {
             state = WatchState(madeAt: now, setUp: false)
         default:
             break
+        }
+        if state.bottleOnly, UserDefaults.standard.bool(forKey: "sampleBreastfeeder") {
+            state.breastfeeder = MemberID(rawValue: "sample-sam")
+            state.breastfeederName = "Sam"
         }
         return state
     }

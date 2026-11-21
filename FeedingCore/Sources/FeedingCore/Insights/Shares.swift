@@ -79,6 +79,18 @@ public struct ShareItem: Hashable, Sendable, Identifiable {
     public var day: PlainDate
 }
 
+extension HouseholdData {
+    /// A breastfeed, for the buttons a running feed shows (design DD15, Codex 7): it has a breast
+    /// side, or it counts for the parent named in "Who breastfeeds?" and has no bottle. So a
+    /// bottle-only phone shows Left and Right on "Breastfeed (Sam)", whatever its own setting.
+    public func isBreastfeed(_ feed: EventSnapshot) -> Bool {
+        let details = feed.payload?.feed ?? FeedDetails()
+        if !details.breast.isEmpty { return true }
+        guard details.bottles.isEmpty, let parent = breastfeeder?.member else { return false }
+        return WhoDidIt.answer(for: feed, breastfeeder: breastfeeder).member == parent
+    }
+}
+
 extension EventSnapshot {
     /// Who tapped Finish (TD1, D10 C): the parent in the end time's stamp, but only when the end
     /// was set as it was tapped (the end equals its stamp's time, within a second). A later

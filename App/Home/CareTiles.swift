@@ -455,7 +455,12 @@ struct PooDetailsSheet: View {
         let nappy = snapshot?.payload?.nappy ?? NappyDetails(wee: false, poo: true)
         let at = snapshot?.event.startedAt ?? Date()
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .center, spacing: 8) {
+                // The panel covers the Undo card, so it carries the same "done by" swap while the
+                // nappy is new (X1; outside review, Codex 8).
+                if target.isNew {
+                    UndoSwapButton(swap: UndoSwap(eventID: target.id))
+                }
                 Text("\(CareText.nappyKind(wee: nappy.wee, poo: nappy.poo).capitalizedFirst), \(clock(at))")
                     .feedText(.dayHeading)
                 Spacer()

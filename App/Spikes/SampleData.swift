@@ -10,8 +10,9 @@ import UIKit
 /// Launch with `-sampleData YES`. Add `-sampleFeedInProgress` for a feed: `YES` (breast, running),
 /// `bottle` (a formula bottle running), `other` (the other parent's feed running) or
 /// `finishedForMe` (this parent's feed, finished by the other parent, waiting for its details).
-/// Add `-sampleDuplicate YES` for the last feed and the last nappy logged on both phones, and `-sampleNightAsk` with
-/// `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for an ask to take tonight.
+/// Add `-sampleDuplicate YES` for the last feed and the last nappy logged on both phones, and
+/// `-sampleNightAsk` with `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for
+/// an ask to take tonight. `-sampleBreastfeeder other` (or `me`, `nobody`) answers "Who breastfeeds?".
 /// Every sample day has sleeps, nappies and Vitamin D; the baby is asleep (1h 20m) unless
 /// `-sampleSleep awake`, and the last nappy (40m ago) is a poo with no details yet.
 enum SampleData {
@@ -96,6 +97,12 @@ enum SampleData {
                 let start = now.addingTimeInterval(-100 * 60)
                 data.add(kind: .sleep, babyID: "sample-baby", startedAt: start, endedAt: now.addingTimeInterval(-25 * 60),
                          payload: EventPayload(), by: other, timeZoneID: zone, now: start)
+            }
+            switch defaults.string(forKey: "sampleBreastfeeder") {
+            case "other": data.setBreastfeeder(.member(other), now: now)
+            case "me": data.setBreastfeeder(.member(me), now: now)
+            case "nobody": data.setBreastfeeder(.nobody, now: now)
+            default: break
             }
             // A poo 40 minutes ago with no details yet: the Nappy tile offers "Add details".
             let lastNappy = now.addingTimeInterval(-40 * 60)
