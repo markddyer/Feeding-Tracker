@@ -152,8 +152,24 @@ public enum NHSPassages {
     /// on both phones for the same day.
     public static func choose(kinds: Set<InsightKind>, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,
                               checks: PassageChecks, today day: PlainDate, limit: Int) -> [Passage] {
-        let topics = Set(kinds.flatMap(InsightTopic.topics(for:)))
+        choose(topics: Set(kinds.flatMap(InsightTopic.topics(for:))), ageInDays: ageInDays, breastfeeds: breastfeeds,
+               bottleFeeds: bottleFeeds, checks: checks, today: day, limit: limit)
+    }
+
+    /// Passages that are never shown alone: the second is shown straight after the first, even past
+    /// the limit, and the first is offered only once the second is checked. The postnatal depression
+    /// passage lists "thoughts of suicide, harming yourself or your baby" but names no urgent route,
+    /// so the NHS's urgent mental health help always comes with it (summary review, 22 Nov 2026).
+    static let shownWith = ["postnatal-depression-help": "mental-health-urgent"]
+
+    /// The chooser by topic. Not public: a card's topics come from the kinds logged (finding 3, A3).
+    static func choose(topics: Set<InsightTopic>, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,
+                       checks: PassageChecks, today day: PlainDate, limit: Int) -> [Passage] {
         let candidates = library.filter { passage in
+            if let id = shownWith[passage.id] {
+                guard let partner = NHSPassages.passage(id),
+                      isChecked(partner.id, copied: partner.copied, checks: checks, today: day) else { return false }
+            }
             guard !passage.isUrgent, !topics.isDisjoint(with: passage.topics) else { return false }
             if let ages = passage.ageInDays {
                 guard let ageInDays, ages.contains(ageInDays) else { return false }
@@ -168,7 +184,16 @@ public enum NHSPassages {
         .sorted { $0.id < $1.id }
         guard !candidates.isEmpty, limit > 0 else { return [] }
         let start = ((day.days(since: copied) % candidates.count) + candidates.count) % candidates.count
-        return (0..<min(limit, candidates.count)).map { candidates[(start + $0) % candidates.count] }
+        let picks = (0..<min(limit, candidates.count)).map { candidates[(start + $0) % candidates.count] }
+        var shown: [Passage] = []
+        for passage in picks where !shown.contains(passage) {
+            shown.append(passage)
+            if let id = shownWith[passage.id], let partner = NHSPassages.passage(id) {
+                shown.removeAll { $0 == partner }
+                shown.append(partner)
+            }
+        }
+        return shown
     }
 
     /// The passages for a card made from `facts`: the kinds logged yesterday and last night, and
@@ -218,7 +243,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "enough-milk-signs", page: #"Breastfeeding: is my baby getting enough milk?"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/breastfeeding-problems/enough-milk/",
                 topics: [.enoughMilk], ageInDays: nil, feeding: .breastfeeding, isUrgent: false,
-                summaries: [PassageSummary(id: "enough-milk-signs-s1", words: #"This NHS page lists signs during and after a breastfeed that a baby is getting milk."#)],
+                summaries: [PassageSummary(id: "enough-milk-signs-s2", words: #"This NHS page lists signs, during and after breastfeeds, that a baby is getting enough milk."#)],
                 words: #"""
                 ## Signs your baby is getting enough milk
                 - Your baby starts feeds with a few rapid sucks followed by long, rhythmic sucks and swallows with occasional pauses.
@@ -434,10 +459,12 @@ public enum NHSPassages {
                 - they’ve been diagnosed with jaundice and it’s not getting better, or is getting worse
                 - their pee is dark yellow or brown or their poo is a pale creamy colour (keep a sample of poo to show a midwife or doctor)
                 """#),
-        Passage(id: "postnatal-depression", page: #"Postnatal depression"#, url: "https://www.nhs.uk/mental-health/conditions/postnatal-depression/",
+        Passage(id: "postnatal-depression-help", page: #"Postnatal depression"#, url: "https://www.nhs.uk/mental-health/conditions/postnatal-depression/",
                 topics: [.parentsMood], ageInDays: nil, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "postnatal-depression-s1", words: #"This NHS page lists the signs of postnatal depression, which can affect either parent, and where to get help."#)],
+                summaries: [PassageSummary(id: "postnatal-depression-help-s1", words: #"This NHS page lists the signs of postnatal depression, which can affect either parent, says urgent help is available in a mental health crisis, and says who to speak to otherwise."#)],
                 words: #"""
+                ## Important: Get urgent help
+                Support is available if you or someone you know is having a mental health crisis or emergency, no matter what you're going through.
                 ## Symptoms of postnatal depression
                 Symptoms of postnatal depression include:
                 - low mood
@@ -458,6 +485,28 @@ public enum NHSPassages {
                 - you think you might have postnatal depression
                 It's important to get help even if you only have some of the signs. You're more likely to get better with treatment.
                 """#),
+        Passage(id: "mental-health-urgent", page: #"Where to get urgent help for mental health"#, url: "https://www.nhs.uk/nhs-services/mental-health-services/where-to-get-urgent-help-for-mental-health/",
+                topics: [.parentsMood], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "mental-health-urgent-s1", words: #"This NHS page says where to get urgent help for mental health, including NHS 111, 999 and A&E, and lists free listening services."#)],
+                words: #"""
+                ## Urgent advice: Get advice from NHS 111 or ask for an urgent GP appointment if:
+                - you need urgent help for your mental health
+                Get help from 111 online or call 111 and select the mental health option.
+                NHS 111 will tell you the right place to get help. You may be able to speak to a trained mental health professional over the phone.
+                A GP can advise you about helpful treatments and help you access mental health services. You may be able to refer yourself to some services.
+                ## Immediate action required: Call 999 or go to A&E now if:
+                - someone's life is at risk – for example, they have seriously injured themselves or taken an overdose
+                - you do not feel you can keep yourself or someone else safe
+                A mental health emergency should be taken as seriously as a physical one. You will not be wasting anyone's time.
+                Do not drive to A&E. Ask someone to drive you or call 999 and ask for an ambulance.
+                Bring any medicines you take with you.
+                ## Other ways to get help with your mental health
+                ### Free listening services
+                These services offer confidential support from trained volunteers. You can talk about anything that's troubling you, no matter how difficult:
+                - call 116 123 to talk to Samaritans
+                - if you're under 19, you can also call 0800 1111 to talk to Childline – the number will not appear on your phone bill
+                These services will only share your information if they are very worried about you or think you are in immediate danger.
+                """#),
         Passage(id: "feeding-sick-help", page: #"Bottle feeding advice"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/bottle-feeding/advice/",
                 topics: [.bottleFeeding], ageInDays: nil, feeding: .bottleFeeding, isUrgent: false,
                 summaries: [PassageSummary(id: "feeding-sick-help-s1", words: #"This NHS advice says where to find help and support with bottle feeding."#)],
@@ -468,7 +517,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "reflux-signs", page: #"Reflux in babies"#, url: "https://www.nhs.uk/conditions/reflux-in-babies/",
                 topics: [.sickAfterFeeds], ageInDays: nil, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "reflux-signs-s1", words: #"This NHS page describes reflux, when milk comes back up during or after a feed, and its common signs."#)],
+                summaries: [PassageSummary(id: "reflux-signs-s2", words: #"This NHS page lists symptoms of reflux in babies, including silent reflux, and the ages it usually starts and gets better by."#)],
                 words: #"""
                 ## Symptoms of reflux in babies
                 Reflux usually starts before a baby is 8 weeks old and gets better by the time they're 1.
@@ -520,7 +569,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "colic-signs", page: #"Colic"#, url: "https://www.nhs.uk/conditions/colic/",
                 topics: [.crying], ageInDays: 0...150, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "colic-signs-s1", words: #"This NHS page describes colic, when a baby cries a lot with no clear cause, and other reasons a baby may cry."#)],
+                summaries: [PassageSummary(id: "colic-signs-s2", words: #"This NHS page describes the signs of colic in a baby who is otherwise healthy, other reasons a baby may cry, and who to speak to if unsure what is wrong."#)],
                 words: #"""
                 ## Symptoms of colic
                 All babies cry, but your baby may have colic if they cry more than 3 hours a day, 3 days a week for at least 1 week but are otherwise healthy.
@@ -586,7 +635,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "poo-how-often", page: #"How to change your baby's nappy"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/how-to-change-your-babys-nappy/",
                 topics: [.nappies], ageInDays: nil, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "poo-how-often-s1", words: #"This NHS page describes how often babies usually poo as they grow, and what counts as constipation."#)],
+                summaries: [PassageSummary(id: "poo-how-often-s2", words: #"This NHS page describes how often babies may poo as they grow, for breastfed and formula-fed babies, and when a few days without a poo is not constipation."#)],
                 words: #"""
                 ## How often should my baby do a poo?
                 Babies do 2 or more poos a day in the first week of life. This goes down to an average of 2 a day by the time they're 1 year old.
@@ -646,7 +695,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "weight-first-weeks", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
                 topics: [.weight], ageInDays: 0...42, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "weight-first-weeks-s1", words: #"This NHS page describes weight in the first weeks after birth, and the support offered when a baby is slow to regain birthweight."#)],
+                summaries: [PassageSummary(id: "weight-first-weeks-s2", words: #"This NHS page describes weight in the first weeks after birth, and when a midwife or health visitor offers support, including after a large weight loss."#)],
                 words: #"""
                 ## Your baby's weight and height
                 Steady weight gain is one of the signs that your baby is healthy and feeding well.
@@ -657,7 +706,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "weight-how-often", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
                 topics: [.weight], ageInDays: nil, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "weight-how-often-s1", words: #"This NHS page explains how often babies are usually weighed at different ages."#)],
+                summaries: [PassageSummary(id: "weight-how-often-s2", words: #"This NHS page sets out how often, at most, babies are weighed at different ages after the first fortnight, and when they may be weighed more often."#)],
                 words: #"""
                 ## How often should my baby be weighed?
                 After the first 2 weeks, your baby should be weighed:
@@ -669,7 +718,7 @@ public enum NHSPassages {
                 """#),
         Passage(id: "weight-centiles", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
                 topics: [.weight], ageInDays: nil, feeding: nil, isUrgent: false,
-                summaries: [PassageSummary(id: "weight-centiles-s1", words: #"This NHS page explains the centile lines on a baby's growth chart in the red book."#)],
+                summaries: [PassageSummary(id: "weight-centiles-s2", words: #"This NHS page explains what the centile lines on growth charts show, how measurements may move between them, and when to talk to a health visitor."#)],
                 words: #"""
                 ## What the centile lines mean
                 The curved lines on the charts are called centile lines. These show the average weight and height gain for babies of different ages.
@@ -742,7 +791,7 @@ public enum NHSPassages {
                 summaries: [PassageSummary(id: "formula-hungry-s1", words: #"This NHS page describes the signs that a formula-fed baby is ready to feed."#)],
                 words: #"""
                 ## How will I know if my formula-fed baby is hungry?
-                After a while, you'll get to know the signs that show your baby is ready to feed.For example, your baby may:
+                After a while, you'll get to know the signs that show your baby is ready to feed. For example, your baby may:
                 - start to get restless
                 - begin to turn their head and open their mouth (rooting)
                 - find something to suck – usually their fist or fingers

@@ -37,6 +37,37 @@ struct NHSPassagesTests {
         #expect(urgentCount == 1)
     }
 
+    @Test func postnatalDepressionAlwaysComesWithUrgentHelp() {
+        for (lead, partner) in NHSPassages.shownWith {
+            #expect(NHSPassages.passage(lead) != nil && NHSPassages.passage(partner) != nil)
+        }
+        // With both checked, at any limit and on any day, urgent help comes straight after it.
+        for offset in 0..<30 {
+            for limit in 1...4 {
+                let shown = NHSPassages.choose(topics: [.parentsMood], ageInDays: 30, breastfeeds: true, bottleFeeds: true,
+                                               checks: allChecked, today: today.adding(days: offset), limit: limit)
+                let ids = shown.map(\.id)
+                if let index = ids.firstIndex(of: "postnatal-depression-help") {
+                    #expect(ids.count > index + 1 && ids[index + 1] == "mental-health-urgent", "\(ids)")
+                    #expect(ids.filter { $0 == "mental-health-urgent" }.count == 1, "\(ids)")
+                }
+            }
+        }
+        let everyDay = (0..<30).flatMap { offset in
+            NHSPassages.choose(topics: [.parentsMood], ageInDays: 30, breastfeeds: true, bottleFeeds: true,
+                               checks: allChecked, today: today.adding(days: offset), limit: 1).map(\.id)
+        }
+        #expect(everyDay.contains("postnatal-depression-help"))
+        // Urgent help not checked: the postnatal depression passage is never offered.
+        var checks = allChecked
+        checks["mental-health-urgent"] = nil
+        for offset in 0..<30 {
+            let shown = NHSPassages.choose(topics: [.parentsMood], ageInDays: 30, breastfeeds: true, bottleFeeds: true,
+                                           checks: checks, today: today.adding(days: offset), limit: 4)
+            #expect(!shown.contains { $0.id == "postnatal-depression-help" })
+        }
+    }
+
     @Test func everyTopicHasAPassage() {
         for topic in InsightTopic.allCases {
             let has = NHSPassages.all.contains { $0.topics.contains(topic) }
