@@ -299,38 +299,70 @@ struct WatchPooDetailsScreen: View {
     @State private var askingConsistency = false
     @Environment(\.watchLook) private var look
 
+    init(done: @escaping (PooColour?, PooConsistency?) -> Void) {
+        self.done = done
+        #if FEEDING_DEV
+        _askingConsistency = State(initialValue: WatchSamples.screen == "pooConsistency")
+        #endif
+    }
+
     var body: some View {
         WatchPageFrame(label: askingConsistency ? "Consistency" : "Colour") { metrics in
             let palette = WatchPalette.of(look)
             Spacer(minLength: 2)
             if askingConsistency {
+                // Two to a row, Skip beside the last: three rows and Skip were cut by the
+                // screen's rounded corners on 42 and 49 mm (found 22 Nov 2026).
+                let known = PooConsistency.known
+                let rows = stride(from: 0, to: known.count, by: 2).map { Array(known[$0..<min($0 + 2, known.count)]) }
                 VStack(spacing: metrics.gap) {
-                    ForEach(PooConsistency.known, id: \.self) { consistency in
-                        choice(CareText.consistencyName(consistency).capitalized, swatch: nil, metrics: metrics, palette: palette) {
-                            done(colour, consistency)
-                        }
-                    }
-                }
-            } else {
-                let rows = [[PooColour.brown, .yellow], [.green, .other]]
-                VStack(spacing: metrics.gap) {
-                    ForEach(rows, id: \.self) { row in
+                    ForEach(rows.indices, id: \.self) { index in
                         HStack(spacing: metrics.gap) {
-                            ForEach(row, id: \.self) { item in
-                                choice(item == .other ? "Other" : CareText.colourName(item).capitalized,
-                                       swatch: swatch(item), metrics: metrics, palette: palette) {
-                                    colour = item
-                                    askingConsistency = true
+                            ForEach(rows[index], id: \.self) { consistency in
+                                choice(CareText.consistencyName(consistency).capitalized, swatch: nil, metrics: metrics,
+                                       palette: palette) {
+                                    done(colour, consistency)
+                                }
+                            }
+                            if index == rows.count - 1 {
+                                if rows[index].count == 2 {
+                                    // An even list: Skip gets a row of its own, as wide as the others.
+                                    EmptyView()
+                                } else {
+                                    choice("Skip", swatch: nil, metrics: metrics, palette: palette) { done(colour, nil) }
                                 }
                             }
                         }
                     }
+                    if known.count.isMultiple(of: 2) {
+                        choice("Skip", swatch: nil, metrics: metrics, palette: palette) { done(colour, nil) }
+                    }
+                }
+            } else {
+                // Five colours and Skip in three rows: Other and Skip share the last, so the
+                // screen is no taller than with four colours (R9, 22 Nov 2026).
+                let rows = [[PooColour.brown, .yellow], [.green, .pale]]
+                VStack(spacing: metrics.gap) {
+                    ForEach(rows, id: \.self) { row in
+                        HStack(spacing: metrics.gap) {
+                            ForEach(row, id: \.self) { item in colourChoice(item, metrics: metrics, palette: palette) }
+                        }
+                    }
+                    HStack(spacing: metrics.gap) {
+                        colourChoice(.other, metrics: metrics, palette: palette)
+                        choice("Skip", swatch: nil, metrics: metrics, palette: palette) { askingConsistency = true }
+                    }
                 }
             }
             Spacer(minLength: 2)
-            WatchBigButton(title: "Skip", prominent: false, compact: true) {
-                if askingConsistency { done(colour, nil) } else { askingConsistency = true }
-            }
+        }
+    }
+
+    private func colourChoice(_ item: PooColour, metrics: WatchMetrics, palette: WatchPalette) -> some View {
+        choice(item == .other ? "Other" : CareText.colourName(item).capitalized,
+               swatch: swatch(item), metrics: metrics, palette: palette) {
+            colour = item
+            askingConsistency = true
         }
     }
 
@@ -339,6 +371,7 @@ struct WatchPooDetailsScreen: View {
         case .brown: Color(hex: 0x8B5A2B)
         case .yellow: Color(hex: 0xD9A521)
         case .green: Color(hex: 0x6E8B3D)
+        case .pale: Color(hex: 0xEFE9DA)
         default: nil
         }
     }
@@ -347,7 +380,11 @@ struct WatchPooDetailsScreen: View {
                         action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
-                if let swatch { RoundedRectangle(cornerRadius: 3).fill(swatch).frame(width: 12, height: 12) }
+                if let swatch {
+                    RoundedRectangle(cornerRadius: 3).fill(swatch)
+                        .overlay(RoundedRectangle(cornerRadius: 3).strokeBorder(palette.textMuted, lineWidth: 1))
+                        .frame(width: 12, height: 12)
+                }
                 Text(title).watchText(.side).lineLimit(1).minimumScaleFactor(0.7)
             }
             .frame(maxWidth: .infinity)

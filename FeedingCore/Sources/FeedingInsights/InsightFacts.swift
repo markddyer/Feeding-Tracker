@@ -20,6 +20,7 @@ public struct PooColours: Hashable, Sendable, Codable {
     public var brown = 0
     public var yellow = 0
     public var green = 0
+    public var pale = 0
     public var other = 0
     public var notGiven = 0
 
@@ -31,6 +32,7 @@ public struct PooColours: Hashable, Sendable, Codable {
         case .brown?: brown += 1
         case .yellow?: yellow += 1
         case .green?: green += 1
+        case .pale?: pale += 1
         default: other += 1
         }
     }

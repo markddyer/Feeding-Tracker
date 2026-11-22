@@ -115,9 +115,12 @@ public struct PooColour: RawRepresentable, Hashable, Sendable, Codable, Expressi
     public static let brown: PooColour = "brown"
     public static let yellow: PooColour = "yellow"
     public static let green: PooColour = "green"
+    /// Pale or white (R9 of `12-ai-insights-gauntlet.md`, 22 Nov 2026): the NHS asks parents to
+    /// mention pale poo to a health visitor or GP. A fact, like the others; never a verdict.
+    public static let pale: PooColour = "pale"
     public static let other: PooColour = "other"
     /// The colours this app version offers, in the order it shows them.
-    public static let known: [PooColour] = [.brown, .yellow, .green, .other]
+    public static let known: [PooColour] = [.brown, .yellow, .green, .pale, .other]
 }
 
 /// A poo's consistency. Open, like `PooColour`.

@@ -40,6 +40,7 @@ enum CareText {
         case .brown: "brown"
         case .yellow: "yellow"
         case .green: "green"
+        case .pale: "pale"
         case .other: "other colour"
         default: colour.rawValue
         }

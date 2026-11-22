@@ -55,6 +55,7 @@ enum CareText {
         case .brown: "Brown"
         case .yellow: "Yellow"
         case .green: "Green"
+        case .pale: "Pale"
         case .other: "Other"
         default: colour.rawValue.capitalizedFirst
         }

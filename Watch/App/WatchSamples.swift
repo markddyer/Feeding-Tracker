@@ -120,7 +120,8 @@ enum WatchSamples {
     }
 
     static func pooAsk() -> PooAsk? {
-        screen == "pooDetails" ? PooAsk(nappyID: "sample-nappy", requestID: nil, card: nil) : nil
+        // `pooConsistency` opens the same screen on its second step.
+        screen == "pooDetails" || screen == "pooConsistency" ? PooAsk(nappyID: "sample-nappy", requestID: nil, card: nil) : nil
     }
 
     /// The amount screen, for `-sampleWatch amount`.

@@ -518,6 +518,7 @@ struct PooDetailsSheet: View {
         case .brown: .colour(Theme.pooBrown)
         case .yellow: .colour(Theme.pooYellow)
         case .green: .colour(Theme.pooGreen)
+        case .pale: .edged(Theme.pooPale)
         default: .ring
         }
     }
@@ -537,6 +538,8 @@ struct PooDetailsSheet: View {
 /// A colour's little circle beside its word: filled with the colour, or an empty ring for Other.
 enum Swatch {
     case colour(Color)
+    /// A light colour, with a thin edge so it shows on a light chip.
+    case edged(Color)
     case ring
 }
 
@@ -558,6 +561,10 @@ private struct DetailChoice: View {
                 switch swatch {
                 case .colour(let colour):
                     Circle().fill(colour).frame(width: 16, height: 16).accessibilityHidden(true)
+                case .edged(let colour):
+                    Circle().fill(colour)
+                        .overlay(Circle().strokeBorder(Theme.textMuted, lineWidth: 1))
+                        .frame(width: 16, height: 16).accessibilityHidden(true)
                 case .ring:
                     Circle().strokeBorder(Theme.textMuted, lineWidth: 2).frame(width: 16, height: 16).accessibilityHidden(true)
                 case nil:

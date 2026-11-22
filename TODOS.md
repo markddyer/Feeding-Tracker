@@ -15,7 +15,7 @@ Work put off on purpose, with why. Each item names where it was decided.
 
 ## AI insights (engineering review of step 1, 22 Nov 2026)
 
-- **A "pale or white" poo colour** (R9, D11). Add it to the poo panel's colours on the phone and the watch.
+- **Built 22 Nov 2026: a "pale or white" poo colour** (R9, D11): "Pale" on the phone's poo panel, the editor and the watch (`PooColour.pale`, `poo-pale` in `DESIGN.md`), and the AI's facts count it (`PooColours.pale`). Kept here for its context below.
   - **Why:** the NHS asks parents to show pale or chalky poo to a midwife or GP. D3's own example (the NHS's poo page beside a logged pale poo) can't happen without it.
   - **Pros:** a small change; `PooColour` is open, so older builds keep the value and save it back unchanged.
   - **Cons:** one more choice in a panel used at 3am; a new swatch colour in `DESIGN.md`.

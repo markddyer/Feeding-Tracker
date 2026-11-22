@@ -23,7 +23,7 @@ struct DesignTokensTests {
         ("sleep", Theme.sleep), ("sleep-mark", Theme.sleepMark), ("sleep-tint", Theme.sleepTint),
         ("sleep-soft", Theme.sleepSoft), ("wee", Theme.wee), ("wee-mark", Theme.weeMark), ("poo", Theme.poo), ("poo-mark", Theme.pooMark),
         ("nappy-tint", Theme.nappyTint),
-        ("poo-brown", Theme.pooBrown), ("poo-yellow", Theme.pooYellow), ("poo-green", Theme.pooGreen),
+        ("poo-brown", Theme.pooBrown), ("poo-yellow", Theme.pooYellow), ("poo-green", Theme.pooGreen), ("poo-pale", Theme.pooPale),
         ("parent-1", Theme.parent1), ("on-parent-1", Theme.onParent1), ("parent-1-tint", Theme.parent1Tint),
         ("parent-2", Theme.parent2), ("on-parent-2", Theme.onParent2), ("parent-2-tint", Theme.parent2Tint),
         ("lavender", Theme.lavender), ("on-lavender", Theme.onLavender), ("lavender-tint", Theme.lavenderTint),

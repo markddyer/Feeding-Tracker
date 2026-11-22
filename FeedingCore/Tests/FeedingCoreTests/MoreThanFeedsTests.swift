@@ -89,7 +89,7 @@ struct MoreThanFeedsPayloadTests {
     }
 
     @Test func theOffersAreInOrder() {
-        #expect(PooColour.known.map(\.rawValue) == ["brown", "yellow", "green", "other"])
+        #expect(PooColour.known.map(\.rawValue) == ["brown", "yellow", "green", "pale", "other"])
         #expect(PooConsistency.known.map(\.rawValue) == ["liquid", "loose", "firm"])
     }
 

@@ -243,14 +243,17 @@ struct InsightFactsCountTests {
     @Test func pooColoursFromAClosedList() {
         let sheet = facts([
             entry(.nappy, at(2026, 11, 19, 8), payload: nappy(poo: true, colour: .brown)),
-            entry(.nappy, at(2026, 11, 19, 9), payload: nappy(poo: true, colour: "pale")),
+            entry(.nappy, at(2026, 11, 19, 9), payload: nappy(poo: true, colour: "orange")),
             entry(.nappy, at(2026, 11, 19, 10), payload: nappy(wee: false, poo: true)),
             entry(.nappy, at(2026, 11, 19, 11), payload: nil),
+            entry(.nappy, at(2026, 11, 19, 12), payload: nappy(wee: false, poo: true, colour: .pale)),
         ], now: now)
         let day = sheet.yesterday
         #expect(day?.wees == 2)
-        #expect(day?.poos == 3)
+        #expect(day?.poos == 4)
         #expect(day?.pooColours.brown == 1)
+        #expect(day?.pooColours.pale == 1)
+        // A colour this build doesn't know (from a newer one) counts as other.
         #expect(day?.pooColours.other == 1)
         #expect(day?.pooColours.notGiven == 1)
         #expect(day?.nappiesWithUnreadDetails == 1)

@@ -74,6 +74,8 @@ enum Theme {
     static let pooBrown = Color(day: 0x8B5A2B, night: 0x7A5434)
     static let pooYellow = Color(day: 0xD9A521, night: 0x9C7E2A)
     static let pooGreen = Color(day: 0x6E8B3D, night: 0x5E7A3A)
+    /// Pale or white: chalk. Drawn with a thin `textMuted` edge, as it is close to the chip's colour.
+    static let pooPale = Color(day: 0xEFE9DA, night: 0x8A8578)
 
     // The two parents' default colours (sunflower and teal).
     static let parent1 = Color(day: 0xF2B33D, night: 0x9C7A30)
