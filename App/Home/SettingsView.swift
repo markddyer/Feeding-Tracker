@@ -1,4 +1,5 @@
 import FeedingCore
+import FeedingInsights
 import SwiftUI
 
 /// Settings: this phone's own choices (how you feed, the look, alerts), your colour, the shared
@@ -122,13 +123,7 @@ struct SettingsView: View {
 
             moveSection
 
-            Section {
-                Text("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
-                    .feedText(.subheadline)
-            } header: {
-                header("About")
-            }
-            .listRowBackground(Theme.surface)
+            aboutSection
         }
         .scrollContentBackground(.hidden)
         // On the list itself, once: on the Journal section it was attached to each of its parts,
@@ -150,6 +145,43 @@ struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .sensoryFeedback(.selection, trigger: colourTaps)
+    }
+
+    /// The disclaimer, then "Worried? Get help now" (R4) and the NHS passages with Parent A's checks
+    /// (AI5), and the NHS's licence line, said once where it is easy to find.
+    @ViewBuilder
+    private var aboutSection: some View {
+        let data = model.store.data
+        let toCheck = NHSPassages.needsChecking(data.passageChecks,
+                                                today: PlainDate(Date(), in: data.householdSettings.timeZone)).count
+        Section {
+            Text("Records feeds; not medical advice. If you're worried, contact your midwife, health visitor or GP, or call NHS 111. In an emergency, call 999.")
+                .feedText(.subheadline)
+            NavigationLink {
+                GetHelpNowView()
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "phone.fill")
+                        .accessibilityHidden(true)
+                    Text("Worried? Get help now")
+                }
+            }
+            NavigationLink {
+                PassagesListView()
+            } label: {
+                HStack {
+                    Text("NHS information")
+                    Spacer(minLength: 8)
+                    Text(toCheck == 0 ? "All checked" : "\(toCheck) to check")
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+        } header: {
+            header("About")
+        } footer: {
+            LicenceLink()
+        }
+        .listRowBackground(Theme.surface)
     }
 
     /// "Who breastfeeds?" (DD11): asked once on the "Who did what" page, changed here.

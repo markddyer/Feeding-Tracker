@@ -123,6 +123,31 @@ struct NHSPassagesTests {
         }
     }
 
+    @Test func checksAreKeptInTheHousehold() {
+        var data = HouseholdData()
+        let t0 = at(2026, 11, 23, 9)
+        #expect(data.passageChecks.isEmpty)
+        data.setPassageCheck("night-and-day", checkedOn: date("2026-11-23"), now: t0)
+        data.setPassageCheck("night-and-day-s1", checkedOn: date("2026-11-23"), now: t0)
+        #expect(data.passageChecks == ["night-and-day": date("2026-11-23"), "night-and-day-s1": date("2026-11-23")])
+        // One Setting record each, so ticks of different passages never clash.
+        let names = Set(data.plainRecords(of: .setting).map(\.name))
+        #expect(names == ["passageCheck-night-and-day", "passageCheck-night-and-day-s1"])
+
+        // Taking the tick off: the record stays, with no date, so the other phone hears of it.
+        data.setPassageCheck("night-and-day-s1", checkedOn: nil, now: t0.addingTimeInterval(60))
+        #expect(data.passageChecks == ["night-and-day": date("2026-11-23")])
+        #expect(data.plainRecords(of: .setting).count == 2)
+
+        // The same check again changes nothing.
+        let before = data.plainRecords(of: .setting)
+        data.setPassageCheck("night-and-day", checkedOn: date("2026-11-23"), now: t0.addingTimeInterval(120))
+        #expect(data.plainRecords(of: .setting) == before)
+
+        #expect(!NHSPassages.needsChecking(data.passageChecks, today: date("2026-11-23")).contains("night-and-day"))
+        #expect(NHSPassages.needsChecking(data.passageChecks, today: date("2026-11-23")).contains("night-and-day-s1"))
+    }
+
     @Test func summariesAreGeneralAndApart() {
         for passage in NHSPassages.all {
             for summary in passage.summaries {

@@ -150,6 +150,19 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// AI insights step 1 (`12-ai-insights-gauntlet.md`, AI5): Get help now, the NHS passages list,
+    /// and one passage with its ticks.
+    func testGetHelp() {
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(["-openScreen", "getHelp"], look: look), "get help now \(look)")
+            audit(launch(["-openScreen", "nhsPassages"], look: look), "nhs passages \(look)")
+            audit(launch(["-openScreen", "nhsPassage", "-passageID", "enough-milk-signs"], look: look), "nhs passage \(look)")
+        }
+        audit(launch(["-openScreen", "getHelp"], largeText: true), "get help now large text")
+        audit(launch(["-openScreen", "nhsPassage", "-passageID", "enough-milk-signs"], largeText: true), "nhs passage large text")
+        report()
+    }
+
     func testLargeText() {
         audit(launch([], largeText: true), "home large text")
         audit(launch(["-homeAtBottom", "YES"], largeText: true), "home lower large text")

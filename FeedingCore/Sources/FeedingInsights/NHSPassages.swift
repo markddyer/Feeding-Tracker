@@ -487,3 +487,41 @@ extension InsightFacts {
         return kinds
     }
 }
+
+// MARK: Parent A's checks, kept in the household
+
+/// One passage's or summary's check, kept as a Setting record of its own ("passageCheck-<id>"), so
+/// two parents ticking different passages never clash; the later change to one wins. No date means
+/// the tick was taken off. Older builds skip these records and keep them.
+public struct PassageCheck: Hashable, Sendable, Codable {
+    public var checkedOn: PlainDate?
+
+    public init(checkedOn: PlainDate?) {
+        self.checkedOn = checkedOn
+    }
+}
+
+extension SettingKey {
+    /// Parent A's check of one NHS passage or summary (`PassageCheck`).
+    public static func passageCheck(_ id: String) -> String { "\(passageCheckPrefix)\(id)" }
+    static let passageCheckPrefix = "passageCheck-"
+}
+
+extension HouseholdData {
+    /// Every passage and summary checked, with the day of its last check.
+    public var passageChecks: PassageChecks {
+        var checks: PassageChecks = [:]
+        for record in plainRecords(of: .setting) where record.name.hasPrefix(SettingKey.passageCheckPrefix) {
+            guard let day = PayloadCoder.decode(SettingPayload<PassageCheck>.self, from: record.payload)?.value.checkedOn
+            else { continue }
+            checks[String(record.name.dropFirst(SettingKey.passageCheckPrefix.count))] = day
+        }
+        return checks
+    }
+
+    /// Records that `id` was checked against its NHS page on `day`, or, with nil, takes the tick off.
+    public mutating func setPassageCheck(_ id: String, checkedOn day: PlainDate?, now: Date) {
+        guard passageChecks[id] != day else { return }
+        putSetting(PassageCheck(checkedOn: day), key: SettingKey.passageCheck(id), now: now)
+    }
+}

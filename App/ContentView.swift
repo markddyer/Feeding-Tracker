@@ -1,4 +1,5 @@
 import FeedingCore
+import FeedingInsights
 import SwiftUI
 
 /// The app's root: once there is a household, four tabs (Home, History and Graphs, the user's
@@ -299,7 +300,8 @@ struct AlarmSpikeHooks: ViewModifier {
 /// `-openScreen history`, `settings`, `graphs`, `duo`, `earlierFeed`, `pumping`, `editLastFeed`, `editLastSleep`,
 /// `addFirst` (with `-firstTitle "First smile"` to fill What happened) or `firstPage` (with
 /// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`),
-/// or the move's two screens, `moveOut` and `moveIn` (`08-going-live.md`).
+/// or the move's two screens, `moveOut` and `moveIn` (`08-going-live.md`), or `getHelp`, `nhsPassages` and
+/// `nhsPassage` (with `-passageID night-and-day`) from AI insights step 1.
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -311,6 +313,16 @@ struct DevScreen: View {
             NavigationStack { HistoryView() }
         case "settings":
             NavigationStack { SettingsView() }
+        case "getHelp":
+            NavigationStack { GetHelpNowView() }
+        case "nhsPassages":
+            NavigationStack { PassagesListView() }
+        case "nhsPassage":
+            // With `-passageID` (`urgent-help` by default).
+            NavigationStack {
+                PassageCheckView(passage: NHSPassages.passage(UserDefaults.standard.string(forKey: "passageID") ?? "")
+                                 ?? NHSPassages.urgent)
+            }
         case "graphs":
             NavigationStack { GraphsView() }
         case "whoDidWhat":
