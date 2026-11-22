@@ -313,4 +313,128 @@ struct WatchActionsTests {
         let detailed = WatchNappy(id: "n1", at: now, wee: false, poo: true, colour: .yellow, consistency: .loose, doneBy: parentB)
         #expect(plain.onFace == detailed.onFace)
     }
+
+    // MARK: Step 2, the feed extras
+
+    func feed(_ data: inout HouseholdData, by member: MemberID = parentA, minutesAgo: Double = 30,
+              finished: Bool = true) -> String {
+        let id = data.startFeed(babyID: baby, side: nil, by: member, timeZoneID: zone, now: now.addingTimeInterval(-minutesAgo * 60))
+        if finished { _ = data.finishFeed(id, by: member, now: now.addingTimeInterval(-minutesAgo * 60 + 900)) }
+        return id
+    }
+
+    /// During a feed, as the phone: one bottle, only on this parent's own feed.
+    @Test func aBottleDuringAFeedIsOneAndOnlyOnYourOwn() {
+        var data = household()
+        let mine = feed(&data, finished: false)
+        #expect(apply(&data, .addBottle(feedID: mine, bottleID: "b1", milk: .formula, ml: nil)) == .applied)
+        #expect(apply(&data, .addBottle(feedID: mine, bottleID: "b1", milk: .formula, ml: nil)) == .unchanged)
+        #expect(apply(&data, .addBottle(feedID: mine, bottleID: "b2", milk: .expressed, ml: nil)) == .refused)
+        #expect(data.events[mine]?.snapshot.payload?.feed?.bottles.map(\.id) == ["b1"])
+        var other = household()
+        let theirs = feed(&other, by: parentB, finished: false)
+        #expect(apply(&other, .addBottle(feedID: theirs, bottleID: "b1", milk: .formula, ml: nil)) == .refused)
+    }
+
+    /// After Finish, as "Add to this feed": a side or a kind of bottle not logged yet, with an amount.
+    @Test func afterFinishASideOrABottleNotLoggedYet() {
+        var data = household()
+        let id = feed(&data)
+        #expect(apply(&data, .addSide(feedID: id, side: .left)) == .applied)
+        #expect(apply(&data, .addSide(feedID: id, side: .left)) == .unchanged)
+        #expect(apply(&data, .addBottle(feedID: id, bottleID: "b1", milk: .expressed, ml: 60)) == .applied)
+        #expect(apply(&data, .addBottle(feedID: id, bottleID: "b2", milk: .expressed, ml: 30)) == .refused)
+        let details = data.events[id]?.snapshot.payload?.feed
+        #expect(details?.breast.map(\.side) == [.left])
+        #expect(details?.bottles.first?.ml == 60)
+        #expect(data.events[id]?.uploadNotBefore == nil)
+        // A side only once the feed has finished: the watch sends it after its Finish.
+        let running = feed(&data, minutesAgo: 5, finished: false)
+        #expect(apply(&data, .addSide(feedID: running, side: .right)) == .refused)
+    }
+
+    @Test func anAmountIsSetOnce() {
+        var data = household()
+        let id = feed(&data)
+        _ = apply(&data, .addBottle(feedID: id, bottleID: "b1", milk: .formula, ml: nil))
+        #expect(apply(&data, .amount(feedID: id, bottleID: "b1", ml: 90)) == .applied)
+        #expect(apply(&data, .amount(feedID: id, bottleID: "b1", ml: 90)) == .unchanged)
+        #expect(apply(&data, .amount(feedID: id, bottleID: "none", ml: 90)) == .refused)
+        #expect(data.events[id]?.snapshot.payload?.feed?.bottles.first?.ml == 90)
+    }
+
+    /// Just finished logs a feed from the minutes chosen until the tap, once, and never over a feed
+    /// already logged then.
+    @Test func justFinishedLogsAFeedOnceAndNeverOverAnother() {
+        var data = household()
+        #expect(apply(&data, .justFinished(feedID: "j1", minutesAgo: 20)) == .applied)
+        #expect(apply(&data, .justFinished(feedID: "j1", minutesAgo: 20)) == .unchanged)
+        let event = data.events["j1"]?.event
+        #expect(event?.startedAt == now.addingTimeInterval(-1200))
+        #expect(event?.endedAt == now)
+        #expect(event?.kind == .feed)
+        // The same feed tapped on the other watch: turned down.
+        #expect(apply(&data, .justFinished(feedID: "j2", minutesAgo: 30), by: parentB) == .refused)
+        #expect(data.events["j2"] == nil)
+        // A feed running now counts until now.
+        var running = household()
+        _ = feed(&running, minutesAgo: 5, finished: false)
+        #expect(apply(&running, .justFinished(feedID: "j3", minutesAgo: 10)) == .refused)
+    }
+
+    /// Earlier logs a feed from its start for 20 minutes, or until the tap; never in the future,
+    /// never more than 12 hours back, never over another feed.
+    @Test func earlierFeedLogsTwentyMinutesFromItsStart() {
+        var data = household()
+        let start = now.addingTimeInterval(-3 * 3600)
+        #expect(apply(&data, .earlierFeed(feedID: "e1", start: start)) == .applied)
+        #expect(data.events["e1"]?.event.endedAt == start.addingTimeInterval(1200))
+        #expect(apply(&data, .earlierFeed(feedID: "e2", start: now.addingTimeInterval(-600))) == .applied)
+        #expect(data.events["e2"]?.event.endedAt == now)
+        #expect(apply(&data, .earlierFeed(feedID: "e3", start: start.addingTimeInterval(300))) == .refused)
+        #expect(apply(&data, .earlierFeed(feedID: "e4", start: now.addingTimeInterval(60))) == .refused)
+        #expect(apply(&data, .earlierFeed(feedID: "e5", start: now.addingTimeInterval(-13 * 3600))) == .refused)
+    }
+
+    /// The watch shows each at once: Finish leaves the feed's sides and bottles for "Add to this
+    /// feed", and a feed logged afterwards moves the time since the last feed only if it is later.
+    @Test func theWatchShowsTheFeedExtrasAtOnce() {
+        var state = WatchState(madeAt: now, setUp: true, lastFeedStart: now.addingTimeInterval(-600))
+        state.running = WatchFeed(id: "f1", startedAt: now.addingTimeInterval(-600), mine: true, byName: "", byColour: "teal",
+                                  side: .left, bottles: [], sides: [.left])
+        state.capabilities = WatchCapability.all
+        let withBottle = state.applying(WatchActionRequest(action: .addBottle(feedID: "f1", bottleID: "b1", milk: .formula, ml: nil),
+                                                           at: now))
+        #expect(withBottle.running?.bottles.map(\.id) == ["b1"])
+        let finished = withBottle.applying(WatchRequest(command: .finish(feedID: "f1"), at: now))
+        #expect(finished.lastFeed?.id == "f1")
+        #expect(finished.lastFeed?.details.breast.map(\.side) == [.left])
+        #expect(finished.lastFeed?.details.bottles.map(\.id) == ["b1"])
+        let measured = finished.applying(WatchActionRequest(action: .amount(feedID: "f1", bottleID: "b1", ml: 70), at: now))
+        #expect(measured.lastFeed?.details.bottles.first?.ml == 70)
+        let sided = measured.applying(WatchActionRequest(action: .addSide(feedID: "f1", side: .right), at: now))
+        #expect(sided.lastFeed?.details.breast.map(\.side) == [.left, .right])
+        // An earlier feed from before the last one doesn't move the time since it.
+        let older = sided.applying(WatchActionRequest(action: .earlierFeed(feedID: "e1", start: now.addingTimeInterval(-7200)), at: now))
+        #expect(older.lastFeedStart == now.addingTimeInterval(-600))
+        #expect(older.lastFeed?.id == "e1")
+        let later = sided.applying(WatchActionRequest(action: .justFinished(feedID: "j1", minutesAgo: 5), at: now))
+        #expect(later.lastFeedStart == now.addingTimeInterval(-300))
+    }
+
+    /// The phone tells the watch about the latest finished feed, with its details.
+    @Test func thePhoneSendsTheLastFinishedFeed() {
+        var data = household()
+        let older = feed(&data, minutesAgo: 120)
+        let newer = feed(&data, minutesAgo: 60)
+        _ = apply(&data, .addSide(feedID: newer, side: .right))
+        _ = older
+        let state = data.watchState(me: parentA, names: [parentA: "Sam"], colours: [:], bottleOnly: false, lookSetting: .automatic,
+                                    now: now)
+        #expect(state.lastFeed?.id == newer)
+        #expect(state.lastFeed?.mine == true)
+        #expect(state.lastFeed?.details.breast.map(\.side) == [.right])
+        #expect(state.understands(WatchCapability.feedExtras))
+    }
 }
+

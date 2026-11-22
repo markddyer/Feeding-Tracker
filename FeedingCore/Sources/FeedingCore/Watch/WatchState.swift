@@ -27,9 +27,11 @@ public struct WatchFeed: Codable, Hashable, Sendable {
     /// bottle-only watch then shows Left and Right too (design DD15, Codex 7). Nil from an older
     /// phone: no.
     public var breastfeed: Bool?
+    /// Every side logged so far, for "Add to this feed" after Finish (state version 3, step 2).
+    public var sides: [BreastSide]?
 
     public init(id: String, startedAt: Date, mine: Bool, byName: String, byColour: String, side: BreastSide?,
-                bottles: [Bottle], breastfeed: Bool? = nil) {
+                bottles: [Bottle], breastfeed: Bool? = nil, sides: [BreastSide]? = nil) {
         self.id = id
         self.startedAt = startedAt
         self.mine = mine
@@ -38,6 +40,28 @@ public struct WatchFeed: Codable, Hashable, Sendable {
         self.side = side
         self.bottles = bottles
         self.breastfeed = breastfeed
+        self.sides = sides
+    }
+}
+
+/// The latest feed that has finished, for "Add to this feed" on the watch (step 2 of
+/// `11-watch-parity.md`): after Finish, Just finished and Earlier, and for the parent whose feed
+/// was finished for them.
+public struct WatchLastFeed: Codable, Hashable, Sendable {
+    public var id: String
+    public var start: Date
+    public var end: Date
+    /// Its sides and bottles, with their amounts.
+    public var details: FeedDetails
+    /// Logged by this watch's parent.
+    public var mine: Bool
+
+    public init(id: String, start: Date, end: Date, details: FeedDetails, mine: Bool) {
+        self.id = id
+        self.start = start
+        self.end = end
+        self.details = details
+        self.mine = mine
     }
 }
 
@@ -145,6 +169,8 @@ public struct WatchState: Codable, Hashable, Sendable {
     /// The household's parents, for "Done by", and which one wears this watch.
     public var members: [WatchMember]?
     public var me: MemberID?
+    /// The latest finished feed (step 2).
+    public var lastFeed: WatchLastFeed?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
@@ -477,7 +503,8 @@ extension HouseholdData {
                                       byName: names[by] ?? "Other parent", byColour: colours[by] ?? "teal",
                                       side: details.breast.last.flatMap { $0.durationSeconds == nil ? $0.side : nil },
                                       bottles: details.bottles,
-                                      breastfeed: isBreastfeed(running) ? true : nil)
+                                      breastfeed: isBreastfeed(running) ? true : nil,
+                                      sides: details.breast.map(\.side))
         } else {
             state.previousFeedStart = state.lastFeedStart
         }
@@ -505,6 +532,14 @@ extension HouseholdData {
         }
         state.medicines = watchMedicines(babyID: babyID, now: now)
         state.lastBath = lastBath(babyID: babyID, now: now)
+        let hidden = hiddenDuplicates(babyID: babyID)
+        state.lastFeed = visible.filter { $0.event.isLiveFeed && $0.event.babyID == babyID && !hidden.contains($0.event.id) }
+            .compactMap { feed in feed.event.endedAt.map { (feed, $0) } }
+            .max { ($0.0.event.startedAt, $0.0.event.id) < ($1.0.event.startedAt, $1.0.event.id) }
+            .map { feed, end in
+                WatchLastFeed(id: feed.event.id, start: feed.event.startedAt, end: end,
+                              details: feed.payload?.feed ?? FeedDetails(), mine: feed.event.loggedBy == me)
+            }
         return state
     }
 
@@ -624,10 +659,17 @@ extension WatchState {
         case .switchSide(let feedID, let side):
             guard state.running?.id == feedID, state.running?.mine == true else { break }
             state.running?.side = side
+            let sides = state.running?.sides ?? []
+            if !sides.contains(side) { state.running?.sides = sides + [side] }
             state.nextSide = side.other
         case .finish(let feedID):
-            guard state.running?.id == feedID else { break }
-            if let side = state.running?.side { state.nextSide = side.other }
+            guard let running = state.running, running.id == feedID else { break }
+            if let side = running.side { state.nextSide = side.other }
+            // What "Add to this feed" asks next (step 2).
+            state.lastFeed = WatchLastFeed(id: feedID, start: running.startedAt, end: max(request.at, running.startedAt),
+                                           details: FeedDetails(breast: (running.sides ?? running.side.map { [$0] } ?? [])
+                                               .map { BreastSegment(side: $0) }, bottles: running.bottles),
+                                           mine: running.mine)
             state.running = nil
             state.previousFeedStart = state.lastFeedStart
         case .setAmount:

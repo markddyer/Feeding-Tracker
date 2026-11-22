@@ -22,6 +22,13 @@ struct WatchHomeView: View {
     @State private var pumping = false
     /// The medicine list, from page 3 when there are two or more.
     @State private var medicineList = false
+    /// "Add to this feed" after Finish, Just finished or Earlier (step 2).
+    @State private var addTo: AddToFeed?
+    /// Just finished's question, and Earlier's (from when it opened).
+    @State private var justFinishedAsk = false
+    @State private var earlierAsk: Date?
+    /// Bottle during this parent's feed: which milk.
+    @State private var bottleAsk: String?
     /// Undo, Earlier and Done by sent from a Logged card, by tap, until the phone answers: one it
     /// turns down after the card has closed opens a card that says so (outside review of step 1, P2).
     @State private var corrections: [String: LoggedCard] = [:]
@@ -36,6 +43,11 @@ struct WatchHomeView: View {
         _pooAsk = State(initialValue: WatchSamples.pooAsk())
         _pumping = State(initialValue: WatchSamples.screen == "pump")
         _medicineList = State(initialValue: WatchSamples.screen == "medicines")
+        // Step 2: `-watchScreen addToFeed`, `justFinished`, `earlierFeed` or `bottle`.
+        _addTo = State(initialValue: WatchSamples.screen == "addToFeed" ? AddToFeed(feedID: "sample-last", tap: nil) : nil)
+        _justFinishedAsk = State(initialValue: WatchSamples.screen == "justFinished")
+        _earlierAsk = State(initialValue: WatchSamples.screen == "earlierFeed" ? Date() : nil)
+        _bottleAsk = State(initialValue: WatchSamples.screen == "bottle" ? "sample" : nil)
         #endif
     }
 
@@ -162,9 +174,14 @@ struct WatchHomeView: View {
         }
     }
 
+    /// Finish, then "Add to this feed" (step 2), or on an older phone each bottle's amount.
     private func finish(_ feed: WatchFeed) {
-        link.send(.finish(feedID: feed.id))
-        question = AmountAsk(feedID: feed.id, bottles: feed.bottles.filter { $0.ml == nil })
+        let tap = link.send(.finish(feedID: feed.id))
+        if link.shown?.understands(WatchCapability.feedExtras) == true {
+            addTo = AddToFeed(feedID: feed.id, tap: tap)
+        } else {
+            question = AmountAsk(feedID: feed.id, bottles: feed.bottles.filter { $0.ml == nil })
+        }
     }
 
     @ViewBuilder
@@ -217,6 +234,30 @@ struct WatchHomeView: View {
                                     start: at.addingTimeInterval(-30 * 60), mark: .pump)
             } cancel: {
                 pumping = false
+            }
+        } else if addTo != nil, let state {
+            WatchAddToFeedScreen(state: state, ask: $addTo)
+        } else if justFinishedAsk, let state {
+            WatchJustFinishedScreen { minutes in
+                justFinishedAsk = false
+                guard let minutes else { return }
+                let id = UUID().uuidString
+                let tap = link.send(.justFinished(feedID: id, minutesAgo: minutes))
+                if state.understands(WatchCapability.feedExtras) { addTo = AddToFeed(feedID: id, tap: tap, past: true) }
+            }
+        } else if let opened = earlierAsk, let state {
+            WatchEarlierFeedScreen(state: state, opened: opened) { start in
+                earlierAsk = nil
+                guard let start else { return }
+                let id = UUID().uuidString
+                let tap = link.send(.earlierFeed(feedID: id, start: start))
+                addTo = AddToFeed(feedID: id, tap: tap, past: true)
+            }
+        } else if let feedID = bottleAsk {
+            WatchBottleChoiceScreen { milk in
+                bottleAsk = nil
+                guard let milk else { return }
+                link.sendFeedExtra(.addBottle(feedID: feedID, bottleID: UUID().uuidString, milk: milk, ml: nil), feedID: feedID)
             }
         } else if let question, let state {
             WatchAmountPicker(title: "How much \(question.bottle.milk == .formula ? "formula" : "expressed milk")?",
@@ -284,7 +325,8 @@ struct WatchHomeView: View {
     @ViewBuilder
     private func feedPage(_ state: WatchState, now: Date) -> some View {
         if let running = state.running, running.mine {
-            WatchRunningPage(state: state, feed: running, waiting: link.waitingForPhone) { command in
+            WatchRunningPage(state: state, feed: running, waiting: link.waitingForPhone,
+                             addBottle: state.understands(WatchCapability.feedExtras) ? { bottleAsk = running.id } : nil) { command in
                 if case .finish = command {
                     finish(running)
                 } else {
@@ -296,7 +338,10 @@ struct WatchHomeView: View {
                 link.send(.finish(feedID: running.id))
             }
         } else {
-            WatchIdlePage(state: state, now: now, waiting: link.waitingForPhone) { bottle in
+            let extras = state.understands(WatchCapability.feedExtras)
+            WatchIdlePage(state: state, now: now, waiting: link.waitingForPhone,
+                          justFinished: extras ? { justFinishedAsk = true } : nil,
+                          earlier: extras ? { earlierAsk = Date() } : nil) { bottle in
                 link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
             } askMilk: {
                 milkAsk = Date()

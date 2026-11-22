@@ -79,6 +79,28 @@ final class PhoneLink {
         return request.id
     }
 
+    /// The latest tap about this feed the phone hasn't answered yet. A feed extra names it
+    /// (`after`), so the phone applies them in order: a side after its Finish, an amount after its
+    /// bottle (step 2 of `11-watch-parity.md`).
+    func unansweredTap(about feedID: String) -> String? {
+        let first = saved.pending.filter { request in
+            switch request.command {
+            case .start(let id, _, _, _), .switchSide(let id, _), .finish(let id), .setAmount(let id, _, _), .discard(let id):
+                id == feedID
+            default:
+                false
+            }
+        }.map { ($0.at, $0.id) }
+        let new = saved.actions.filter { $0.entryID == feedID }.map { ($0.at, $0.id) }
+        return (first + new).max { $0.0 < $1.0 }?.1
+    }
+
+    /// Sends a feed extra after the tap about the same feed that must come first.
+    @discardableResult
+    func sendFeedExtra(_ action: WatchAction, feedID: String, now: Date = Date()) -> String {
+        send(action, after: unansweredTap(about: feedID), now: now)
+    }
+
     /// The phone's answer to a tap, once it has given one.
     func result(of id: String) -> WatchOutcome? {
         saved.phone?.result(of: id)

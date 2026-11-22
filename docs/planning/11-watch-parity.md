@@ -1,6 +1,6 @@
 # 11 · The watch does what the phone does
 
-Status: decided 21 Nov 2026 (the parents' choices below); reviewed by Codex the same night (below); the alarm fix it led to is built (`c4f74e1`); **step 1 is built** (the three no-scroll pages, Bath, Medicine, poo details, Pumping, the Logged card with Undo, Earlier and Done by, the phone's answers, capabilities, the new taps' own message and queue); steps 2 and 3 are next.
+Status: decided 21 Nov 2026 (the parents' choices below); reviewed by Codex the same night (below); the alarm fix it led to is built (`c4f74e1`); **steps 1 and 2 are built** (step 1: the three no-scroll pages, Bath, Medicine, poo details, Pumping, the Logged card with Undo, Earlier and Done by, the phone's answers, capabilities, the new taps' own message and queue; step 2: the feed extras); step 3 is next.
 Mockups (outside the repo, in this project's gstack design folder):
 `designs/watch-parity-20261121/` (round1 to round5; approved: `round5-square.html`), and
 `designs/watch-bar-20261121/built.html` (the new watch bar, built in `8fb7a19`).
@@ -229,4 +229,28 @@ All 12 findings fixed:
   the nappy's colour and consistency.
 - Checked: full `FeedingCore` suite (652) and the app tests (176); in the paired simulators, a Bath
   and a poo with its details from the watch were saved on the phone with their answers in the file.
+
+## Step 2, as built (22 Nov 2026)
+
+- FeedingCore: `WatchAction` gains `addBottle` (during this parent's feed while it has none, or
+  after it finished, a kind not logged, with an amount), `addSide` (after it finished), `amount`,
+  `justFinished` (from the minutes chosen until the tap) and `earlierFeed` (20 minutes from its
+  start, or until the tap; back to 12 hours, `watchEarliestFeed`), all under one capability,
+  `feedExtras`. A past feed is refused when a live feed is logged in its span (one running counts
+  until now). `WatchState.lastFeed` (`WatchLastFeed`: the latest finished feed with its sides and
+  bottles) and `WatchFeed.sides` feed "Add to this feed"; `applying` shows each tap at once (Finish
+  leaves the feed's details; a past feed moves the time since the last feed only if it is later).
+  Tests in `WatchActionsTests`.
+- Order: each feed extra names the latest unanswered tap about the same feed
+  (`PhoneLink.unansweredTap(about:)`, `sendFeedExtra`), so a side comes after its Finish and an
+  amount after its bottle, whichever queue each travels in.
+- The watch (`WatchFeedExtras.swift`): "Add to this feed", "Which bottle?", "Started about" and
+  "Feed started" (the Digital Crown). Page 1's row is Just finished, Earlier and Pumping; a running
+  feed has Bottle beside Left and Right. A phone without step 2 keeps the old amount questions.
+- Fit: pages now use the bottom room the system keeps free (less 8 pt for the corners); before,
+  page 1 and the Logged card ran into the corners on 42 mm. Checked on 42 and 49 mm.
+- Checked: full `FeedingCore` suite (659) and the app tests (176); in the paired simulators, Just
+  finished, then a side and a 40 ml formula bottle from the watch, all applied in order. Twice, the
+  first test tap right after a fresh install of both apps didn't arrive; a second run worked both
+  times. To watch for on the real watch.
 

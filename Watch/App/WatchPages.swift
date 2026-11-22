@@ -48,10 +48,13 @@ struct WatchPageFrame<Content: View>: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             }
         }
-        .padding(.horizontal, 3)
-        // Clear of the screen's rounded bottom corners (on the Ultra, buttons touching the bottom
-        // were clipped by them, 21 Nov 2026).
-        .padding(.bottom, 12)
+        .padding(.horizontal, 4)
+        // The system keeps about 30 pt free at the bottom, which left a band of unused space, and
+        // pages that didn't fit in what was left ran into the corners anyway (42 mm, 22 Nov 2026).
+        // So the page uses that room, and keeps its own margin clear of the rounded corners (on the
+        // Ultra, buttons touching the bottom were clipped by them, 21 Nov 2026).
+        .padding(.bottom, 8)
+        .ignoresSafeArea(.container, edges: .bottom)
         // No room kept for a large title: the label sits beside the clock, and the page starts just
         // under it (a large gap showed on the Ultra, 21 Nov 2026).
         .navigationBarTitleDisplayMode(.inline)
@@ -212,6 +215,9 @@ struct WatchIdlePage: View {
     let state: WatchState
     let now: Date
     let waiting: Bool
+    /// Just finished and Earlier (step 2), when the phone understands them.
+    var justFinished: (() -> Void)?
+    var earlier: (() -> Void)?
     let start: (MilkKind?) -> Void
     /// A bottle-only watch's Start: "Formula or expressed?" (and "Breastfeed (Sam)" when named),
     /// never assuming the milk (Parent A, 21 Nov 2026).
@@ -243,10 +249,11 @@ struct WatchIdlePage: View {
             if let steps = state.windowSteps(at: now) {
                 let line = steps.line(state.clock)
                 VStack(alignment: .leading, spacing: 2) {
+                    // One line on a small watch, so page 1 fits; two on a large one.
                     Text("\(Text(line.main).fontWeight(.semibold).foregroundStyle(palette.text))\(Text(line.more).foregroundStyle(palette.textMuted))")
                         .watchText(.note)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
+                        .lineLimit(metrics.small ? 1 : 2)
+                        .minimumScaleFactor(metrics.small ? 0.7 : 0.85)
                         .fixedSize(horizontal: false, vertical: true)
                     // No times under the bar: the line above it says when the alert is, and the
                     // larger words need the room (Parent A, 21 Nov 2026).
@@ -258,9 +265,21 @@ struct WatchIdlePage: View {
             if waiting { WaitingLine() }
             Spacer(minLength: 3)
             WatchTileRow(metrics: metrics, short: true) {
+                if let justFinished {
+                    WatchTile(title: "Just finished", metrics: metrics, short: true) {
+                        Image(systemName: "checkmark").foregroundStyle(palette.textMuted)
+                    } action: { justFinished() }
+                    .accessibilityLabel("Log a feed that just finished")
+                }
+                if let earlier {
+                    WatchTile(title: "Earlier", metrics: metrics, short: true) {
+                        Image(systemName: "clock.arrow.circlepath").foregroundStyle(palette.textMuted)
+                    } action: { earlier() }
+                    .accessibilityLabel("Log an earlier feed")
+                }
                 if state.understands(WatchCapability.pump) {
-                    // Alone in the row until step 2 adds Just finished and Earlier beside it.
-                    WatchTile(title: "Pumping", metrics: metrics, short: true, wide: true) {
+                    // The width of the row when it is alone (a phone without step 2).
+                    WatchTile(title: "Pumping", metrics: metrics, short: true, wide: justFinished == nil && earlier == nil) {
                         DropsShape().fill(palette.textMuted).frame(width: 15, height: 15)
                     } action: { pumping() }
                 }
@@ -275,6 +294,8 @@ struct WatchRunningPage: View {
     let state: WatchState
     let feed: WatchFeed
     let waiting: Bool
+    /// Bottle, beside Left and Right while the feed has none (step 2), when the phone understands it.
+    var addBottle: (() -> Void)?
     let send: (WatchCommand) -> Void
     @State private var discarding = false
     @Environment(\.watchLook) private var look
@@ -315,6 +336,13 @@ struct WatchRunningPage: View {
                             send(.switchSide(feedID: feed.id, side: side))
                         }
                         .accessibilityLabel(feed.side == nil && state.nextSide == side ? "\(title), suggested" : title)
+                    }
+                    // Goes once a bottle is added, as on the phone; more after Finish.
+                    if let addBottle, feed.bottles.isEmpty {
+                        WatchTile(title: "Bottle", metrics: metrics) {
+                            BottleShape().fill(palette.bottle).frame(width: 16, height: 16)
+                        } action: { addBottle() }
+                        .accessibilityLabel("Add a bottle to this feed")
                     }
                 }
             }
@@ -410,7 +438,7 @@ struct WatchCarePage: View {
             WatchHero {
                 if let sleep = state.sleep {
                     WatchBigNumber(text: GlanceText.elapsed(now.timeIntervalSince(sleep.since)),
-                                   note: Text("\(asleep ? "asleep" : "awake") since \(Text(state.clock(sleep.since)).foregroundStyle(palette.text))"))
+                                   note: Text("since \(Text(state.clock(sleep.since)).foregroundStyle(palette.text))"))
                         .accessibilityElement(children: .ignore)
                         .accessibilityLabel(CareText.spokenSleep(sleep, now: now))
                 } else {

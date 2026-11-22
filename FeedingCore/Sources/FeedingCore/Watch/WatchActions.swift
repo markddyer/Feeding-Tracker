@@ -28,6 +28,21 @@ public enum WatchAction: Codable, Hashable, Sendable {
     /// Undo on the Logged card: removes an entry the watch just logged (not a feed: its Stop ·
     /// discard does that, and step 3 adds the rest).
     case undo(id: String)
+
+    // Step 2, the feed extras (W-D1). The watch picks each new ID, and names the tap about the
+    // same feed that must come first (`WatchActionRequest.after`), so they arrive in order.
+
+    /// A bottle: during this parent's feed while it has none (the phone's Bottle), or after it
+    /// finished, of a kind not logged yet ("Add to this feed"), with its amount when one was chosen.
+    case addBottle(feedID: String, bottleID: String, milk: MilkKind, ml: Int?)
+    /// A side not logged yet, after the feed finished.
+    case addSide(feedID: String, side: BreastSide)
+    /// A bottle's amount.
+    case amount(feedID: String, bottleID: String, ml: Int)
+    /// "Just finished": a feed from `minutesAgo` before the tap until the tap.
+    case justFinished(feedID: String, minutesAgo: Int)
+    /// "Earlier": a feed from `start`, for 20 minutes or until the tap (the phone's default).
+    case earlierFeed(feedID: String, start: Date)
 }
 
 /// A new tap, with when it was made and the tap it depends on.
@@ -53,6 +68,9 @@ public struct WatchActionRequest: Codable, Hashable, Sendable, Identifiable {
              .doneBy(let id, _), .undo(let id):
             id
         case .pooDetails(let id, _, _):
+            id
+        case .addBottle(let id, _, _, _), .addSide(let id, _), .amount(let id, _, _), .justFinished(let id, _),
+             .earlierFeed(let id, _):
             id
         }
     }
@@ -117,9 +135,11 @@ public enum WatchCapability {
     public static let undo = "undo"
     /// The phone answers each tap (`WatchState.results`).
     public static let results = "results"
+    /// Step 2: a bottle or side added, an amount, Just finished and Earlier feed.
+    public static let feedExtras = "feedExtras"
 
     /// Everything this version understands.
-    public static let all = [bath, medicine, pump, pooDetails, earlier, doneBy, undo, results]
+    public static let all = [bath, medicine, pump, pooDetails, earlier, doneBy, undo, results, feedExtras]
 }
 
 extension WatchActionRequest {
@@ -133,6 +153,7 @@ extension WatchActionRequest {
         case .earlier: WatchCapability.earlier
         case .doneBy: WatchCapability.doneBy
         case .undo: WatchCapability.undo
+        case .addBottle, .addSide, .amount, .justFinished, .earlierFeed: WatchCapability.feedExtras
         }
     }
 }
@@ -145,6 +166,9 @@ public let watchTapLifetime: TimeInterval = 25 * 3600
 /// few seconds, and a tap kept while the phone was out of reach mustn't remove an entry the other
 /// parent may have corrected since (outside review of `11-watch-parity.md`).
 public let watchUndoWindow: TimeInterval = 10 * 60
+
+/// How far back the watch's Earlier feed goes: 12 hours, in 5-minute steps.
+public let watchEarliestFeed: TimeInterval = 12 * 3600
 
 /// The kinds the watch's Earlier and Undo work on in step 1: not feeds.
 let watchCareKinds: Set<EventKind> = [.nappy, .bath, .medicine, .pump, .sleep]
@@ -210,9 +234,74 @@ extension HouseholdData {
                   event.kind != .sleep || event.endedAt == nil else { return .refused }
             if !undoAdd(id, now: now) { delete(id, by: me, now: max(now, event.startedAt)) }
             outcome = .applied
+        case .addBottle(let id, let bottleID, let milk, let ml):
+            guard let feed = events[id]?.snapshot, feed.event.isLiveFeed else { return .refused }
+            let details = feed.payload?.feed ?? FeedDetails()
+            guard !details.bottles.contains(where: { $0.id == bottleID }) else { return .unchanged }
+            // As the phone: while the feed runs, only the parent who started it adds its one
+            // bottle; afterwards, a kind not logged yet (`DetailChoices`).
+            if feed.event.endedAt == nil {
+                guard feed.event.loggedBy == me, details.bottles.isEmpty else { return .refused }
+            } else {
+                guard !details.bottles.contains(where: { $0.milk == milk }) else { return .refused }
+            }
+            outcome = editFeedDetails(id, by: me, now: max(at, feed.event.startedAt)) {
+                $0.bottles.append(Bottle(id: bottleID, milk: milk, ml: ml.map { min(300, max(5, $0)) }))
+            }
+        case .addSide(let id, let side):
+            guard let feed = events[id]?.snapshot, feed.event.isLiveFeed, feed.event.endedAt != nil else { return .refused }
+            guard !(feed.payload?.feed?.breast ?? []).contains(where: { $0.side == side }) else { return .unchanged }
+            outcome = editFeedDetails(id, by: me, now: max(at, feed.event.startedAt)) {
+                $0.breast.append(BreastSegment(side: side))
+            }
+        case .amount(let id, let bottleID, let ml):
+            guard let feed = events[id]?.snapshot, feed.event.isLiveFeed,
+                  let bottle = feed.payload?.feed?.bottles.first(where: { $0.id == bottleID }) else { return .refused }
+            let ml = min(300, max(5, ml))
+            guard bottle.ml != ml else { return .unchanged }
+            outcome = editFeedDetails(id, by: me, now: max(at, feed.event.startedAt)) { details in
+                if let index = details.bottles.firstIndex(where: { $0.id == bottleID }) { details.bottles[index].ml = ml }
+            }
+        case .justFinished(let id, let minutesAgo):
+            guard events[id] == nil else { return .unchanged }
+            guard (1...180).contains(minutesAgo) else { return .refused }
+            outcome = addPastFeed(id, babyID: babyID, from: at.addingTimeInterval(-Double(minutesAgo) * 60), to: at, by: me,
+                                  timeZoneID: timeZoneID, now: at)
+        case .earlierFeed(let id, let start):
+            guard events[id] == nil else { return .unchanged }
+            // Back to 12 hours, as the watch's Digital Crown offers; never after the tap.
+            guard start <= at, at.timeIntervalSince(start) <= watchEarliestFeed + 60 else { return .refused }
+            outcome = addPastFeed(id, babyID: babyID, from: start, to: min(start.addingTimeInterval(20 * 60), at), by: me,
+                                  timeZoneID: timeZoneID, now: at)
         }
         if outcome == .applied { events[request.entryID]?.uploadNotBefore = nil }
         return outcome
+    }
+
+    /// Changes a feed's sides and bottles, as the phone's details panel does.
+    private mutating func editFeedDetails(_ id: String, by me: MemberID, now: Date,
+                                          _ change: (inout FeedDetails) -> Void) -> WatchOutcome {
+        let changed = edit(id, by: me, now: now) { snapshot in
+            var details = snapshot.payload?.feed ?? FeedDetails()
+            change(&details)
+            snapshot.payload?.feed = details
+        }
+        return changed ? .applied : .refused
+    }
+
+    /// A finished feed logged afterwards, as the phone's Just finished and Earlier. Turned down
+    /// when a feed is already logged in its span (one running counts until now), so a tap that
+    /// arrives late, or twice from two watches, can't log the same feed twice (outside review of
+    /// `11-watch-parity.md`).
+    private mutating func addPastFeed(_ id: String, babyID: String, from start: Date, to end: Date, by me: MemberID,
+                                      timeZoneID: String, now: Date) -> WatchOutcome {
+        let clash = allEvents.contains {
+            $0.isLiveFeed && $0.babyID == babyID && $0.startedAt < end && ($0.endedAt ?? max(now, end)) > start
+        }
+        guard !clash else { return .refused }
+        add(id: id, kind: .feed, babyID: babyID, startedAt: start, endedAt: end, payload: EventPayload(feed: FeedDetails()),
+            by: me, timeZoneID: timeZoneID, now: now)
+        return .applied
     }
 
     /// The household's medicines, with when each was last given, for page 3.
@@ -228,6 +317,16 @@ extension HouseholdData {
 }
 
 extension WatchState {
+    /// A feed logged afterwards, shown at once. Only while no feed runs (the phone turns it down
+    /// otherwise); the window moves only if it is the latest.
+    mutating func showPastFeed(_ id: String, from start: Date, to end: Date) {
+        guard running == nil, lastFeed?.id != id else { return }
+        lastFeed = WatchLastFeed(id: id, start: start, end: end, details: FeedDetails(), mine: true)
+        let latest = max(start, lastFeedStart ?? start)
+        lastFeedStart = latest
+        previousFeedStart = latest
+    }
+
     /// True when the phone understands this new tap.
     public func understands(_ capability: String) -> Bool {
         capabilities?.contains(capability) ?? false
@@ -272,6 +371,30 @@ extension WatchState {
         case .pump, .undo:
             // Nothing on the watch's pages shows pumping; an Undo shows once the phone answers.
             break
+        case .addBottle(let id, let bottleID, let milk, let ml):
+            let bottle = Bottle(id: bottleID, milk: milk, ml: ml)
+            if state.running?.id == id, state.running?.bottles.contains(where: { $0.id == bottleID }) == false {
+                state.running?.bottles.append(bottle)
+            }
+            if state.lastFeed?.id == id, state.lastFeed?.details.bottles.contains(where: { $0.id == bottleID }) == false {
+                state.lastFeed?.details.bottles.append(bottle)
+            }
+            state.lastMilk = milk
+        case .addSide(let id, let side):
+            if state.lastFeed?.id == id, state.lastFeed?.details.breast.contains(where: { $0.side == side }) == false {
+                state.lastFeed?.details.breast.append(BreastSegment(side: side))
+            }
+        case .amount(let id, let bottleID, let ml):
+            if state.running?.id == id, let index = state.running?.bottles.firstIndex(where: { $0.id == bottleID }) {
+                state.running?.bottles[index].ml = ml
+            }
+            if state.lastFeed?.id == id, let index = state.lastFeed?.details.bottles.firstIndex(where: { $0.id == bottleID }) {
+                state.lastFeed?.details.bottles[index].ml = ml
+            }
+        case .justFinished(let id, let minutesAgo):
+            state.showPastFeed(id, from: request.at.addingTimeInterval(-Double(minutesAgo) * 60), to: request.at)
+        case .earlierFeed(let id, let start):
+            state.showPastFeed(id, from: start, to: min(start.addingTimeInterval(20 * 60), request.at))
         }
         return state
     }

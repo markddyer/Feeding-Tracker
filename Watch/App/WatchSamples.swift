@@ -30,6 +30,10 @@ enum WatchSamples {
         // Step 1 of `11-watch-parity.md`: a phone that understands the new taps, one medicine, a
         // bath yesterday, and the two parents ("Alex" wears this watch; both names are made up).
         state.capabilities = WatchCapability.all
+        // The last feed, finished, for "Add to this feed" (`-watchScreen addToFeed`): the left
+        // side logged, so it asks Right, Formula and Expressed.
+        state.lastFeed = WatchLastFeed(id: "sample-last", start: lastFeed, end: lastFeed.addingTimeInterval(20 * 60),
+                                       details: FeedDetails(breast: [BreastSegment(side: .left)]), mine: true)
         state.medicines = [WatchMedicine(name: "Vitamin D", lastGiven: now.addingTimeInterval(-12 * 3600))]
         state.lastBath = now.addingTimeInterval(-26 * 3600)
         state.me = MemberID(rawValue: "sample-alex")
@@ -137,6 +141,12 @@ enum WatchSamples {
             case "bath":
                 // Step 1 of `11-watch-parity.md`: a new tap, with the phone's answer.
                 link.send(.bath(id: UUID().uuidString))
+            case "justFinished":
+                // Step 2: a feed that just finished, then a side for it, which waits for the feed.
+                let id = UUID().uuidString
+                link.send(.justFinished(feedID: id, minutesAgo: 20))
+                link.sendFeedExtra(.addSide(feedID: id, side: .left), feedID: id)
+                link.sendFeedExtra(.addBottle(feedID: id, bottleID: UUID().uuidString, milk: .formula, ml: 40), feedID: id)
             case "pooDetails":
                 // A poo, then its details, which wait for the poo on the phone.
                 let id = UUID().uuidString
