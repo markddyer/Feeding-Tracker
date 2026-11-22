@@ -371,11 +371,19 @@ public struct WatchSaved: Codable, Hashable, Sendable {
         let undone = Set(actions.compactMap { if case .undo(let id) = $0.action { id } else { nil } })
         // A nappy or Fell asleep is the first kind of tap (`pending`): undone, it isn't shown either
         // (outside review of step 1, P2).
-        let state = pending.filter { !undone.contains($0.createdID ?? "") }.reduce(phone) { state, request in
-            state?.applying(request)
-        }
-        return actions.filter { !undone.contains($0.entryID) || $0.action == .undo(id: $0.entryID) }
-            .reduce(state) { state, request in state?.applying(request) }
+        // Both kinds of tap in the order they were made: Finish, Undo of Finish, Finish again
+        // shows a finished feed (outside review of step 3).
+        enum Tap { case first(WatchRequest), new(WatchActionRequest) }
+        let taps = pending.filter { !undone.contains($0.createdID ?? "") }.map { (at: $0.at, tap: Tap.first($0)) }
+            + actions.filter { !undone.contains($0.entryID) || $0.action == .undo(id: $0.entryID) }
+                .map { (at: $0.at, tap: Tap.new($0)) }
+        return taps.enumerated().sorted { ($0.element.at, $0.offset) < ($1.element.at, $1.offset) }
+            .reduce(phone) { state, item in
+                switch item.element.tap {
+                case .first(let request): state?.applying(request)
+                case .new(let request): state?.applying(request)
+                }
+            }
     }
 
     /// Takes a state from the phone, unless it is older than the one already held (messages can
@@ -465,10 +473,15 @@ public struct WatchReceipts: Codable, Hashable, Sendable {
         results.last { $0.id == id }?.outcome
     }
 
-    /// Notes a tap's answer. `waiting` isn't an answer: that tap comes again.
-    public mutating func record(_ id: String, _ outcome: WatchOutcome) {
+    /// Notes a tap's answer, and when it was applied. `waiting` isn't an answer: that tap comes again.
+    public mutating func record(_ id: String, _ outcome: WatchOutcome, at: Date? = nil) {
         guard outcome != .waiting, self.outcome(of: id) == nil else { return }
-        results = Array((results + [WatchResult(id: id, outcome: outcome)]).suffix(Self.kept))
+        results = Array((results + [WatchResult(id: id, outcome: outcome, at: outcome == .applied ? at : nil)]).suffix(Self.kept))
+    }
+
+    /// When this tap was applied, if it was: what a rota Undo checks.
+    public func made(_ id: String) -> Date? {
+        results.last { $0.id == id && $0.outcome == .applied }?.at
     }
 
     /// What the watch is told: the latest answers, then `extra` (an answer given again to a tap
@@ -476,7 +489,8 @@ public struct WatchReceipts: Codable, Hashable, Sendable {
     /// still waiting.
     public func told(_ extra: [WatchResult] = []) -> (handled: [String], results: [WatchResult]) {
         let again = Set(extra.map(\.id))
-        let latest = results.suffix(Self.told).filter { !again.contains($0.id) } + extra
+        let latest = (results.suffix(Self.told).filter { !again.contains($0.id) } + extra)
+            .map { WatchResult(id: $0.id, outcome: $0.outcome) }
         return (latest.filter { $0.outcome != .waiting }.map(\.id), latest)
     }
 
@@ -645,7 +659,9 @@ extension HouseholdData {
             // that began after it.
             guard let sleep = events[sleepID]?.event, sleep.kind == .sleep, sleep.deletedAt == nil else { return .refused }
             guard sleep.endedAt == nil else { return .unchanged }
-            let ended = endSleep(babyID: babyID, at: max(at, sleep.startedAt), by: me, now: max(at, sleep.startedAt))
+            // The wake-up ID names the tap, so Woke up's corrections find every sleep it ended.
+            let ended = endSleep(babyID: babyID, at: max(at, sleep.startedAt), by: me, now: max(at, sleep.startedAt),
+                                 wakeID: Self.watchWakeID(request.id))
             guard !ended.isEmpty else { return .refused }
             alsoChanged = ended
         case .nappy(let nappyID, let wee, let poo):

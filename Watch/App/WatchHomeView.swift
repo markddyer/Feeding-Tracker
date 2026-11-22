@@ -121,13 +121,14 @@ struct WatchHomeView: View {
         #endif
     }
 
-    /// Page 3's rows with a tap the phone hasn't saved yet: "bath", or a medicine's name. One
-    /// undone before the phone heard isn't waiting to be shown.
+    /// Page 3's rows with a tap the phone hasn't saved yet: "bath", a medicine's name, or
+    /// "tonight" for a rota tap. One undone before the phone heard isn't waiting to be shown.
     private var waitingRows: Set<String> {
         let actions = link.saved.actions
         let undone = Set(actions.compactMap { if case .undo(let id) = $0.action { id } else { nil } })
         return Set(actions.compactMap { request in
             guard !undone.contains(request.entryID) else { return nil }
+            if request.capability == WatchCapability.tonight { return "tonight" }
             switch request.action {
             case .bath: return "bath"
             case .medicine(_, let name): return name
@@ -202,7 +203,17 @@ struct WatchHomeView: View {
     /// Finish, then "Add to this feed" (step 2), or on an older phone each bottle's amount.
     private func finish(_ feed: WatchFeed) {
         let at = Date()
-        let tap = link.send(.finish(feedID: feed.id), now: at)
+        // Finish again after an Undo of Finish the phone hasn't answered: sent after it, so they
+        // arrive in order (outside review of step 3).
+        let tap: String
+        if let undo = link.saved.actions.last(where: {
+            if case .undoFinish(let id, _) = $0.action { return id == feed.id }
+            return false
+        }) {
+            tap = link.send(.refinish(feedID: feed.id), after: undo.id, now: at)
+        } else {
+            tap = link.send(.finish(feedID: feed.id), now: at)
+        }
         if link.shown?.understands(WatchCapability.feedExtras) == true {
             addTo = AddToFeed(feedID: feed.id, tap: tap, finishedAt: at)
         } else {
@@ -262,7 +273,12 @@ struct WatchHomeView: View {
                 pumping = false
             }
         } else if addTo != nil, let state {
-            WatchAddToFeedScreen(state: state, ask: $addTo)
+            WatchAddToFeedScreen(state: state, ask: $addTo) { tap, feed in
+                // An Undo of Finish the phone turns down after the panel has gone says so.
+                corrections[tap] = LoggedCard(id: tap, entryID: feed, title: "Feed finished", at: Date(), mark: .feed,
+                                              canUndo: false, canEarlier: false, canDoneBy: false,
+                                              notice: "Undo not saved: the feed stays finished")
+            }
         } else if justFinishedAsk, let state {
             WatchJustFinishedScreen { minutes in
                 justFinishedAsk = false
@@ -398,7 +414,7 @@ struct WatchHomeView: View {
             // Undo, Earlier and "who got up" (step 3), on a phone that understands them.
             let ends = state.understands(WatchCapability.ends)
             logged = LoggedCard(id: request, entryID: id, title: "Woke up logged", at: at, mark: .awake,
-                                canUndo: ends, canEarlier: ends, canDoneBy: ends, undo: .undoWake(sleepID: id, end: at),
+                                canUndo: ends, canEarlier: ends, canDoneBy: ends, undo: .undoWake(sleepID: id, wakeTap: request),
                                 gotUpEnd: at)
         default:
             break
@@ -415,13 +431,14 @@ struct WatchHomeView: View {
         case .take:
             let tap = link.send(.claimNight(night: night), now: at)
             logged = LoggedCard(id: tap, entryID: "night-\(night)", title: "You're on tonight", at: at, mark: .night,
-                                canEarlier: false, canDoneBy: false, undo: .undoTake(night: night))
+                                canEarlier: false, canDoneBy: false, undo: .undoTake(night: night, claimTap: tap))
         case .ask:
             let tap = link.send(.askNight(night: night), now: at)
             logged = LoggedCard(id: tap, entryID: "night-\(night)", title: "You asked \(other)", at: at, mark: .night,
-                                canEarlier: false, canDoneBy: false, undo: .withdrawAsk(night: night))
+                                canEarlier: false, canDoneBy: false, undo: .withdrawAsk(night: night, askTap: tap))
         case .decline:
-            link.send(.declineAsk(night: night), now: at)
+            // "Not tonight" to the ask the watch showed, never a later one.
+            link.send(.declineAsk(night: night, askedAt: tonight.askedAt ?? .distantPast), now: at)
         case .bothPhones:
             link.send(.bothPhones(night: night), now: at)
         }

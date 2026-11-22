@@ -28,14 +28,18 @@ public struct WatchTonight: Codable, Hashable, Sendable {
     public var ask: Ask
     /// The other parent, if there is one.
     public var other: MemberID?
+    /// When the ask shown was made: "Not tonight" answers only that one (outside review of step 3).
+    public var askedAt: Date?
 
-    public init(night: PlainDate, onDuty: MemberID?, noRota: Bool, taken: Bool, ask: Ask, other: MemberID?) {
+    public init(night: PlainDate, onDuty: MemberID?, noRota: Bool, taken: Bool, ask: Ask, other: MemberID?,
+                askedAt: Date? = nil) {
         self.night = night
         self.onDuty = onDuty
         self.noRota = noRota
         self.taken = taken
         self.ask = ask
         self.other = other
+        self.askedAt = askedAt
     }
 
     /// What the watch offers, as the phone's Nights tile and ask card do.
@@ -64,14 +68,17 @@ extension HouseholdData {
         let state = householdState
         let onDuty = state.onDuty(night: night)
         let nights = state.nights(around: night, before: 5, after: 1)
-        let ask: WatchTonight.Ask = switch nightAskStatus(night: night, me: me) {
+        let status = nightAskStatus(night: night, me: me)
+        let ask: WatchTonight.Ask = switch status {
         case .askedOfMe?: .askedOfMe
         case .waiting?: .waiting
         case .declined?: .declined
         case .taken?, nil: .none
         }
+        var askedAt: Date?
+        if case .askedOfMe(let shown)? = status { askedAt = shown.askedAt }
         return WatchTonight(night: night, onDuty: onDuty, noRota: state.rota == nil && nights.allSatisfy { $0.onDuty == nil },
-                            taken: state.claim(for: night) != nil && other != nil, ask: ask, other: other)
+                            taken: state.claim(for: night) != nil && other != nil, ask: ask, other: other, askedAt: askedAt)
     }
 
     /// Applies a rota tap from the watch. A night already past is turned down.
@@ -87,12 +94,15 @@ extension HouseholdData {
             guard night >= tonight else { return .refused }
             if case .waiting? = nightAskStatus(night: night, me: me) { return .unchanged }
             return askNight(night, by: me, now: now) ? .applied : .refused
-        case .declineAsk(let night):
-            guard case .askedOfMe? = nightAskStatus(night: night, me: me) else { return .refused }
+        case .declineAsk(let night, let askedAt):
+            guard case .askedOfMe(let ask)? = nightAskStatus(night: night, me: me),
+                  abs(ask.askedAt.timeIntervalSince(askedAt)) < 0.001 else { return .refused }
             declineAsk(night, by: me, now: now)
             return .applied
-        case .withdrawAsk(let night):
-            guard let ask = nightAsk(for: night), ask.askedBy == me else { return .refused }
+        case .withdrawAsk(let night, let askTap):
+            // Only the ask that tap made: not one made on the phone (outside review of step 3).
+            guard let made = watchReceipts.made(askTap), let ask = nightAsk(for: night), ask.askedBy == me,
+                  abs(ask.askedAt.timeIntervalSince(made)) < 1 else { return .refused }
             guard !ask.withdrawn else { return .unchanged }
             withdrawAsk(night, by: me, now: now)
             return .applied
@@ -101,10 +111,11 @@ extension HouseholdData {
             guard householdState.bothPhonesInForce(night: night) == nil else { return .unchanged }
             setBothPhones(night, by: me, now: now)
             return .applied
-        case .undoTake(let night):
-            // Only a claim made a moment ago, as the Logged card's Undo; once sent, both phones
-            // alert instead (`undoTake`), so nothing goes quiet.
-            guard let claim = householdState.claim(for: night), claim.member == me,
+        case .undoTake(let night, let claimTap):
+            // Only the claim that tap made, a moment ago, as the Logged card's Undo; once sent, both
+            // phones alert instead (`undoTake`), so nothing goes quiet.
+            guard let made = watchReceipts.made(claimTap), let claim = householdState.claim(for: night), claim.member == me,
+                  abs(claim.claimedAt.timeIntervalSince(made)) < 1,
                   now.timeIntervalSince(claim.claimedAt) <= watchUndoWindow else { return .refused }
             undoTake(night, by: me, now: now)
             return .applied
@@ -115,21 +126,25 @@ extension HouseholdData {
 }
 
 extension WatchState {
+    /// The night that is on now, or by day the one coming, on the household's clock: the watch's
+    /// Tonight is out of date once this differs from `tonight.night` (outside review of step 3).
+    public func currentNight(at now: Date) -> PlainDate {
+        switch dayHours.period(at: now, in: timeZone) {
+        case .night(let night): night
+        case .day(let day): day
+        }
+    }
+
     /// A rota tap, shown at once.
     mutating func showNight(_ action: WatchAction) {
         guard var tonight else { return }
+        // Who is on changes only once the phone has it: until then neither phone may alert as the
+        // watch would say (outside review of step 3), so the row says "Waiting for iPhone".
         switch action {
-        case .claimNight(let night) where night == tonight.night:
-            tonight.onDuty = me
-            tonight.taken = tonight.other != nil
-            tonight.ask = .none
         case .askNight(let night) where night == tonight.night:
             tonight.ask = .waiting
-        case .declineAsk(let night) where night == tonight.night, .withdrawAsk(let night) where night == tonight.night:
+        case .declineAsk(let night, _) where night == tonight.night, .withdrawAsk(let night, _) where night == tonight.night:
             tonight.ask = .none
-        case .bothPhones(let night) where night == tonight.night:
-            tonight.onDuty = nil
-            tonight.taken = false
         default:
             return
         }

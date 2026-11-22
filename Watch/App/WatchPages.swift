@@ -577,9 +577,13 @@ struct WatchTodayPage: View {
                 .accessibilityLabel("Medicine: \(medicines.count) on your list. Opens the list")
             }
             if let open = tonight, let night = state.tonight, state.understands(WatchCapability.tonight) {
+                // Out of date once the night has changed and the phone hasn't said who is on: never
+                // last night's rota (outside review of step 3). A tap not yet saved says so.
+                let stale = night.night != state.currentNight(at: now)
+                let note = stale || waiting.contains("tonight") ? "Waiting for iPhone" : TonightText.short(night, state: state)
                 Spacer(minLength: metrics.gap)
                 Button(action: open) {
-                    WatchCareRow(title: "Tonight", note: TonightText.short(night, state: state), metrics: metrics) {
+                    WatchCareRow(title: "Tonight", note: note, metrics: metrics) {
                         MoonShape().fill(palette.sleep).frame(width: 15, height: 15)
                     } trailing: {
                         Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(palette.textMuted)
@@ -587,7 +591,8 @@ struct WatchTodayPage: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Tonight: \(TonightText.short(night, state: state)). Opens tonight's choices")
+                .disabled(stale)
+                .accessibilityLabel("Tonight: \(note). Opens tonight's choices")
             }
             Spacer(minLength: 0)
         }

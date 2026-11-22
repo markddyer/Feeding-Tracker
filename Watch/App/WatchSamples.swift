@@ -41,7 +41,7 @@ enum WatchSamples {
         // (Sam asks), otherwise nobody on.
         let sam = MemberID(rawValue: "sample-sam")
         let me = MemberID(rawValue: "sample-alex")
-        let tonightNight = PlainDate(now, in: TimeZone(identifier: "Europe/London") ?? .current)
+        let tonightNight = state.currentNight(at: now)
         switch UserDefaults.standard.string(forKey: "sampleTonight") {
         case "me": state.tonight = WatchTonight(night: tonightNight, onDuty: me, noRota: false, taken: true, ask: .none, other: sam)
         case "other": state.tonight = WatchTonight(night: tonightNight, onDuty: sam, noRota: false, taken: true, ask: .none, other: sam)
@@ -113,7 +113,7 @@ enum WatchSamples {
         // `-watchScreen woke`: the card after Woke up, with "who got up" (step 3).
         if screen == "woke" {
             return LoggedCard(id: "sample-tap", entryID: "sample-sleep", title: "Woke up logged", at: now, mark: .awake,
-                              undo: .undoWake(sleepID: "sample-sleep", end: now), gotUpEnd: now)
+                              undo: .undoWake(sleepID: "sample-sleep", wakeTap: "sample-tap"), gotUpEnd: now)
         }
         guard screen == "logged" else { return nil }
         return LoggedCard(id: "sample-tap", entryID: "sample-nappy", title: "Wee logged", at: now, mark: .nappy(wee: true, poo: false))

@@ -290,3 +290,24 @@ All 12 findings fixed:
 - Checked: full `FeedingCore` suite (670) and the app tests (176); screenshots on 42 and 49 mm.
   Not yet tried between the paired simulators or on the phones.
 
+### Codex review of step 3 (gpt-6.2-sol, 22 Nov 2026), and the fixes
+
+11 findings (9 medium, 2 small), all fixed:
+
+- Woke up from the watch gives its wake-up the ID "watch:<tap>" (`watchWakeID`). Its corrections
+  name that tap (`gotUp`, `undoWake`, and a new `wokeEarlier`, apart from Fell asleep's `earlier`),
+  and change every sleep that wake-up ended, and nothing another wake-up ended (`wokenBy`).
+- A rota Undo names the tap that made the claim or ask (`undoTake(claimTap:)`,
+  `withdrawAsk(askTap:)`); the phone keeps when each tap was applied (`WatchResult.at`,
+  `WatchReceipts.made`) and takes back only that claim or ask, never one made on the phone.
+  "Not tonight" answers only the ask the watch showed (`declineAsk(askedAt:)`).
+- "I'll take it" and "Both phones tonight" change who the watch shows on only once the phone has
+  them; until then the Tonight row says "Waiting for iPhone". Tonight from an earlier night (the
+  household's night has changed, `WatchState.currentNight`) says "Waiting for iPhone" and can't be
+  tapped.
+- Undo of Finish reopens the side Finish closed and puts it last, keeping a side added since;
+  "Add to this feed" stays for its Undo when nothing is left to ask; a refused Undo opens a card
+  saying so. Finish after an unanswered Undo of Finish is sent after it (`refinish`), and the
+  watch replays waiting taps in the order they were made (`WatchSaved.shown`).
+- Checked: full `FeedingCore` suite (673) and the app tests (176); screenshots on 42 mm.
+

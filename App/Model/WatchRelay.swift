@@ -44,7 +44,7 @@ final class WatchRelay: NSObject {
         let (outcome, saved) = model.store.changeChecked { data -> WatchOutcome in
             if let earlier, data.watchReceipts.results.isEmpty { data.watchReceipts = earlier }
             let outcome = body(&data)
-            data.watchReceipts.record(id, outcome)
+            data.watchReceipts.record(id, outcome, at: Date())
             return outcome
         }
         guard saved else {

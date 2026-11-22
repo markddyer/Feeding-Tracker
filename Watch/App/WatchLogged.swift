@@ -236,7 +236,10 @@ struct WatchLoggedScreen: View {
                 HStack(spacing: metrics.gap) {
                     ForEach(row, id: \.self) { minutes in
                         wide("\(minutes) min earlier", metrics) {
-                            sendCorrection(.earlier(id: card.entryID, minutes: minutes, expected: card.start ?? card.at),
+                            // Woke up's Earlier moves the end its tap wrote; any other, the start.
+                            sendCorrection(card.gotUpEnd == nil
+                                           ? .earlier(id: card.entryID, minutes: minutes, expected: card.start ?? card.at)
+                                           : .wokeEarlier(sleepID: card.entryID, minutes: minutes, wakeTap: card.id),
                                            done: "Moved \(minutes) min earlier")
                         }
                         .accessibilityLabel("\(minutes) minutes earlier")
@@ -258,8 +261,8 @@ struct WatchLoggedScreen: View {
                 let chosen = (doneBy ?? state.me) == member.id
                 Button {
                     doneBy = member.id
-                    if let end = card.gotUpEnd {
-                        sendCorrection(.gotUp(sleepID: card.entryID, member: member.id, end: end), done: "Saved")
+                    if card.gotUpEnd != nil {
+                        sendCorrection(.gotUp(sleepID: card.entryID, member: member.id, wakeTap: card.id), done: "Saved")
                     } else {
                         sendCorrection(.doneBy(id: card.entryID, member: member.id), done: "Saved")
                     }

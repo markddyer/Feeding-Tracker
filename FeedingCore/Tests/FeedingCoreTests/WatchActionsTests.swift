@@ -491,57 +491,87 @@ struct WatchActionsTests {
 
     var night: PlainDate { household().householdSettings.tonight(at: now) }
 
+    /// Applies a tap and notes its answer, as the phone does in the same save.
+    @discardableResult
+    func tap(_ data: inout HouseholdData, _ action: WatchAction, id: String = UUID().uuidString, by me: MemberID = parentA,
+             at time: Date? = nil) -> WatchOutcome {
+        let outcome = data.applyWatchAction(WatchActionRequest(id: id, action: action, at: time ?? now), babyID: baby, by: me,
+                                            timeZoneID: zone, now: time ?? now)
+        data.watchReceipts.record(id, outcome, at: time ?? now)
+        return outcome
+    }
+
     /// Nobody on: take tonight or ask. Taking it makes this parent on duty; its Undo, before it has
     /// been sent, takes it back.
     @Test func takingTonightFromTheWatch() {
         var data = household()
         #expect(watch(data).tonight?.onDuty == nil)
         #expect(watch(data).tonight?.choices(me: parentA) == [.take, .ask])
-        #expect(apply(&data, .claimNight(night: night)) == .applied)
-        #expect(apply(&data, .claimNight(night: night)) == .unchanged)
+        #expect(tap(&data, .claimNight(night: night), id: "claim") == .applied)
+        #expect(tap(&data, .claimNight(night: night)) == .unchanged)
         let mine = watch(data).tonight
         #expect(mine?.onDuty == parentA)
         #expect(mine?.choices(me: parentA) == [.ask, .bothPhones])
-        // The other parent's watch offers to take it, or both phones.
         #expect(watch(data, me: parentB).tonight?.choices(me: parentB) == [.take, .bothPhones])
-        #expect(apply(&data, .undoTake(night: night)) == .applied)
+        #expect(tap(&data, .undoTake(night: night, claimTap: "claim")) == .applied)
         #expect(watch(data).tonight?.onDuty == nil)
-        #expect(apply(&data, .undoTake(night: night)) == .refused)
+        #expect(tap(&data, .undoTake(night: night, claimTap: "claim")) == .refused)
     }
 
-    /// An ask from one watch shows as a question on the other, which can say not tonight.
+    /// The watch's Undo takes back only the claim or ask its own tap made: not one made on the
+    /// phone, which the watch's tap found already there (outside review of step 3).
+    @Test func aRotaUndoTakesBackOnlyItsOwnTap() {
+        var data = household()
+        data.claimNight(night, by: parentA, now: now.addingTimeInterval(-60))
+        #expect(tap(&data, .claimNight(night: night), id: "stale") == .unchanged)
+        #expect(tap(&data, .undoTake(night: night, claimTap: "stale")) == .refused)
+        #expect(watch(data).tonight?.onDuty == parentA)
+        var asked = household()
+        asked.askNight(night, by: parentA, now: now.addingTimeInterval(-60))
+        #expect(tap(&asked, .askNight(night: night), id: "stale") == .unchanged)
+        #expect(tap(&asked, .withdrawAsk(night: night, askTap: "stale")) == .refused)
+        #expect(watch(asked).tonight?.ask == .waiting)
+    }
+
+    /// An ask from one watch shows as a question on the other, which can say not tonight, to that
+    /// ask only.
     @Test func askingAndAnsweringFromTheWatch() {
         var data = household()
-        #expect(apply(&data, .askNight(night: night)) == .applied)
-        #expect(apply(&data, .askNight(night: night)) == .unchanged)
+        #expect(tap(&data, .askNight(night: night), id: "ask") == .applied)
+        #expect(tap(&data, .askNight(night: night)) == .unchanged)
         #expect(watch(data).tonight?.ask == .waiting)
         let theirs = watch(data, me: parentB).tonight
         #expect(theirs?.ask == .askedOfMe)
         #expect(theirs?.choices(me: parentB) == [.take, .decline])
-        #expect(apply(&data, .declineAsk(night: night), by: parentB) == .applied)
-        #expect(apply(&data, .declineAsk(night: night), by: parentB) == .refused)
+        let shown = theirs?.askedAt ?? .distantPast
+        #expect(tap(&data, .declineAsk(night: night, askedAt: shown.addingTimeInterval(-30)), by: parentB) == .refused)
+        #expect(tap(&data, .declineAsk(night: night, askedAt: shown), by: parentB) == .applied)
+        #expect(tap(&data, .declineAsk(night: night, askedAt: shown), by: parentB) == .refused)
         #expect(watch(data).tonight?.ask == .declined)
-        #expect(apply(&data, .withdrawAsk(night: night)) == .applied)
-        #expect(apply(&data, .withdrawAsk(night: night)) == .unchanged)
+        #expect(tap(&data, .withdrawAsk(night: night, askTap: "ask")) == .applied)
+        #expect(tap(&data, .withdrawAsk(night: night, askTap: "ask")) == .unchanged)
         #expect(watch(data).tonight?.ask == WatchTonight.Ask.none)
     }
 
     /// "Both phones tonight" gives a taken night back; a night already past is turned down.
     @Test func bothPhonesAndPastNights() {
         var data = household()
-        _ = apply(&data, .claimNight(night: night), by: parentB)
-        #expect(apply(&data, .bothPhones(night: night)) == .applied)
-        #expect(apply(&data, .bothPhones(night: night)) == .unchanged)
+        _ = tap(&data, .claimNight(night: night), by: parentB)
+        #expect(tap(&data, .bothPhones(night: night)) == .applied)
+        #expect(tap(&data, .bothPhones(night: night)) == .unchanged)
         #expect(watch(data).tonight?.onDuty == nil)
-        #expect(apply(&data, .claimNight(night: night.adding(days: -1))) == .refused)
+        #expect(tap(&data, .claimNight(night: night.adding(days: -1))) == .refused)
     }
 
-    /// The watch shows a rota tap at once.
-    @Test func theWatchShowsARotaTapAtOnce() {
+    /// The watch shows an ask at once, but who is on only once the phone has it: until then
+    /// neither phone alerts as the watch would say (outside review of step 3).
+    @Test func theWatchShowsWhoIsOnOnlyOnceThePhoneHasIt() {
         let data = household()
         let state = watch(data)
         let taken = state.applying(WatchActionRequest(action: .claimNight(night: night), at: now))
-        #expect(taken.tonight?.onDuty == parentA)
+        #expect(taken.tonight?.onDuty == nil)
+        let both = state.applying(WatchActionRequest(action: .bothPhones(night: night), at: now))
+        #expect(both.tonight == state.tonight)
         let asked = state.applying(WatchActionRequest(action: .askNight(night: night), at: now))
         #expect(asked.tonight?.ask == .waiting)
         #expect(state.understands(WatchCapability.tonight))
@@ -549,45 +579,57 @@ struct WatchActionsTests {
 
     // MARK: Step 3, Woke up and Finish
 
-    /// Fell asleep 90 minutes ago, Woke up now, both from this watch.
+    /// Fell asleep 90 minutes ago, Woke up now from this watch (tap "wake").
     func wokeNow(_ data: inout HouseholdData) {
         data.startSleep(id: "s1", babyID: baby, startedAt: now.addingTimeInterval(-5400), by: parentA, timeZoneID: zone,
                         now: now.addingTimeInterval(-5400))
-        _ = data.applyWatchRequest(WatchRequest(command: .wokeUp(sleepID: "s1"), at: now), babyID: baby, by: parentA,
+        _ = data.applyWatchRequest(WatchRequest(id: "wake", command: .wokeUp(sleepID: "s1"), at: now), babyID: baby, by: parentA,
                                    timeZoneID: zone)
     }
 
     @Test func whoGotUpAfterWokeUp() {
         var data = household()
         wokeNow(&data)
-        #expect(apply(&data, .gotUp(sleepID: "s1", member: parentB, end: now)) == .applied)
-        #expect(apply(&data, .gotUp(sleepID: "s1", member: parentB, end: now)) == .unchanged)
+        #expect(data.events["s1"]?.event.wakeID == HouseholdData.watchWakeID("wake"))
+        #expect(apply(&data, .gotUp(sleepID: "s1", member: parentB, wakeTap: "wake")) == .applied)
+        #expect(apply(&data, .gotUp(sleepID: "s1", member: parentB, wakeTap: "wake")) == .unchanged)
         #expect(data.events["s1"]?.event.validGotUp == parentB)
-        // For an end that has changed since: turned down.
-        #expect(apply(&data, .gotUp(sleepID: "s1", member: parentA, end: now.addingTimeInterval(-60))) == .refused)
+        // Another tap's wake-up (the other parent's Woke up got there first): turned down.
+        #expect(apply(&data, .gotUp(sleepID: "s1", member: parentA, wakeTap: "other")) == .refused)
     }
 
-    /// Woke up's Earlier moves the end it wrote, never before the start; its Undo runs the sleep again.
-    @Test func wokeUpsEarlierAndUndo() {
+    /// Woke up's Earlier and Undo change every sleep that tap ended, and nothing else.
+    @Test func wokeUpsEarlierAndUndoChangeEverySleepItEnded() {
         var data = household()
+        data.startSleep(id: "s2", babyID: baby, startedAt: now.addingTimeInterval(-3600), by: parentB, timeZoneID: zone,
+                        now: now.addingTimeInterval(-3600))
         wokeNow(&data)
-        #expect(apply(&data, .earlier(id: "s1", minutes: 10, expected: now)) == .applied)
+        #expect(data.events["s2"]?.event.endedAt == now)
+        #expect(apply(&data, .wokeEarlier(sleepID: "s1", minutes: 10, wakeTap: "wake")) == .applied)
         #expect(data.events["s1"]?.event.endedAt == now.addingTimeInterval(-600))
+        #expect(data.events["s2"]?.event.endedAt == now.addingTimeInterval(-600))
         #expect(data.events["s1"]?.event.startedAt == now.addingTimeInterval(-5400))
-        // The end is no longer the tap's: Undo for the old end is turned down.
-        #expect(apply(&data, .undoWake(sleepID: "s1", end: now)) == .refused)
-        var again = household()
-        wokeNow(&again)
-        #expect(apply(&again, .undoWake(sleepID: "s1", end: now), applyAt: now.addingTimeInterval(30)) == .applied)
-        #expect(again.events["s1"]?.event.endedAt == nil)
-        #expect(apply(&again, .undoWake(sleepID: "s1", end: now)) == .unchanged)
+        #expect(apply(&data, .undoWake(sleepID: "s1", wakeTap: "wake"), applyAt: now.addingTimeInterval(30)) == .applied)
+        #expect(data.events["s1"]?.event.endedAt == nil)
+        #expect(data.events["s2"]?.event.endedAt == nil)
+        #expect(apply(&data, .undoWake(sleepID: "s1", wakeTap: "wake")) == .unchanged)
         // After the Undo window: turned down.
         var late = household()
         wokeNow(&late)
-        #expect(apply(&late, .undoWake(sleepID: "s1", end: now), applyAt: now.addingTimeInterval(11 * 60)) == .refused)
+        #expect(apply(&late, .undoWake(sleepID: "s1", wakeTap: "wake"), applyAt: now.addingTimeInterval(11 * 60)) == .refused)
     }
 
-    /// Undo of Finish runs the feed again, with the side Finish closed open again.
+    /// Fell asleep's Earlier still moves the start, even when a backdated wake put the end on it.
+    @Test func fellAsleepsEarlierMovesTheStart() {
+        var data = household()
+        data.startSleep(id: "s1", babyID: baby, startedAt: now, by: parentA, timeZoneID: zone, now: now)
+        _ = data.edit("s1", by: parentA, now: now.addingTimeInterval(60)) { $0.event.endedAt = now }
+        #expect(apply(&data, .earlier(id: "s1", minutes: 10, expected: now)) == .applied)
+        #expect(data.events["s1"]?.event.startedAt == now.addingTimeInterval(-600))
+    }
+
+    /// Undo of Finish runs the feed again, with the side Finish closed running, last, and a side
+    /// added since kept.
     @Test func undoOfFinishRunsTheFeedAgain() {
         var data = household()
         let start = now.addingTimeInterval(-900)
@@ -597,21 +639,39 @@ struct WatchActionsTests {
                                    babyID: baby, by: parentA, timeZoneID: zone)
         _ = data.applyWatchRequest(WatchRequest(command: .finish(feedID: "f1"), at: now), babyID: baby, by: parentA,
                                    timeZoneID: zone)
-        #expect(data.events["f1"]?.snapshot.payload?.feed?.breast.last?.durationSeconds == 900)
+        _ = apply(&data, .addSide(feedID: "f1", side: .right), at: now.addingTimeInterval(5))
         #expect(apply(&data, .undoFinish(feedID: "f1", end: now), applyAt: now.addingTimeInterval(20)) == .applied)
-        #expect(data.events["f1"]?.event.endedAt == nil)
-        #expect(data.events["f1"]?.snapshot.payload?.feed?.breast.last?.durationSeconds == nil)
+        let breast = data.events["f1"]?.snapshot.payload?.feed?.breast ?? []
+        #expect(breast.map(\.side) == [.right, .left])
+        #expect(breast.last?.durationSeconds == nil)
         #expect(data.feedInProgress(babyID: baby)?.id == "f1")
         #expect(apply(&data, .undoFinish(feedID: "f1", end: now)) == .unchanged)
+        // Finish again, after the Undo.
+        #expect(apply(&data, .refinish(feedID: "f1"), at: now.addingTimeInterval(60)) == .applied)
+        #expect(data.events["f1"]?.event.endedAt == now.addingTimeInterval(60))
+    }
+
+    /// Finish, Undo of Finish and Finish again, all waiting for the phone: the watch shows the feed
+    /// finished (outside review of step 3).
+    @Test func finishUndoFinishIsShownInOrder() {
+        var phone = WatchState(madeAt: now, setUp: true, lastFeedStart: now.addingTimeInterval(-900))
+        phone.running = WatchFeed(id: "f1", startedAt: now.addingTimeInterval(-900), mine: true, byName: "", byColour: "teal",
+                                  side: nil, bottles: [])
+        let first = WatchRequest(command: .finish(feedID: "f1"), at: now)
+        let undo = WatchActionRequest(action: .undoFinish(feedID: "f1", end: now), at: now.addingTimeInterval(5), after: first.id)
+        let again = WatchActionRequest(action: .refinish(feedID: "f1"), at: now.addingTimeInterval(10), after: undo.id)
+        let saved = WatchSaved(phone: phone, pending: [first], actions: [undo, again])
+        #expect(saved.shown?.running == nil)
+        #expect(saved.shown?.lastFeed?.id == "f1")
     }
 
     /// The watch shows them at once.
     @Test func theWatchShowsWakeAndFinishUndoAtOnce() {
         var state = WatchState(madeAt: now, setUp: true, lastFeedStart: now.addingTimeInterval(-900))
         state.sleep = WatchSleep(id: "s1", start: now.addingTimeInterval(-5400), end: now)
-        let moved = state.applying(WatchActionRequest(action: .earlier(id: "s1", minutes: 20, expected: now), at: now))
+        let moved = state.applying(WatchActionRequest(action: .wokeEarlier(sleepID: "s1", minutes: 20, wakeTap: "w"), at: now))
         #expect(moved.sleep?.end == now.addingTimeInterval(-1200))
-        let undone = state.applying(WatchActionRequest(action: .undoWake(sleepID: "s1", end: now), at: now))
+        let undone = state.applying(WatchActionRequest(action: .undoWake(sleepID: "s1", wakeTap: "w"), at: now))
         #expect(undone.sleep?.asleep == true)
         state.lastFeed = WatchLastFeed(id: "f1", start: now.addingTimeInterval(-900), end: now, details: FeedDetails(), mine: true)
         state.recentFeeds = [state.lastFeed!]

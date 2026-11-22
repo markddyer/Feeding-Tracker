@@ -23,6 +23,8 @@ struct AddToFeed: Equatable {
 struct WatchAddToFeedScreen: View {
     let state: WatchState
     @Binding var ask: AddToFeed?
+    /// Follows an Undo of Finish (its tap, the feed) after the panel has gone.
+    var followUndo: (String, String) -> Void = { _, _ in }
     @Environment(\.watchLook) private var look
     @State private var milk: MilkKind?
 
@@ -57,13 +59,20 @@ struct WatchAddToFeedScreen: View {
                     }
                 }
                 .id(bottle.id)
-            } else if feed != nil, choices.sides.isEmpty, choices.milks.isEmpty {
-                // Nothing left to ask.
+            } else if feed != nil, choices.sides.isEmpty, choices.milks.isEmpty, !canUndoFinish(ask) {
+                // Nothing left to ask, and no Undo to offer.
                 Color.clear.onAppear { self.ask = nil }
             } else {
                 choicesPage(feed: feed, choices: choices, ask: ask)
             }
         }
+    }
+
+    /// After Finish on this watch, the panel stays for its Undo even with nothing left to ask
+    /// (a bottle-only feed, outside review of step 3), for as long as the phone would allow it.
+    private func canUndoFinish(_ ask: AddToFeed) -> Bool {
+        guard let end = ask.finishedAt, state.understands(WatchCapability.ends) else { return false }
+        return Date().timeIntervalSince(end) < watchUndoWindow
     }
 
     private func amountTitle(_ milk: MilkKind) -> String {
@@ -92,9 +101,10 @@ struct WatchAddToFeedScreen: View {
             Spacer(minLength: 2)
             HStack(spacing: 6) {
                 // Undo of Finish: the feed runs again, as the phone's Undo (step 3).
-                if let end = ask.finishedAt, state.understands(WatchCapability.ends) {
+                if let end = ask.finishedAt, canUndoFinish(ask) {
                     WatchBigButton(title: "Undo", prominent: false, compact: true) {
-                        link.sendFeedExtra(.undoFinish(feedID: ask.feedID, end: end), feedID: ask.feedID)
+                        let tap = link.sendFeedExtra(.undoFinish(feedID: ask.feedID, end: end), feedID: ask.feedID)
+                        followUndo(tap, ask.feedID)
                         self.ask = nil
                     }
                     .frame(maxWidth: 76)
