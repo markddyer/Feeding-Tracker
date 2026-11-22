@@ -181,6 +181,14 @@ func sleepSpans(_ events: [Event], babyID: String, now: Date) -> [SleepSpan] {
     }
 }
 
+/// The stretches `babyID` slept, overlapping sleeps joined into one, oldest first. The same spans
+/// as the rhythm report: an end after `now` is cut to `now`, and a sleep with no end runs to `now`
+/// or to the next sleep's start. For the AI insights' facts sheet (`FeedingInsights`), which can
+/// only read public code.
+public func sleepStretches(_ events: [Event], babyID: String, now: Date) -> [(start: Date, end: Date)] {
+    union(sleepSpans(events, babyID: babyID, now: now).map { ($0.start, $0.end) }).map { (start: $0.0, end: $0.1) }
+}
+
 /// Overlapping stretches joined into one, oldest first.
 func union(_ pieces: [(Date, Date)]) -> [(Date, Date)] {
     var joined: [(Date, Date)] = []

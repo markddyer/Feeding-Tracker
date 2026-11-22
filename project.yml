@@ -43,6 +43,9 @@ targetTemplates:
       - path: Shared
     dependencies:
       - package: FeedingCore
+      # The AI insights' parts (docs/planning/12-ai-insights-gauntlet.md, R1): only the app uses them.
+      - package: FeedingCore
+        product: FeedingInsights
       - target: ${widgets}
         embed: true
       # The watch app, installed on the paired watch with the phone app.

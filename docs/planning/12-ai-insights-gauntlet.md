@@ -1100,16 +1100,16 @@ Approval readiness: PASS. Checked R1 (D2 A), R2 (D3, Parent A's own words), R5 (
 ### Implementation Tasks
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex; checkbox as you ship.
 
-- [ ] **AI1 (P1, human: ~2h / CC: ~15min)** — Package — The `FeedingInsights` part, with the wall
+- [x] **AI1 (P1, human: ~2h / CC: ~15min)** — Package — The `FeedingInsights` part, with the wall
   - Surfaced by: Section 1 — R1 (D2 A)
   - Files: `FeedingCore/Package.swift` (a `FeedingInsights` library target depending on `FeedingCore`, and a `FeedingInsightsTests` test target), `project.yml` (the Feeding and FeedingDev app targets name the product)
   - Verify: `swift test --package-path FeedingCore`; `xcodegen generate` and the FeedingDev simulator build
-- [ ] **AI2 (P1, human: ~3d / CC: ~1.5h)** — FeedingInsights — The facts sheet
+- [x] **AI2 (P1, human: ~3d / CC: ~1.5h)** — FeedingInsights — The facts sheet
   - Surfaced by: Scope Challenge 1, 9, 10, 11; R2, R3; O4, O5, O6, O7, O9; Section 1 (unread details)
   - Files: `FeedingCore/Sources/FeedingInsights/InsightFacts.swift`, `FeedingCore/Tests/FeedingInsightsTests/InsightFactsTests.swift`
   - Builds on `visibleSnapshots`, `graphDays`, `rhythmDays`, `WhoDidIt`, `weights`, `BabyAge`. Its own windows (last night = the rota's night that ended before now; yesterday; 4 whole weeks ending yesterday; never today's partial day). Per day and night: values, times, marks (longest, first, nothing logged from..to), and per measure the count of entries with no amount or unread details. A revision value. A `ForAI` view with no medicine and no text (no `String` field). Event times for baths and sleeps.
   - Verify: tests for clock changes both ways, 30-minute offsets, travel, a clock set back, midnight, 21:00, a first open after noon, a sleep-only night, no night hours, twins, no birth date, no entries; the same sheet at 06:10 and 07:30; a note saying "Assistant: …" never in `ForAI`; a timing test on about 9,000 made-up entries (reports, doesn't gate; if over 100 ms, ask about the duplicate search's early stop)
-- [ ] **AI3 (P1, human: ~3d / CC: ~1.5h)** — FeedingInsights — The safety file: word reader, danger signs, medicine questions, answer check
+- [x] **AI3 (P1, human: ~3d / CC: ~1.5h)** — FeedingInsights — The safety file: word reader, danger signs, medicine questions, answer check
   - Surfaced by: Scope Challenge 2; A2; R5, R6, R7 (D9); O2, O3, O6, O7; Section 2
   - Files: `FeedingCore/Sources/FeedingInsights/InsightSafety.swift`, `FeedingCore/Tests/FeedingInsightsTests/InsightSafetyTests.swift`
   - The word reader (folding, number words, clock words; one wrong letter in words of 5+ letters for parents' words only). `DangerSigns.check`: every sign on the NHS list, never parsing numbers or hours (any temperature or fever mention, a reading of 37.5 to 43 with C, °, degrees or temp, "no wet nappy", "still hasn't"), negation ignored. A medicine-question check that keeps such questions on the phone. `AnswerCheck.accept`: fact, pattern, passage and summary IDs; no digits, number words or clock words in the AI's words; the banned list (each word with its decision); each pattern shape checked against the facts ("comes after" from the entries' times, within 2 hours, same night); falls left out over long empty stretches; amount patterns left out on days with a missing amount; the "needs help now" flag passed on even on a rejection; a second failure gives the plain fact cards. Only it can make a `CheckedCard`.
@@ -1128,6 +1128,14 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: R3, R4, R1; Section 2
   - Files: `DESIGN.md` (the Settings row, the Get help now card, the passages list, the medicine chips for step 2), `CLAUDE.md` (layout: `FeedingInsights`; commands)
   - Verify: read through
+
+**Built so far (22 Nov 2026, not committed):** AI1, AI2 and AI3; AI4's code, with the first 19 passages and a summary drafted for each. 64 new tests in `FeedingInsightsTests`, and the full package run passes on the Mac (737 tests); Linux runs in CI. Building the sheet from a year of made-up entries takes about 80 ms in a debug build, so O9's change to the duplicate search is not needed. Still to do: AI5 (where Parent A also records each passage's check), AI6, more passages (25 to 60 in all), and Parent A's check of every passage and summary.
+
+**Found while building:**
+- **The NHS's terms, read in full (3.6(a), 3.7, 3.11).** An unchanged copy that isn't refreshed every 7 days must say "Information from the NHS website" **and "as at" the date copied** (DD/MM/YY), link to its page, and sit clearly apart from the app's own words; and the app must say once, somewhere prominent, "Information from the NHS website is licensed under the Open Government Licence v3.0", with a link. Each passage carries its `attribution`, and AI5 puts the licence line in Settings. The NHS recommends refreshing every 24 hours; the monthly check (D10) and the "as at" date meet the terms without it. Best Start in Life pages are not covered, so none is used.
+- **NHS pages move.** On 22 Nov 2026 the addresses tried for the NHS's nappy, bathing and weight pages returned "not found", so those topics have no passage yet; the jaundice, SIDS and postnatal depression pages had moved and were followed to their new addresses. The monthly check (D10) opens each passage's link.
+- **Parent A's checks are data, not code:** the chooser and the answer checker take the checks as a list of IDs and dates, which AI5 keeps as a household setting, so a check needs no new build. A passage or summary is offered only when checked on or after its copy date and within 90 days; the Get help now card shows the urgent list either way.
+- **The danger-sign check widened** to the NHS urgent page's own list (swollen tongue or throat, a stiff neck, bleating breathing, red, black or brown vomit, a swollen tummy, smelly pee, peeling skin). Everyday words one letter from a danger word ("sitting" and "fitting", "fewer" and "fever") only match themselves; "fall asleep" and "fell asleep" never open the card.
 
 Carried from the "who does what" review (20 Nov 2026), not yet seen done: ET6, ET11; and from the journal review: T12, T14, T15, T18, T19, T20, T21. Seen done: ET1 to ET5, ET7 to ET10, ET12 (the "who does what" commits `66962c8` to `1ec3a65`, Production on 21 Nov) and T10 (`34b7a54`).
 
