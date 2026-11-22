@@ -1292,6 +1292,7 @@ State: approved
 Actual answer: A) Pick from mockups first (recommended), Parent A, step 2 D2, 22 Nov 2026
 Accepted scope: a mockup page (gstack design folder, `designs/ai-insights-…`) showing Home with both ways, one merged "Last night" line and two lines told apart, by day and at 3am, for Parent A to pick before Home's part of step 2 is built. The engine, the card sheet, Graphs' "This week" line and Settings are built first. X3's "Last night" line is unchanged until the pick. Which way is built is decided by that pick, not here.
 History: none
+Pick (Parent A, 22 Nov 2026, from `designs/ai-insights-20261122/round2.html`): **A) One merged line.** "Last night" (X3) gains the AI mark when a card exists; a tap opens one card, the AI's part first (the app's sentences from the AI's choices, the medicine chips, the NHS passages, "Worried? Get help now ›"), then the night's entries. From 12:00, when "Last night" goes as now, a slim "Yesterday and last night" AI line shows alone until the evening. With no card (no yes, AI off, or not made yet), "Last night" is exactly as before. The card's wording in round 2 was shown and not changed.
 
 #### S2: how the AI's form reaches the app
 Finding: 2, CRITICAL, confidence 8/10, `FeedingCore/Sources/FeedingInsights/InsightSafety.swift:432`, this review
@@ -1892,7 +1893,7 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: S8 with O2, O8, S12, A7, A8, D12
   - Files: `App/Insights/InsightSettingsView.swift` (new), `App/Home/SettingsView.swift`
   - Verify: tap tests in AI12; "What the AI sees" shows the exact request
-- [ ] **AI10 (P1, human: ~4h / CC: ~20min)** — Design — Mockups for Parent A: Home's morning line (one merged line, or two lines told apart), the card with the app's sentences, the facts-only card, "Worried? Get help now ›", Graphs' "This week" line; by day and at 3am
+- [x] **AI10 (P1, human: ~4h / CC: ~20min)** — Design — Mockups for Parent A (done 22 Nov 2026: `round2.html`; Parent A picked A, one merged line): Home's morning line (one merged line, or two lines told apart), the card with the app's sentences, the facts-only card, "Worried? Get help now ›", Graphs' "This week" line; by day and at 3am
   - Surfaced by: S1 (D2 A), O1 (D9 A), S11, S12
   - Files: the gstack design folder (`designs/ai-insights-…`)
   - Verify: Parent A picks; the pick goes in `DESIGN.md` and here
