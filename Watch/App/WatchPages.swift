@@ -1,5 +1,6 @@
 import FeedingCore
 import SwiftUI
+import WatchKit
 
 // The watch's pages, step 1 of `docs/planning/11-watch-parity.md` (the parents' choices of
 // 21 Nov 2026, `designs/watch-parity-20261121/round5-square.html`): every main page fits the
@@ -14,6 +15,7 @@ struct WatchMetrics {
 
     /// 41 and 42 mm (and smaller): a little smaller type and buttons.
     var small: Bool { size.width < 180 }
+    var margins: WatchPageMargins { WatchPageMargins(small: small) }
     var round: CGFloat { small ? 48 : 54 }
     var gap: CGFloat { small ? 5 : 6 }
     /// A button in a row of three, about square.
@@ -22,6 +24,31 @@ struct WatchMetrics {
     /// Page 1's small buttons under the bar: shorter, as Start and the bar matter most there and
     /// the 42 mm screen has no room for square ones (21 Nov 2026).
     var shortTileHeight: CGFloat { max(40, (tileWidth * 0.68).rounded()) }
+}
+
+/// How far a page keeps from the screen's edges. The bottom row must sit inside the curve of the
+/// screen's rounded corners, which is a long, soft curve, not a quarter circle: on the 49 mm Ultra
+/// it starts about 67 pt up the side, and on 42 mm about 47 pt (measured from the simulators' screen
+/// masks, `xcrun simctl io <watch> screenshot --mask=alpha`, 22 Nov 2026). With these margins a
+/// tile's or a wide button's corner keeps about 3 pt inside the curve; 6 pt at the sides and 18 pt
+/// at the bottom let the curve cut "Just finished" on the Ultra (Parent A, 22 Nov 2026). The room
+/// the system keeps free at the bottom is not used: it left an unused band on 42 mm.
+struct WatchPageMargins {
+    let small: Bool
+
+    var side: CGFloat { small ? 7 : 8 }
+    var bottom: CGFloat { small ? 14 : 24 }
+    /// How far the page reaches up into the room kept under the clock.
+    var pullUp: CGFloat { small ? 8 : 12 }
+    /// More room at the sides for a line of words in the bottom row, whose letters would
+    /// otherwise reach into the curve.
+    var bottomLineSide: CGFloat { small ? 5 : 6 }
+
+    /// Room kept at the right of a first line that is level with the clock.
+    var clockRoom: CGFloat { small ? 52 : 56 }
+
+    /// This watch's, for a screen that isn't a `WatchPageFrame`.
+    static var current: WatchPageMargins { WatchPageMargins(small: WKInterfaceDevice.current().screenBounds.width < 190) }
 }
 
 /// A page: fills the screen it has, with its rows from the top and spare room spread between them.
@@ -33,31 +60,31 @@ struct WatchPageFrame<Content: View>: View {
 
     var body: some View {
         GeometryReader { proxy in
-            // Clear of the screen's rounded corners: a wide button or a tile in the bottom row must
-            // sit inside the corner's curve. The Ultra's corners are rounder, so a large watch keeps
-            // more room (on the Ultra, "Stop · discard" was clipped 8 pt from the bottom, 22 Nov
-            // 2026); a small one keeps less, so page 1 still fits on 42 mm. The room the system keeps
-            // free at the bottom is used instead: it left an unused band on 42 mm.
             let small = proxy.size.width < 190
-            let side: CGFloat = 6
-            let bottom: CGFloat = small ? 9 : 18
-            let inner = CGSize(width: max(0, proxy.size.width - 2 * side), height: max(0, proxy.size.height - bottom))
-            let metrics = WatchMetrics(size: inner)
+            let margins = WatchPageMargins(small: small)
             if typeSize.isAccessibilitySize {
                 // At the largest text sizes the words grow rather than being cut off, so the page
                 // may scroll, as Apple asks.
+                let width = max(0, proxy.size.width - 2 * margins.side)
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 6) { content(metrics) }
-                        .frame(width: inner.width, alignment: .leading)
-                        .padding(.bottom, bottom)
+                    VStack(alignment: .leading, spacing: 6) { content(WatchMetrics(size: CGSize(width: width, height: max(0, proxy.size.height - margins.bottom)))) }
+                        .frame(width: width, alignment: .leading)
+                        .padding(.bottom, margins.bottom)
                 }
-                .padding(.horizontal, side)
+                .padding(.horizontal, margins.side)
             } else {
+                // The page starts a little way up into the room the system keeps under the clock:
+                // the label sits beside the clock, so most of that room was an empty band (Parent A,
+                // on the Ultra, 22 Nov 2026). Moved, not laid out there, as the system says that
+                // room is none when a page ignores it.
+                let inner = CGSize(width: max(0, proxy.size.width - 2 * margins.side),
+                                   height: max(0, proxy.size.height + margins.pullUp - margins.bottom))
                 VStack(alignment: .leading, spacing: 0) {
-                    content(metrics)
+                    content(WatchMetrics(size: inner))
                 }
                 .frame(width: inner.width, height: inner.height, alignment: .top)
-                .padding(.horizontal, side)
+                .padding(.horizontal, margins.side)
+                .offset(y: -margins.pullUp)
             }
         }
         .ignoresSafeArea(.container, edges: .bottom)
@@ -164,6 +191,8 @@ struct WatchTile<Mark: View>: View {
     var short = false
     /// The width of the row: a tile alone in it, so no space is left unused.
     var wide = false
+    /// Another width than a third of the row.
+    var width: CGFloat?
     var selected = false
     var selectedColour: Color?
     var hint: String?
@@ -180,14 +209,17 @@ struct WatchTile<Mark: View>: View {
         } label: {
             VStack(spacing: 2) {
                 mark().frame(height: 17)
-                Text(title).watchText(.side).lineLimit(2).multilineTextAlignment(.center).minimumScaleFactor(0.6)
+                // One line in a short tile, so its words get smaller rather than cut ("Just finis…"
+                // on 42 mm, 22 Nov 2026).
+                Text(title).watchText(.side).lineLimit(short ? 1 : 2).multilineTextAlignment(.center).minimumScaleFactor(0.6)
                 if let hint {
                     Text(hint).watchText(.hint).foregroundStyle(palette.textMuted).lineLimit(1)
                 }
             }
-            // A short tile's words get the whole width: "Just finished" on 42 mm.
-            .padding(.horizontal, short ? 0 : 2)
-            .frame(width: wide ? nil : metrics.tileWidth, height: short ? metrics.shortTileHeight : metrics.tileHeight)
+            // A little room at the sides, so the words of a tile in the bottom row's corner stay
+            // inside the screen's curve ("Just finished" lost its J on the Ultra, 22 Nov 2026).
+            .padding(.horizontal, 3)
+            .frame(width: wide ? nil : width ?? metrics.tileWidth, height: short ? metrics.shortTileHeight : metrics.tileHeight)
             .frame(maxWidth: wide ? .infinity : nil)
             .foregroundStyle(selected ? palette.onBreast : palette.text)
             .background(selected ? (selectedColour ?? palette.breast) : palette.surface, in: RoundedRectangle(cornerRadius: 16))
@@ -254,13 +286,15 @@ struct WatchIdlePage: View {
             }
             Spacer(minLength: 3)
             if let steps = state.windowSteps(at: now) {
-                let line = steps.line(state.clock, short: metrics.small)
+                // One line on a small watch, so page 1 fits; two on a large one, except while
+                // "Sends when your phone is near" shows: then the buttons fell into the corners.
+                let oneLine = metrics.small || waiting
+                let line = steps.line(state.clock, short: oneLine)
                 VStack(alignment: .leading, spacing: 2) {
-                    // One line on a small watch, so page 1 fits; two on a large one.
                     Text("\(Text(line.main).fontWeight(.semibold).foregroundStyle(palette.text))\(Text(line.more).foregroundStyle(palette.textMuted))")
                         .watchText(.note)
-                        .lineLimit(metrics.small ? 1 : 2)
-                        .minimumScaleFactor(metrics.small ? 0.7 : 0.85)
+                        .lineLimit(oneLine ? 1 : 2)
+                        .minimumScaleFactor(oneLine ? 0.7 : 0.85)
                         .fixedSize(horizontal: false, vertical: true)
                     // No times under the bar: the line above it says when the alert is, and the
                     // larger words need the room (Parent A, 21 Nov 2026).
@@ -271,22 +305,27 @@ struct WatchIdlePage: View {
             }
             if waiting { WaitingLine() }
             Spacer(minLength: 3)
+            // On a small watch "Just finished" is a little wider than the two beside it, so it fits
+            // whole with room kept from the screen's corner ("Just finis…" on 42 mm, 22 Nov 2026).
+            let three = justFinished != nil && earlier != nil && state.understands(WatchCapability.pump)
+            let narrow: CGFloat? = metrics.small && three ? metrics.tileWidth - 4 : nil
+            let wider = narrow.map { metrics.size.width - 2 * $0 - 2 * metrics.gap }
             WatchTileRow(metrics: metrics, short: true) {
                 if let justFinished {
-                    WatchTile(title: "Just finished", metrics: metrics, short: true) {
+                    WatchTile(title: "Just finished", metrics: metrics, short: true, width: wider) {
                         Image(systemName: "checkmark").foregroundStyle(palette.textMuted)
                     } action: { justFinished() }
                     .accessibilityLabel("Log a feed that just finished")
                 }
                 if let earlier {
-                    WatchTile(title: "Earlier", metrics: metrics, short: true) {
+                    WatchTile(title: "Earlier", metrics: metrics, short: true, width: narrow) {
                         Image(systemName: "clock.arrow.circlepath").foregroundStyle(palette.textMuted)
                     } action: { earlier() }
                     .accessibilityLabel("Log an earlier feed")
                 }
                 if state.understands(WatchCapability.pump) {
                     // The width of the row when it is alone (a phone without step 2).
-                    WatchTile(title: "Pumping", metrics: metrics, short: true, wide: justFinished == nil && earlier == nil) {
+                    WatchTile(title: "Pumping", metrics: metrics, short: true, wide: justFinished == nil && earlier == nil, width: narrow) {
                         DropsShape().fill(palette.textMuted).frame(width: 15, height: 15)
                     } action: { pumping() }
                 }
@@ -493,12 +532,18 @@ struct WatchCarePage: View {
                     .accessibilityLabel("Log a wet and dirty nappy")
             }
             Spacer(minLength: 3)
-            nappyLine(palette)
+            // In from both sides, as its words would reach into the screen's corners (Parent A, on
+            // the Ultra, 22 Nov 2026).
+            nappyLine(palette, metrics: metrics)
+                .padding(.horizontal, metrics.margins.bottomLineSide)
         }
     }
 
     @ViewBuilder
-    private func nappyLine(_ palette: WatchPalette) -> some View {
+    private func nappyLine(_ palette: WatchPalette, metrics: WatchMetrics) -> some View {
+        // The size of page 1's notes on a large watch, to read at a glance (Parent A, 22 Nov
+        // 2026); a small one keeps the smaller size, so "Add details ›" still fits beside it.
+        let style: WatchText = metrics.small ? .line : .note
         if let last = state.lastNappy {
             let details = [last.colour.map(CareText.colourName), last.consistency.map(CareText.consistencyName)]
                 .compactMap { $0 }.joined(separator: ", ")
@@ -510,18 +555,18 @@ struct WatchCarePage: View {
                         Text("Nappy \(Text(CareText.ago(last.at, now: now)).foregroundStyle(palette.text))")
                             .lineLimit(1).minimumScaleFactor(0.7)
                         Spacer(minLength: 2)
-                        Text("Add details ›").foregroundStyle(palette.primary)
+                        Text("Add details ›").foregroundStyle(palette.primary).lineLimit(1).layoutPriority(1)
                     }
                 }
                 .buttonStyle(.plain)
-                .watchText(.line)
+                .watchText(style)
                 .foregroundStyle(palette.textMuted)
             } else {
-                line.watchText(.line).foregroundStyle(palette.textMuted).lineLimit(1).minimumScaleFactor(0.7)
+                line.watchText(style).foregroundStyle(palette.textMuted).lineLimit(1).minimumScaleFactor(0.7)
                     .accessibilityLabel(CareText.spokenNappy(last, now: now))
             }
         } else {
-            Text("No nappy logged yet").watchText(.line).foregroundStyle(palette.textMuted)
+            Text("No nappy logged yet").watchText(style).foregroundStyle(palette.textMuted)
         }
     }
 }

@@ -542,6 +542,8 @@ struct WatchBigButton: View {
     var prominent = true
     var doubleTap = false
     var compact = false
+    /// Lower than usual, for a screen of three on a small watch.
+    var minHeight: CGFloat?
     let action: () -> Void
     @State private var taps = 0
     @Environment(\.watchLook) private var look
@@ -566,7 +568,7 @@ struct WatchBigButton: View {
                     .minimumScaleFactor(compact ? 0.6 : 0.7)
             }
             .padding(.horizontal, 6)
-            .frame(maxWidth: .infinity, minHeight: compact ? 46 : 50)
+            .frame(maxWidth: .infinity, minHeight: minHeight ?? (compact ? 46 : 50))
             .foregroundStyle(foreground)
             .background(prominent ? palette.primary : palette.surface, in: RoundedRectangle(cornerRadius: 20))
             .contentShape(RoundedRectangle(cornerRadius: 20))
@@ -585,6 +587,10 @@ struct WaitingLine: View {
         Label("Sends when your phone is near", systemImage: "iphone.slash")
             .watchText(.line)
             .foregroundStyle(WatchPalette.of(look).textMuted)
+            // Smaller rather than cut off, where a page has little room left ("…phone is ne…" on
+            // page 1, 22 Nov 2026).
+            .lineLimit(1)
+            .minimumScaleFactor(0.75)
     }
 }
 
@@ -598,6 +604,7 @@ private struct MessageScreen: View {
                 .watchText(.line)
                 .foregroundStyle(WatchPalette.of(look).text)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, WatchPageMargins.current.side)
         }
     }
 }

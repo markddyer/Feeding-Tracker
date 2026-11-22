@@ -303,6 +303,8 @@ struct WatchEarlierFeedScreen: View {
                     .accessibilityLabel("Save a feed that started at \(state.clock(start))")
             }
         }
+        // Clear of the screen's rounded corners, as the amount screen is (22 Nov 2026).
+        .padding(.horizontal, WatchPageMargins.current.side)
         .onAppear { crownFocused = true }
     }
 }
@@ -356,25 +358,30 @@ struct WatchTonightScreen: View {
         WatchPageFrame(label: "Tonight") { metrics in
             let palette = WatchPalette.of(look)
             let choices = tonight.choices(me: state.me ?? MemberID(rawValue: ""))
-            // One line on a small watch, so three buttons still fit under it.
+            // One line on a small watch, or under it the ask's state, so three buttons still fit.
+            let hint = tonight.ask == .waiting || tonight.ask == .declined
+            let oneLine = metrics.small || hint
             Text(TonightText.line(tonight, state: state))
                 .watchText(.note)
                 .fontWeight(.semibold)
                 .foregroundStyle(palette.text)
-                .lineLimit(metrics.small ? 1 : 2)
-                .minimumScaleFactor(metrics.small ? 0.65 : 0.8)
-                .fixedSize(horizontal: false, vertical: !metrics.small)
-            if tonight.ask == .waiting || tonight.ask == .declined {
+                .lineLimit(oneLine ? 1 : 2)
+                .minimumScaleFactor(oneLine ? 0.65 : 0.8)
+                .fixedSize(horizontal: false, vertical: !oneLine)
+            if hint {
                 Text(TonightText.short(tonight, state: state)).watchText(.hint).foregroundStyle(palette.textMuted)
             }
             Spacer(minLength: 2)
+            // Lower buttons than usual: three of the usual height pushed Back into the screen's
+            // corners (22 Nov 2026).
+            let height: CGFloat = metrics.small ? 38 : 40
             VStack(spacing: metrics.gap) {
                 ForEach(Array(choices.enumerated()), id: \.offset) { index, choice in
                     WatchBigButton(title: TonightText.button(choice, tonight, state: state), prominent: index == 0,
-                                   compact: true) { choose(choice) }
+                                   compact: true, minHeight: height) { choose(choice) }
                 }
                 if choices.count < 3 {
-                    WatchBigButton(title: "Back", prominent: false, compact: true) { choose(nil) }
+                    WatchBigButton(title: "Back", prominent: false, compact: true, minHeight: height) { choose(nil) }
                 }
             }
         }

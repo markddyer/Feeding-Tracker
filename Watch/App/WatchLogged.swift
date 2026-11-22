@@ -437,8 +437,15 @@ struct WatchAmountPicker: View {
 
     var body: some View {
         let palette = WatchPalette.of(look)
-        VStack(alignment: .leading, spacing: 8) {
+        // Less space between the parts on a small watch, where the question takes two lines.
+        VStack(alignment: .leading, spacing: WatchPageMargins.current.small ? 5 : 8) {
+            // Clear of the clock: on 42 mm this line is level with it ("How much expressed milk?"
+            // ran under it, 22 Nov 2026). A long one takes two lines; made smaller to fit instead,
+            // the capitals and their spacing shrank it far more than needed.
             Text(title).watchText(.label).foregroundStyle(palette.textMuted)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.trailing, WatchPageMargins.current.clockRoom)
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(ml)").watchText(.amount).contentTransition(.numericText(value: crown))
                 Text("ml").watchText(.line)
@@ -482,6 +489,9 @@ struct WatchAmountPicker: View {
                 .accessibilityLabel("Save \(ml) millilitres")
             }
         }
+        // Clear of the screen's rounded corners, as the pages are: 2 pt from the side, the
+        // corners cut Done and Save on 42 mm (22 Nov 2026).
+        .padding(.horizontal, WatchPageMargins.current.side)
         .sensoryFeedback(.success, trigger: saved)
         .onAppear { crownFocused = true }
     }
