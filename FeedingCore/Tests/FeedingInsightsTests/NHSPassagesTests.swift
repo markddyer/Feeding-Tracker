@@ -17,7 +17,8 @@ struct NHSPassagesTests {
     @Test func everyPassageIsComplete() {
         let ids = NHSPassages.all.flatMap { [$0.id] + $0.summaries.map(\.id) }
         #expect(Set(ids).count == ids.count, "IDs must be unique")
-        #expect(NHSPassages.all.count >= 19)
+        // The plan's library is 25 to 60 passages (A4).
+        #expect((25...60).contains(NHSPassages.all.count))
         for passage in NHSPassages.all {
             #expect(passage.url.hasPrefix("https://www.nhs.uk/"), "\(passage.id)")
             #expect(!passage.page.isEmpty && !passage.words.isEmpty, "\(passage.id)")
@@ -27,9 +28,31 @@ struct NHSPassagesTests {
             #expect(passage.words.hasPrefix("##"), "\(passage.id) starts with its section's heading")
             #expect(!passage.words.contains("https://"), "\(passage.id) has no picture credits")
             #expect(!passage.words.contains("Information:"), "\(passage.id) has no box labels")
+            for line in passage.words.split(separator: "\n") {
+                let linkLine = ["Find out", "Read more", "Read the", "Learn how", "See when"].contains { line.hasPrefix($0) }
+                #expect(!linkLine, "\(passage.id) has a link to another page: \(line)")
+            }
         }
         let urgentCount = NHSPassages.all.filter { $0.isUrgent }.count
         #expect(urgentCount == 1)
+    }
+
+    @Test func everyTopicHasAPassage() {
+        for topic in InsightTopic.allCases {
+            let has = NHSPassages.all.contains { $0.topics.contains(topic) }
+            #expect(has, "\(topic)")
+        }
+        // A bath logged can bring a bathing passage.
+        let bath = NHSPassages.choose(kinds: [.bath], ageInDays: 30, breastfeeds: true, bottleFeeds: false,
+                                      checks: allChecked, today: today, limit: 5)
+        #expect(!bath.isEmpty)
+        let allBathing = bath.allSatisfy { $0.topics.contains(.bathing) }
+        #expect(allBathing)
+        // A breastfeeding-only household never gets a formula passage.
+        let breastOnly = NHSPassages.choose(kinds: [.feed, .nappy, .weight], ageInDays: 30, breastfeeds: true,
+                                            bottleFeeds: false, checks: allChecked, today: today, limit: 40)
+        let anyBottle = breastOnly.contains { $0.feeding == .bottleFeeding }
+        #expect(!anyBottle)
     }
 
     @Test func theUrgentListHasTheCallLines() {

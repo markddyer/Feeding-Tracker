@@ -32,6 +32,7 @@ public enum InsightTopic: String, Hashable, Sendable, Codable, CaseIterable {
     case crying
     case jaundice
     case parentsMood
+    case bathing
 
     /// The topics a card about `kind` may show.
     public static func topics(for kind: InsightKind) -> [InsightTopic] {
@@ -41,7 +42,8 @@ public enum InsightTopic: String, Hashable, Sendable, Codable, CaseIterable {
         case .sleep: [.sleepNeeds, .nightAndDay, .sleepChanges, .disturbedNights, .safeSleep]
         case .weight: [.weight]
         case .pump: [.expressing]
-        case .bath, .first: []
+        case .bath: [.bathing]
+        case .first: []
         }
     }
 }
@@ -185,7 +187,11 @@ public enum NHSPassages {
         passage.summaries.filter { isChecked($0.id, copied: passage.copied, checks: checks, today: today) }
     }
 
-    // The passages, generated from the NHS pages as copied on 22 November 2026.
+    // The passages, generated from the NHS pages as copied on 22 November 2026: each page's HTML,
+    // its main text taken line by line (a paragraph inside a list item stays that item, and an
+    // expander's title is a "### " heading), then a range of lines per passage. Links to other
+    // pages and box labels are left out. A passage starts at its section's heading; one whose
+    // page has no heading before its first words starts at the page's own title.
     static let library: [Passage] = [
         Passage(id: "urgent-help", page: #"When to get urgent medical help for babies and children under 5"#, url: "https://www.nhs.uk/baby/health/when-to-get-urgent-medical-help-for-babies-and-children-under-5/",
                 topics: [.urgentHelp], ageInDays: nil, feeding: nil, isUrgent: true,
@@ -360,26 +366,26 @@ public enum NHSPassages {
                 There are things you can do to lower the risk of sudden infant death syndrome (SIDS). Follow this advice whenever your baby is sleeping.
                 If your baby was born prematurely, follow the advice for safer sleep for a year from their due date not the date they were born.
                 ### Do
-                always place your baby on their back to sleep in the feet-to-foot position – this means with their feet at the bottom of the cot, Moses basket or pram
-                move your baby onto their back if they roll (until they can roll onto their front and back again by themselves)
-                place your baby in a separate cot or Moses basket in the same room as you for every sleep for at least the first 6 months
-                use a firm, flat mattress
-                keep your baby's cot clear of anything that could cover their face and head – do not use pillows, duvets, cot bumpers, loose blankets, soft toys or anything to keep your baby in place, like pods or nests
-                breastfeed your baby if you can – breastmilk protects your baby from infections and diseases
-                think about using a dummy to settle your baby to sleep – some research suggests this can help lower the risk of SIDS
-                make sure your baby is up to date with their routine NHS vaccinations – these provide protection against childhood illnesses that may increase the risk of SIDS
+                - always place your baby on their back to sleep in the feet-to-foot position – this means with their feet at the bottom of the cot, Moses basket or pram
+                - move your baby onto their back if they roll (until they can roll onto their front and back again by themselves)
+                - place your baby in a separate cot or Moses basket in the same room as you for every sleep for at least the first 6 months
+                - use a firm, flat mattress
+                - keep your baby's cot clear of anything that could cover their face and head – do not use pillows, duvets, cot bumpers, loose blankets, soft toys or anything to keep your baby in place, like pods or nests
+                - breastfeed your baby if you can – breastmilk protects your baby from infections and diseases
+                - think about using a dummy to settle your baby to sleep – some research suggests this can help lower the risk of SIDS
+                - make sure your baby is up to date with their routine NHS vaccinations – these provide protection against childhood illnesses that may increase the risk of SIDS
                 """#),
         Passage(id: "safe-sleep-dont", page: #"Sudden infant death syndrome (SIDS)"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/sudden-infant-death-syndrome-sids/",
                 topics: [.safeSleep], ageInDays: nil, feeding: nil, isUrgent: false,
                 summaries: [PassageSummary(id: "safe-sleep-dont-s1", words: #"This NHS list sets out the things to avoid to lower the risk of sudden infant death syndrome."#)],
                 words: #"""
                 ### Don't
-                do not sleep on a sofa or in an armchair with your baby
-                do not smoke when you're pregnant or around your baby after they're born, and do not let anyone smoke in the same room as your baby
-                do not share a bed with your baby if they were born prematurely (before 37 weeks of pregnancy) or if they weighed less than 2.5kg or 5.5lb when they were born
-                do not share a bed with your baby if you or your partner smoke, drink alcohol or take drugs or medicine that makes you feel sleepy (drowsy)
-                do not let your baby get too hot or too cold – make sure that your baby's room is between 16C to 20C
-                do not let your baby stay in a car seat for too long – it's ok for your baby to fall asleep in a car seat while you are travelling, but take your baby out of the car seat as soon as you get to where you're going
+                - do not sleep on a sofa or in an armchair with your baby
+                - do not smoke when you're pregnant or around your baby after they're born, and do not let anyone smoke in the same room as your baby
+                - do not share a bed with your baby if they were born prematurely (before 37 weeks of pregnancy) or if they weighed less than 2.5kg or 5.5lb when they were born
+                - do not share a bed with your baby if you or your partner smoke, drink alcohol or take drugs or medicine that makes you feel sleepy (drowsy)
+                - do not let your baby get too hot or too cold – make sure that your baby's room is between 16C to 20C
+                - do not let your baby stay in a car seat for too long – it's ok for your baby to fall asleep in a car seat while you are travelling, but take your baby out of the car seat as soon as you get to where you're going
                 """#),
         Passage(id: "calm-crying", page: #"Soothing a crying baby"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/soothing-a-crying-baby/",
                 topics: [.crying], ageInDays: nil, feeding: nil, isUrgent: false,
@@ -459,6 +465,298 @@ public enum NHSPassages {
                 ## Help with bottle feeding
                 Talk to your midwife, health visitor or other mothers who have bottle fed if you need help and support.
                 You'll find the phone number for your health visitor in your baby's personal health record (red book).
+                """#),
+        Passage(id: "reflux-signs", page: #"Reflux in babies"#, url: "https://www.nhs.uk/conditions/reflux-in-babies/",
+                topics: [.sickAfterFeeds], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "reflux-signs-s1", words: #"This NHS page describes reflux, when milk comes back up during or after a feed, and its common signs."#)],
+                words: #"""
+                ## Symptoms of reflux in babies
+                Reflux usually starts before a baby is 8 weeks old and gets better by the time they're 1.
+                Symptoms of reflux in babies include:
+                - bringing up milk or being sick during or shortly after feeding
+                - coughing or hiccupping when feeding
+                - being unsettled during feeding
+                - swallowing or gulping after burping or feeding
+                - crying and not settling
+                - not gaining weight as they're not keeping enough food down
+                Sometimes babies may have signs of reflux but will not bring up milk or be sick. This is known as silent reflux.
+                """#),
+        Passage(id: "reflux-ease", page: #"Reflux in babies"#, url: "https://www.nhs.uk/conditions/reflux-in-babies/",
+                topics: [.sickAfterFeeds], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "reflux-ease-s1", words: #"This NHS advice lists things that may ease reflux, and one thing to avoid."#)],
+                words: #"""
+                ## Things you can try to ease reflux in babies
+                It's common for a baby under the age of 1 to bring up a little bit of milk during or shortly after a feed, without being distressed. Your baby does not usually need to see a doctor if they have reflux, as long as they're happy, healthy and gaining weight.
+                If symptoms of reflux seem to be bothering your baby, there are things you can do to help.
+                ### Do
+                - ask a health visitor for advice and support
+                - get advice about your baby's breastfeeding position or how to bottle feed your baby
+                - hold your baby upright during feeding and for as long as possible after feeding
+                - burp your baby regularly during feeds
+                - make sure your baby sleeps flat on their back (they should not sleep on their side or front)
+                ### Don’t
+                - do not raise the head of their cot or Moses basket
+                """#),
+        Passage(id: "reflux-help", page: #"Reflux in babies"#, url: "https://www.nhs.uk/conditions/reflux-in-babies/",
+                topics: [.sickAfterFeeds], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "reflux-help-s1", words: #"This NHS page says when reflux needs a GP, and the signs that need an urgent GP appointment or a call to NHS 111."#)],
+                words: #"""
+                ## Non-urgent advice: See a GP if your baby:
+                - is not improving after trying things to ease reflux
+                - gets reflux for the first time after they're 6 months old
+                - is older than 1 and still has reflux
+                - is not gaining weight or is losing weight
+                ## Urgent advice: Ask for an urgent GP appointment or call NHS 111 if your baby:
+                - has vomit that's green or yellow, or has blood in it
+                - is projectile vomiting (being sick with more force than usual)
+                - has blood in their poo
+                - has a swollen or tender tummy
+                - has a very high temperature, or they feel hot, cold or shivery
+                - keeps being sick and cannot keep fluid down
+                - has diarrhoea that lasts for over a week or has signs of dehydration
+                - will not stop crying and is very distressed
+                - is refusing to feed
+                Also call your GP or 111 if you have any other concerns about your baby.
+                """#),
+        Passage(id: "colic-signs", page: #"Colic"#, url: "https://www.nhs.uk/conditions/colic/",
+                topics: [.crying], ageInDays: 0...150, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "colic-signs-s1", words: #"This NHS page describes colic, when a baby cries a lot with no clear cause, and other reasons a baby may cry."#)],
+                words: #"""
+                ## Symptoms of colic
+                All babies cry, but your baby may have colic if they cry more than 3 hours a day, 3 days a week for at least 1 week but are otherwise healthy.
+                They may cry more often in the afternoon and evening.
+                It may also be colic if, while they are crying:
+                - it's hard to soothe or settle your baby
+                - they clench their fists
+                - they go red in the face
+                - they bring their knees up to their tummy or arch their back
+                - their tummy rumbles or they're very windy
+                It can start when a baby is a few weeks old. It usually stops by the time they're 3 to 4 months old.
+                ### If you're not sure it's colic
+                There are other reasons why your baby may be crying.
+                It could be they:
+                - are hungry
+                - have a dirty nappy
+                - have wind
+                - have reflux
+                - have constipation
+                If you're not sure what's wrong, it's best to speak to your health visitor, call NHS 111 or see a GP to be sure.
+                """#),
+        Passage(id: "colic-help", page: #"Colic"#, url: "https://www.nhs.uk/conditions/colic/",
+                topics: [.crying], ageInDays: 0...150, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "colic-help-s1", words: #"This NHS page says when to call NHS 111 or see a GP about crying, and the signs that need A&E or a 999 call."#)],
+                words: #"""
+                ## Non-urgent advice: Call NHS 111 or see a GP if:
+                - you're worried about your baby's crying
+                - your baby has colic and nothing seems to be working
+                - you're finding it hard to cope
+                - your baby is not growing or putting on weight as expected
+                - your baby still has symptoms of colic after 4 months of age
+                A GP will check for possible causes of your baby's crying.
+                ## Immediate action required: Go to A&E or call 999 if:
+                - your baby has a weak or high-pitched cry
+                - your baby's cry does not sound like their normal cry
+                You know better than anyone else what your child is usually like. Trust your instincts if you think something is seriously wrong, particularly if they have other worrying symptoms.
+                You do not have to drive to A&E. You can ask someone to drive you or call 999 and ask for an ambulance.
+                Bring any medicines your baby takes with you.
+                """#),
+        Passage(id: "colic-cope", page: #"Colic"#, url: "https://www.nhs.uk/conditions/colic/",
+                topics: [.crying, .parentsMood], ageInDays: 0...150, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "colic-cope-s1", words: #"This NHS page is about coping with a colicky baby, and where parents can find support."#)],
+                words: #"""
+                ## How to cope if you have a colicky baby
+                Looking after a colicky baby can be upsetting, but it's usually nothing to worry about and will pass with time.
+                Ask for support:
+                - from other parents, family or friends
+                - by calling the Cry-sis helpline free on 0800 448 0737 (9am to 10pm, 7 days a week)
+                - from your health visitor, by calling NHS 111 or seeing a GP
+                """#),
+        Passage(id: "poo-looks", page: #"How to change your baby's nappy"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/how-to-change-your-babys-nappy/",
+                topics: [.nappies], ageInDays: 0...90, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "poo-looks-s1", words: #"This NHS page describes how poo looks in the first days and after, for breastfed and formula-fed babies."#)],
+                words: #"""
+                ## What baby poo looks like
+                Your baby's first poo is called meconium. This is sticky and greenish-black.
+                Some babies may do this kind of poo during or after birth, or some time in the first 48 hours.
+                After a few days the poo will change to a yellow or mustard colour. Breastfed babies' poo is runny and doesn't smell. Formula-fed babies' poo is firmer, darker brown and more smelly.
+                Some infant formulas can also make your baby's poo dark green. If you change from breast to formula feeding, you'll find your baby's poos become darker and more paste-like.
+                If you have a girl, you may see a white discharge on her nappy for a few days after birth.
+                It's caused by hormones that have crossed the placenta to your baby, but these will soon disappear from her system.
+                These hormones can occasionally cause slight bleeding like a mini period, but in both cases it's nothing to worry about.
+                """#),
+        Passage(id: "poo-how-often", page: #"How to change your baby's nappy"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/how-to-change-your-babys-nappy/",
+                topics: [.nappies], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "poo-how-often-s1", words: #"This NHS page describes how often babies usually poo as they grow, and what counts as constipation."#)],
+                words: #"""
+                ## How often should my baby do a poo?
+                Babies do 2 or more poos a day in the first week of life. This goes down to an average of 2 a day by the time they're 1 year old.
+                Newborn babies who are breastfed may poo at each feed in the early weeks, then, after about 6 weeks, not have a poo for several days.
+                Formula-fed babies may poo up to 5 times a day when newborn, but after a few months this can go down to once a day.
+                It's also normal for babies to strain or even cry when doing a poo.
+                Your baby isn't constipated as long as their poos are soft, even if they haven't done one for a few days.
+                """#),
+        Passage(id: "poo-changes", page: #"How to change your baby's nappy"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/how-to-change-your-babys-nappy/",
+                topics: [.nappies, .jaundice], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "poo-changes-s1", words: #"This NHS page describes changes in poo that are worth talking to a doctor or health visitor about, including pale poo."#)],
+                words: #"""
+                ## Is it normal for my baby's poos to change?
+                From day to day or week to week, your baby's poos will probably vary.
+                If you notice a definite change of any kind, such as the poos becoming very smelly, very watery or harder (particularly if there's blood in them), you should talk to your doctor or health visitor.
+                If your baby's poos look pale, this can be a sign of jaundice.
+                Speak to your health visitor or GP if you notice this.
+                """#),
+        Passage(id: "topping-and-tailing", page: #"Washing and bathing your baby"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/washing-and-bathing-your-baby/",
+                topics: [.bathing], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "topping-and-tailing-s1", words: #"This NHS page explains topping and tailing, a way to wash a baby without a full bath."#)],
+                words: #"""
+                ## Topping and tailing tips
+                - Hold your baby on your knee or lay them on a changing mat. Take off all their clothes, apart from their vest and nappy, and wrap them in a towel.
+                - Dip the cotton wool in the water (make sure it doesn't get too wet) and wipe gently around your baby's eyes from the nose outward, using a fresh piece of cotton wool for each eye. This is so that you don't transfer any stickiness or infection from one eye to another.
+                - Use a fresh piece of cotton wool to clean around your baby's ears, but not inside them. Never use cotton buds to clean inside your baby's ears. Wash the rest of your baby's face, neck and hands with cotton wool in the same way and dry them gently with the towel.
+                - Take off the nappy and wash your baby's bottom and genital area with fresh cotton wool and warm water. Dry very carefully, including between the skin folds, and put on a clean nappy.
+                - You only need to wash around your baby's umbilical cord if it's dirty with pee or poo. Clean the area with fresh cotton wool and warm water, and gently pat dry with a towel.
+                - It will help your baby to relax if you keep talking while you wash them. The more they hear your voice, the more they'll get used to listening to you and start to understand what you're saying.
+                """#),
+        Passage(id: "bathing-safely", page: #"Washing and bathing your baby"#, url: "https://www.nhs.uk/baby/caring-for-a-newborn/washing-and-bathing-your-baby/",
+                topics: [.bathing], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "bathing-safely-s1", words: #"This NHS page sets out how to bath a baby safely, and why baby bath seats are not recommended."#)],
+                words: #"""
+                ## Bathing your baby safely
+                Never leave your baby alone in the bath, even for a second.
+                Do not allow older children to look after your baby in the bath. Babies of any age should always be supervised by adults while in the bath.
+                You don't need to bathe your baby every day, but if they really enjoy it, there's no reason why you shouldn't.
+                It's best not to bathe your baby straight after a feed or when they're hungry or tired. Make sure the room you're bathing them in is warm.
+                Have everything you need at hand: a baby bath or clean washing-up bowl filled with warm water, 2 towels, a clean nappy, clean clothes and cotton wool.
+                - The water should be warm, not hot. Run the cold water first and then add hot water. Check it with your wrist or elbow and mix it well so there are no hot patches.
+                - You can use just water, or add a liquid cleanser that's suitable for babies.
+                - Hold your baby on your knee and clean their face.
+                - Next, wash their hair with plain water, supporting them over the bowl.
+                - Once you've dried their hair gently, you can take off their nappy, wiping away any mess.
+                - Lower your baby gently into the bowl or bath using one hand to hold their upper arm and support their head and shoulders. Then use the other hand to gently swish the water over your baby without splashing.
+                - Keep your baby's head clear of the water.
+                - Lift your baby out and pat them dry, paying special attention to the creases in their skin.
+                - Empty the bath water as soon as you've finished using it.
+                - This is a good time to massage your baby. Massage can help them relax and sleep. If you want to use any oils or lotions, check they're suitable for babies.
+                - Cover your baby or put their clothes on once they're dry, to keep them warm.
+                - If your baby seems frightened of bathing and cries, try bathing together. Make sure the water isn't too hot. It's easier if someone else holds your baby while you get in and out of the bath.
+                ### Baby bath seats
+                The Royal Society for the Prevention of Accidents (RoSPA) recommends that baby bath seats are not used.
+                Bath seats can come away from the bath, and babies of any age can drown very quickly in just a few centimetres of water, with no noise or struggle.
+                It's not safe to leave them unsupervised in a baby bath seat, even for a few seconds.
+                """#),
+        Passage(id: "weight-first-weeks", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
+                topics: [.weight], ageInDays: 0...42, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "weight-first-weeks-s1", words: #"This NHS page describes weight in the first weeks after birth, and the support offered when a baby is slow to regain birthweight."#)],
+                words: #"""
+                ## Your baby's weight and height
+                Steady weight gain is one of the signs that your baby is healthy and feeding well.
+                It's normal for babies to lose some weight in the first few days after birth.
+                Your baby will be weighed during their first 2 weeks to make sure they're regaining their birthweight. Most babies are at, or above, their birthweight by 3 weeks.
+                A midwife or health visitor will support you if your baby loses a large amount of weight or does not regain their birthweight by 3 weeks.
+                They'll talk to you about how feeding is going, possibly ask to observe a feed if you're breastfeeding, and look at your baby's health in general.
+                """#),
+        Passage(id: "weight-how-often", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
+                topics: [.weight], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "weight-how-often-s1", words: #"This NHS page explains how often babies are usually weighed at different ages."#)],
+                words: #"""
+                ## How often should my baby be weighed?
+                After the first 2 weeks, your baby should be weighed:
+                - no more than once a month up to 6 months of age
+                - no more than once every 2 months from 6 to 12 months of age
+                - no more than once every 3 months over the age of 1
+                Your baby will usually only be weighed more often than this if you ask for it or if there are concerns about their health or growth.
+                Your baby's length may also be measured at some of their developmental reviews.
+                """#),
+        Passage(id: "weight-centiles", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
+                topics: [.weight], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "weight-centiles-s1", words: #"This NHS page explains the centile lines on a baby's growth chart in the red book."#)],
+                words: #"""
+                ## What the centile lines mean
+                The curved lines on the charts are called centile lines. These show the average weight and height gain for babies of different ages.
+                Your baby's weight and height may not follow a centile line exactly. Their measurements may go up or down by 1 centile line, but it's less common for them to cross 2 centile lines. If this happens, talk to a health visitor, who can advise you.
+                It's normal for your baby to be on different centiles for weight and length, but the 2 are usually fairly similar.
+                All babies are different, and your baby's growth chart will not look exactly the same as another baby's, even their own brother or sister.
+                """#),
+        Passage(id: "weight-gain", page: #"Your baby's weight and height"#, url: "https://www.nhs.uk/baby/babys-development/height-weight-and-reviews/baby-height-and-weight/",
+                topics: [.weight], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "weight-gain-s1", words: #"This NHS page describes how weight gain usually changes over the first months, and during an illness."#)],
+                words: #"""
+                ## Your baby's weight gain
+                Usually your baby will gain weight most rapidly in the first 6 months. Their rate of growth will gradually slow down as they become a toddler and are more active.
+                If your baby or toddler is ill, their weight gain may slow down for a while. It will usually return to normal within 2 to 3 weeks.
+                """#),
+        Passage(id: "parents-rest", page: #"Sleep and tiredness after having a baby"#, url: "https://www.nhs.uk/baby/support-and-services/sleep-and-tiredness-after-having-a-baby/",
+                topics: [.disturbedNights], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "parents-rest-s1", words: #"This NHS advice is about parents getting rest, including sleeping when the baby sleeps and sharing the nights."#)],
+                words: #"""
+                ## Sleep when your baby sleeps
+                Try to rest when your baby sleeps. It might be tempting to use this time to catch up with housework or other chores, but sometimes getting rest is more important. Set an alarm if you're worried about sleeping for too long.
+                ## Share the nights if you can
+                If you have a partner, ask them to help. If you're formula feeding, they could share the feeds. If you're breastfeeding, ask your partner to help with nappies or dressing in the morning so you can go back to sleep.
+                Once you're into a good breastfeeding routine, your partner could occasionally give a bottle of expressed breast milk during the night.
+                """#),
+        Passage(id: "parents-help", page: #"Sleep and tiredness after having a baby"#, url: "https://www.nhs.uk/baby/support-and-services/sleep-and-tiredness-after-having-a-baby/",
+                topics: [.disturbedNights, .parentsMood], ageInDays: nil, feeding: nil, isUrgent: false,
+                summaries: [PassageSummary(id: "parents-help-s1", words: #"This NHS page lists helplines and services for parents who are very tired or finding it hard to cope."#)],
+                words: #"""
+                ## Where to get further help
+                - If you're feeling really tired and struggling to cope, talk to a GP or health visitor. Find out about services and support for parents.
+                - The Cry-sis website offers advice on coping with a crying or restless baby. You can call their helpline free on 0800 448 0737. It's open 7 days a week from 9am to 10pm.
+                - The Coram Family Lives website has a free helpline you can call for information and support on parenting or family issues. The number is 0808 800 2222 and it's open Monday to Friday, 9am to 9pm, and Saturday and Sunday, 10am to 3pm.
+                - The Home-Start website offers support to parents and carers through a parent-helper visiting scheme.
+                """#),
+        Passage(id: "formula-dos", page: #"How to make up baby formula"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/bottle-feeding/making-up-baby-formula/",
+                topics: [.bottleFeeding], ageInDays: nil, feeding: .bottleFeeding, isUrgent: false,
+                summaries: [PassageSummary(id: "formula-dos-s1", words: #"This NHS page lists the dos and don'ts of making up formula feeds."#)],
+                words: #"""
+                ## Dos and don'ts of making up formula feeds
+                - Do follow the manufacturer's instructions very carefully, as they vary as to how much water and powder to use.
+                - Do not add extra formula powder when making up a feed. This can make your baby constipated or dehydrated.
+                - Do not add extra water when making up a feed. Too little powder may not give your baby enough nourishment.
+                - Do not add sugar or cereals to your baby's formula.
+                - Never warm up formula in a microwave, as it may heat the feed unevenly and burn your baby's mouth.
+                """#),
+        Passage(id: "formula-how-much", page: #"Formula milk: common questions"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/bottle-feeding/formula-milk-questions/",
+                topics: [.bottleFeeding, .feedingOften], ageInDays: nil, feeding: .bottleFeeding, isUrgent: false,
+                summaries: [PassageSummary(id: "formula-how-much-s1", words: #"This NHS page explains that babies vary in how much formula they want, and how often."#)],
+                words: #"""
+                ## How much formula does my baby need?
+                Newborn babies need quite small amounts of formula to start with. The amount will vary from baby to baby.
+                Although most babies settle into a feeding pattern eventually, they vary in how often they want to feed and how much they want to drink.
+                Feed your baby when they show signs that they want it. Babies tend to feed little and often, so they may not finish their bottle. Having a big feed does not mean your baby will go longer between feeds.
+                """#),
+        Passage(id: "formula-enough", page: #"Formula milk: common questions"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/bottle-feeding/formula-milk-questions/",
+                topics: [.enoughMilk, .nappies, .weight], ageInDays: nil, feeding: .bottleFeeding, isUrgent: false,
+                summaries: [PassageSummary(id: "formula-enough-s1", words: #"This NHS page describes the signs that a baby is getting enough formula, including nappies and weight."#)],
+                words: #"""
+                ## How do I know if my baby is getting enough formula?
+                Your baby's weight gain and the number of wet and dirty nappies will tell you whether your baby is getting enough formula.
+                Your baby should have around 6 wet nappies a day from a few days after the birth. Nappies should be wet with clear or pale yellow urine, or feel heavy.
+                For the first day or two after birth, your baby will pass a dark, sticky substance known as meconium. Within the first week your baby should start to pass pale yellow or yellowish brown poo. They should be having at least 1 poo a day.
+                Your baby will usually be weighed at birth and again in the first week. After that, healthy babies only need to be weighed at 8, 12 and 16 weeks, and again at 1 year.
+                This information should be entered on a chart in your personal child health record (PCHR) or "red book".
+                If you have any questions or concerns about your baby's weight gain, speak to a midwife or health visitor.
+                """#),
+        Passage(id: "formula-hungry", page: #"Formula milk: common questions"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/bottle-feeding/formula-milk-questions/",
+                topics: [.feedingOften, .bottleFeeding], ageInDays: nil, feeding: .bottleFeeding, isUrgent: false,
+                summaries: [PassageSummary(id: "formula-hungry-s1", words: #"This NHS page describes the signs that a formula-fed baby is ready to feed."#)],
+                words: #"""
+                ## How will I know if my formula-fed baby is hungry?
+                After a while, you'll get to know the signs that show your baby is ready to feed.For example, your baby may:
+                - start to get restless
+                - begin to turn their head and open their mouth (rooting)
+                - find something to suck – usually their fist or fingers
+                Try to feed your baby before they cry, as this is a late sign of hunger.
+                """#),
+        Passage(id: "breastfeeding-help", page: #"Breastfeeding: positioning and attachment"#, url: "https://www.nhs.uk/baby/breastfeeding-and-bottle-feeding/breastfeeding/positioning-and-attachment/",
+                topics: [.enoughMilk, .feedingOften], ageInDays: nil, feeding: .breastfeeding, isUrgent: false,
+                summaries: [PassageSummary(id: "breastfeeding-help-s1", words: #"This NHS page lists where to get help and support with breastfeeding, including a national helpline."#)],
+                words: #"""
+                ## Help and support with breastfeeding
+                If you have any questions or concerns about breastfeeding, you can:
+                - speak to your midwife, health visitor or breastfeeding supporter
+                - call the National Breastfeeding Helpline 24 hours a day on 0300 100 0212
+                - get online NHS advice about sore nipples and other common breastfeeding problems
                 """#),
     ]
 }

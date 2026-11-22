@@ -53,7 +53,10 @@ final class GetHelpFlowTests: XCTestCase {
         let app = launchAtSettings()
         let nhs = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'NHS information'")).firstMatch
         scrollTo(nhs, in: app)
-        XCTAssertTrue(nhs.label.contains("38 to check"), nhs.label)
+        // Every passage and summary waits for a tick: twice the number of passages.
+        let before = toCheck(nhs.label)
+        XCTAssertNotNil(before, nhs.label)
+        XCTAssertGreaterThanOrEqual(before ?? 0, 50, nhs.label)
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "settings-about"
         shot.lifetime = .keepAlways
@@ -82,6 +85,12 @@ final class GetHelpFlowTests: XCTestCase {
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(nhs.waitForExistence(timeout: 5))
-        XCTAssertTrue(nhs.label.contains("36 to check"), nhs.label)
+        XCTAssertEqual(toCheck(nhs.label), before.map { $0 - 2 }, nhs.label)
+    }
+
+    /// The number in "NHS information, 82 to check".
+    private func toCheck(_ label: String) -> Int? {
+        guard let range = label.range(of: #"\d+(?= to check)"#, options: .regularExpression) else { return nil }
+        return Int(label[range])
     }
 }

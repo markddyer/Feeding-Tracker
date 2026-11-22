@@ -70,9 +70,12 @@ struct NHSPassageTile: View {
     var body: some View {
         Tile {
             VStack(alignment: .leading, spacing: 12) {
-                Text(passage.page)
-                    .feedText(.subheadline)
-                    .foregroundStyle(Theme.textMuted)
+                // Left out when the passage's own heading is the page's title, so it isn't said twice.
+                if PassageBlock.title(of: passage) != passage.page {
+                    Text(passage.page)
+                        .feedText(.subheadline)
+                        .foregroundStyle(Theme.textMuted)
+                }
                 PassageWords(words: passage.words)
                 VStack(alignment: .leading, spacing: 6) {
                     Text(passage.attribution)
