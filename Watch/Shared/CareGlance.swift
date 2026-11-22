@@ -71,7 +71,10 @@ enum CareText {
         guard let nappy else { return "No nappy logged yet" }
         let seconds = now.timeIntervalSince(nappy.at)
         let when = seconds < 60 ? "just now" : "\(GlanceText.spokenElapsed(seconds)) ago"
-        return "Nappy, \(nappyKind(wee: nappy.wee, poo: nappy.poo).lowercased()), \(when)"
+        // A poo's colour and consistency too, once added, as the row shows them (outside review of
+        // step 1, P3).
+        let details = [nappy.colour.map(colourName), nappy.consistency.map(consistencyName)].compactMap { $0 }
+        return (["Nappy", nappyKind(wee: nappy.wee, poo: nappy.poo).lowercased()] + details + [when]).joined(separator: ", ")
     }
 }
 

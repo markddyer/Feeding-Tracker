@@ -19,6 +19,9 @@ struct WatchMetrics {
     /// A button in a row of three, about square.
     var tileWidth: CGFloat { ((size.width - 2 * gap) / 3).rounded(.down) }
     var tileHeight: CGFloat { (tileWidth * 0.88).rounded() }
+    /// Page 1's small buttons under the bar: shorter, as Start and the bar matter most there and
+    /// the 42 mm screen has no room for square ones (21 Nov 2026).
+    var shortTileHeight: CGFloat { max(40, (tileWidth * 0.68).rounded()) }
 }
 
 /// A page: fills the screen it has, with its rows from the top and spare room spread between them.
@@ -45,7 +48,13 @@ struct WatchPageFrame<Content: View>: View {
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
             }
         }
-        .padding(.horizontal, 2)
+        .padding(.horizontal, 3)
+        // Clear of the screen's rounded bottom corners (on the Ultra, buttons touching the bottom
+        // were clipped by them, 21 Nov 2026).
+        .padding(.bottom, 12)
+        // No room kept for a large title: the label sits beside the clock, and the page starts just
+        // under it (a large gap showed on the Ultra, 21 Nov 2026).
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Text(label)
@@ -91,7 +100,7 @@ struct WatchBigNumber: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
             note
-                .watchText(.line)
+                .watchText(.note)
                 .foregroundStyle(palette.textMuted)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -142,6 +151,10 @@ struct WatchRoundButton: View {
 struct WatchTile<Mark: View>: View {
     let title: String
     let metrics: WatchMetrics
+    /// Shorter than square, for page 1's small buttons.
+    var short = false
+    /// The width of the row: a tile alone in it, so no space is left unused.
+    var wide = false
     var selected = false
     var selectedColour: Color?
     var hint: String?
@@ -164,7 +177,8 @@ struct WatchTile<Mark: View>: View {
                 }
             }
             .padding(.horizontal, 2)
-            .frame(width: metrics.tileWidth, height: metrics.tileHeight)
+            .frame(width: wide ? nil : metrics.tileWidth, height: short ? metrics.shortTileHeight : metrics.tileHeight)
+            .frame(maxWidth: wide ? .infinity : nil)
             .foregroundStyle(selected ? palette.onBreast : palette.text)
             .background(selected ? (selectedColour ?? palette.breast) : palette.surface, in: RoundedRectangle(cornerRadius: 16))
             .contentShape(RoundedRectangle(cornerRadius: 16))
@@ -178,6 +192,7 @@ struct WatchTile<Mark: View>: View {
 /// A row of up to three tiles; fewer keep the same size, from the left.
 struct WatchTileRow<Content: View>: View {
     let metrics: WatchMetrics
+    var short = false
     @ViewBuilder let content: () -> Content
 
     var body: some View {
@@ -185,7 +200,7 @@ struct WatchTileRow<Content: View>: View {
             content()
             Spacer(minLength: 0)
         }
-        .frame(height: metrics.tileHeight)
+        .frame(height: short ? metrics.shortTileHeight : metrics.tileHeight)
     }
 }
 
@@ -198,7 +213,9 @@ struct WatchIdlePage: View {
     let now: Date
     let waiting: Bool
     let start: (MilkKind?) -> Void
-    let breastfeed: () -> Void
+    /// A bottle-only watch's Start: "Formula or expressed?" (and "Breastfeed (Sam)" when named),
+    /// never assuming the milk (Parent A, 21 Nov 2026).
+    let askMilk: () -> Void
     let pumping: () -> Void
 
     var body: some View {
@@ -215,12 +232,8 @@ struct WatchIdlePage: View {
                 }
             } button: {
                 if state.bottleOnly {
-                    // One tap starts the milk used last; the other milk is a small button below.
-                    let milk = state.lastMilk ?? .formula
-                    WatchRoundButton(title: milk == .formula ? "Formula" : "Expressed", metrics: metrics, bottle: true) {
-                        start(milk)
-                    }
-                    .accessibilityLabel(milk == .formula ? "Start a formula feed" : "Start an expressed milk feed")
+                    WatchRoundButton(title: "Start", metrics: metrics, bottle: true) { askMilk() }
+                        .accessibilityLabel("Start feed, then choose the milk")
                 } else {
                     WatchRoundButton(title: "Start", metrics: metrics, bottle: true) { start(nil) }
                         .accessibilityLabel("Start feed")
@@ -231,31 +244,23 @@ struct WatchIdlePage: View {
                 let line = steps.line(state.clock)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("\(Text(line.main).fontWeight(.semibold).foregroundStyle(palette.text))\(Text(line.more).foregroundStyle(palette.textMuted))")
-                        .watchText(.line)
+                        .watchText(.note)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.8)
+                        .minimumScaleFactor(0.85)
+                        .fixedSize(horizontal: false, vertical: true)
+                    // No times under the bar: the line above it says when the alert is, and the
+                    // larger words need the room (Parent A, 21 Nov 2026).
                     WatchWindowTrack(steps: steps, palette: palette, height: metrics.small ? 10 : 12)
-                    if !metrics.small { WatchBarTimes(steps: steps, state: state, palette: palette) }
                 }
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(steps.spoken(state.clock))
             }
             if waiting { WaitingLine() }
             Spacer(minLength: 3)
-            WatchTileRow(metrics: metrics) {
-                if state.bottleOnly {
-                    let other: MilkKind = (state.lastMilk ?? .formula) == .formula ? .expressed : .formula
-                    WatchTile(title: other == .formula ? "Formula" : "Expressed", metrics: metrics) {
-                        BottleShape().fill(palette.bottle).frame(width: 15, height: 15)
-                    } action: { start(other) }
-                    if let name = state.breastfeederName {
-                        WatchTile(title: "Breastfeed (\(name))", metrics: metrics) {
-                            Image(systemName: "circle.lefthalf.filled").foregroundStyle(palette.breast)
-                        } action: { breastfeed() }
-                    }
-                }
+            WatchTileRow(metrics: metrics, short: true) {
                 if state.understands(WatchCapability.pump) {
-                    WatchTile(title: "Pumping", metrics: metrics) {
+                    // Alone in the row until step 2 adds Just finished and Earlier beside it.
+                    WatchTile(title: "Pumping", metrics: metrics, short: true, wide: true) {
                         DropsShape().fill(palette.textMuted).frame(width: 15, height: 15)
                     } action: { pumping() }
                 }
@@ -285,7 +290,7 @@ struct WatchRunningPage: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
                     Text(startedNote(palette))
-                        .watchText(.line)
+                        .watchText(.note)
                         .foregroundStyle(palette.textMuted)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
@@ -494,6 +499,9 @@ struct WatchCarePage: View {
 struct WatchTodayPage: View {
     let state: WatchState
     let now: Date
+    /// The rows with a tap the phone hasn't saved yet: "bath", or a medicine's name (outside review
+    /// of step 1, P2). They say so until it has.
+    var waiting: Set<String> = []
     let bath: () -> Void
     let medicine: (String) -> Void
     let medicineList: () -> Void
@@ -504,7 +512,7 @@ struct WatchTodayPage: View {
             let palette = WatchPalette.of(look)
             let medicines = state.understands(WatchCapability.medicine) ? state.medicines ?? [] : []
             if state.understands(WatchCapability.bath) {
-                WatchCareRow(title: "Bath", note: lastText(state.lastBath), metrics: metrics) {
+                WatchCareRow(title: "Bath", note: waiting.contains("bath") ? waitingText : lastText(state.lastBath), metrics: metrics) {
                     Image(systemName: "bathtub.fill").foregroundStyle(palette.bottle)
                 } trailing: {
                     WatchPill(title: "Bath", action: bath).accessibilityLabel("Bath, log it now")
@@ -512,14 +520,16 @@ struct WatchTodayPage: View {
             }
             Spacer(minLength: metrics.gap)
             if medicines.count == 1, let item = medicines.first {
-                WatchCareRow(title: item.name, note: lastText(item.lastGiven), metrics: metrics) {
+                WatchCareRow(title: item.name, note: waiting.contains(item.name) ? waitingText : lastText(item.lastGiven),
+                             metrics: metrics) {
                     Image(systemName: "pills.fill").foregroundStyle(palette.textMuted)
                 } trailing: {
                     WatchPill(title: "Given") { medicine(item.name) }.accessibilityLabel("\(item.name) given, log it now")
                 }
             } else if medicines.count > 1 {
                 Button(action: medicineList) {
-                    WatchCareRow(title: "Medicine", note: listNote(medicines), metrics: metrics) {
+                    WatchCareRow(title: "Medicine", note: medicines.contains { waiting.contains($0.name) } ? waitingText : listNote(medicines),
+                                 metrics: metrics) {
                         Image(systemName: "pills.fill").foregroundStyle(palette.textMuted)
                     } trailing: {
                         Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(palette.textMuted)
@@ -532,6 +542,8 @@ struct WatchTodayPage: View {
             Spacer(minLength: 0)
         }
     }
+
+    private var waitingText: String { "Waiting for iPhone" }
 
     private func lastText(_ date: Date?) -> String {
         date.map { "Last \(CareText.lastGiven($0, now: now, timeZoneID: state.timeZoneID))" } ?? "Not logged yet"
@@ -558,7 +570,10 @@ struct WatchCareRow<Icon: View, Trailing: View>: View {
         HStack(spacing: 6) {
             icon().frame(width: 18)
             VStack(alignment: .leading, spacing: 0) {
-                Text(title).watchText(.line).fontWeight(.semibold).foregroundStyle(palette.text).lineLimit(1)
+                // Two lines, so two medicines whose names differ near the end can't look the same
+                // (outside review of step 1, P2).
+                Text(title).watchText(.line).fontWeight(.semibold).foregroundStyle(palette.text).lineLimit(2)
+                    .minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
                 Text(note).watchText(.hint).foregroundStyle(palette.textMuted).lineLimit(1).minimumScaleFactor(0.8)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -566,7 +581,8 @@ struct WatchCareRow<Icon: View, Trailing: View>: View {
         }
         .padding(.leading, 8)
         .padding(.trailing, 4)
-        .frame(height: metrics.small ? 46 : 52)
+        .padding(.vertical, 4)
+        .frame(minHeight: metrics.small ? 46 : 52)
         .background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
         .contentShape(RoundedRectangle(cornerRadius: 16))
     }
@@ -577,6 +593,7 @@ struct WatchCareRow<Icon: View, Trailing: View>: View {
 struct WatchMedicineListScreen: View {
     let state: WatchState
     let now: Date
+    var waiting: Set<String> = []
     let given: (String) -> Void
     let close: () -> Void
     @Environment(\.watchLook) private var look
@@ -587,7 +604,8 @@ struct WatchMedicineListScreen: View {
             ScrollView {
                 VStack(spacing: metrics.gap) {
                     ForEach(state.medicines ?? [], id: \.name) { item in
-                        WatchCareRow(title: item.name, note: item.lastGiven.map { "Last \(CareText.lastGiven($0, now: now, timeZoneID: state.timeZoneID))" } ?? "Not logged yet",
+                        let last = item.lastGiven.map { "Last \(CareText.lastGiven($0, now: now, timeZoneID: state.timeZoneID))" }
+                        WatchCareRow(title: item.name, note: waiting.contains(item.name) ? "Waiting for iPhone" : last ?? "Not logged yet",
                                      metrics: metrics) {
                             Image(systemName: "pills.fill").foregroundStyle(palette.textMuted)
                         } trailing: {
@@ -625,5 +643,49 @@ struct WatchPill: View {
         }
         .buttonStyle(.plain)
         .sensoryFeedback(.success, trigger: taps)
+    }
+}
+
+// MARK: - "Formula or expressed?"
+
+/// A bottle-only watch's Start (on page 1 or the watch face): the milk, as three buttons that fit
+/// the screen, the feed starting from the tap. The double tap presses the milk used last. Not now
+/// logs nothing.
+struct WatchMilkPage: View {
+    let state: WatchState
+    let tappedAt: Date
+    let choose: (MilkKind?) -> Void
+    /// "Breastfeed (Sam)" (design DD15, 4B), offered when the phone names who breastfeeds.
+    let breastfeed: () -> Void
+    @Environment(\.watchLook) private var look
+
+    var body: some View {
+        WatchPageFrame(label: state.breastfeederName == nil ? "Which milk?" : "Start a feed") { metrics in
+            let palette = WatchPalette.of(look)
+            let time = state.clock(tappedAt)
+            Text("Feed from \(Text(time).foregroundStyle(palette.text))")
+                .watchText(.note)
+                .foregroundStyle(palette.textMuted)
+                .accessibilityLabel("The feed starts at \(time)")
+            Spacer(minLength: 4)
+            WatchTileRow(metrics: metrics) {
+                ForEach([MilkKind.formula, .expressed], id: \.self) { milk in
+                    WatchTile(title: milk == .formula ? "Formula" : "Expressed", metrics: metrics) {
+                        BottleShape().fill(palette.bottle).frame(width: 16, height: 16)
+                    } action: { choose(milk) }
+                    .handGestureShortcut(.primaryAction, isEnabled: milk == (state.lastMilk ?? .formula))
+                    .accessibilityLabel(milk == .formula ? "Start a formula feed" : "Start an expressed milk feed")
+                }
+                if let name = state.breastfeederName {
+                    WatchTile(title: "Breastfeed (\(name))", metrics: metrics) {
+                        Image(systemName: "circle.lefthalf.filled").foregroundStyle(palette.breast)
+                    } action: { breastfeed() }
+                    .accessibilityLabel("Start \(name)'s breastfeed")
+                }
+            }
+            Spacer(minLength: 4)
+            WatchBigButton(title: "Not now", prominent: false, compact: true) { choose(nil) }
+                .accessibilityLabel("Not now, log no feed")
+        }
     }
 }

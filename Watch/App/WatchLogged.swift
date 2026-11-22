@@ -29,6 +29,25 @@ struct LoggedCard: Identifiable, Equatable {
     var canUndo = true
     var canEarlier = true
     var canDoneBy = true
+    /// Set on a card that only says what happened to a correction: "Undo not saved".
+    var notice: String?
+
+    /// This card again, saying `text`, with nothing to change: for a correction (tap `tap`) the
+    /// phone turned down after the card had closed (outside review of step 1, P2).
+    func notice(_ text: String, tap: String) -> LoggedCard {
+        LoggedCard(id: tap, entryID: entryID, title: title, at: at, start: start, mark: mark, canUndo: false,
+                   canEarlier: false, canDoneBy: false, notice: text)
+    }
+
+    /// The card's button a correction came from.
+    static func correctionName(_ action: WatchAction) -> String {
+        switch action {
+        case .undo: "Undo"
+        case .earlier: "Earlier"
+        case .doneBy: "Done by"
+        default: "Change"
+        }
+    }
 }
 
 /// "Wee logged at 21:40": Undo and Earlier, who did it, and a round Done that closes it. It closes
@@ -37,13 +56,24 @@ struct LoggedCard: Identifiable, Equatable {
 struct WatchLoggedScreen: View {
     let card: LoggedCard
     let state: WatchState
-    let send: (WatchAction, String) -> Void
+    /// Sends a correction after the card's tap; returns the correction's own tap.
+    let send: (WatchAction, String) -> String
     let close: () -> Void
     @State private var mode = Mode.main
     @State private var doneBy: MemberID?
+    /// The correction sent from this card, followed until the phone answers it (outside review of
+    /// step 1, P2): the card stays to say whether it was saved.
+    @State private var correction: Sent?
     @Environment(\.watchLook) private var look
 
     enum Mode { case main, earlier, doneBy }
+
+    struct Sent: Equatable {
+        let id: String
+        let action: WatchAction
+        /// "Undone", "Moved earlier", "Saved".
+        let done: String
+    }
 
     /// How long the card stays with nothing tapped.
     static let lifetime: TimeInterval = 6
@@ -56,14 +86,36 @@ struct WatchLoggedScreen: View {
             case .doneBy: whoDidIt(metrics)
             }
         }
-        .task(id: mode) {
+        .task(id: CloseTimer(mode: mode, answered: correctionAnswered)) {
             guard mode == .main else { return }
-            try? await Task.sleep(for: .seconds(Self.lifetime))
+            // A correction's answer shows for a moment, then the card goes.
+            try? await Task.sleep(for: .seconds(correctionAnswered ? 1.5 : Self.lifetime))
             if !Task.isCancelled, mode == .main { close() }
         }
     }
 
     private var palette: WatchPalette { WatchPalette.of(look) }
+
+    private struct CloseTimer: Equatable {
+        let mode: Mode
+        let answered: Bool
+    }
+
+    private var correctionAnswered: Bool {
+        guard let correction, let outcome = PhoneLink.shared.result(of: correction.id) else { return false }
+        return outcome != .waiting
+    }
+
+    /// Nothing more to change: a correction was sent, the tap was turned down, or this card only
+    /// says what happened to one.
+    private var settled: Bool {
+        correction != nil || card.notice != nil || PhoneLink.shared.result(of: card.id) == .refused
+    }
+
+    private func sendCorrection(_ action: WatchAction, done: String) {
+        correction = Sent(id: send(action, card.id), action: action, done: done)
+        mode = .main
+    }
 
     @ViewBuilder
     private func main(_ metrics: WatchMetrics) -> some View {
@@ -90,18 +142,15 @@ struct WatchLoggedScreen: View {
         }
         Spacer(minLength: 3)
         HStack(spacing: metrics.gap) {
-            if card.canUndo, state.understands(WatchCapability.undo) {
-                wide("Undo", metrics) {
-                    send(.undo(id: card.entryID), card.id)
-                    close()
-                }
+            if card.canUndo, !settled, state.understands(WatchCapability.undo) {
+                wide("Undo", metrics) { sendCorrection(.undo(id: card.entryID), done: "Undone") }
             }
-            if card.canEarlier, state.understands(WatchCapability.earlier) {
+            if card.canEarlier, !settled, state.understands(WatchCapability.earlier) {
                 wide("Earlier", metrics) { mode = .earlier }
             }
         }
         Spacer(minLength: 3)
-        if card.canDoneBy, state.understands(WatchCapability.doneBy), let members = state.members, members.count > 1 {
+        if card.canDoneBy, !settled, state.understands(WatchCapability.doneBy), let members = state.members, members.count > 1 {
             let who = doneBy ?? state.me
             let name = who == state.me ? "you" : members.first { $0.id == who }?.name ?? "you"
             WatchBigButton(title: "Done by \(name) ›", prominent: false, compact: true) { mode = .doneBy }
@@ -110,6 +159,24 @@ struct WatchLoggedScreen: View {
 
     @ViewBuilder
     private var status: some View {
+        if let notice = card.notice {
+            Text(notice).watchText(.hint).foregroundStyle(palette.primary)
+        } else if let correction {
+            switch PhoneLink.shared.result(of: correction.id) {
+            case .refused?:
+                Text("\(LoggedCard.correctionName(correction.action)) not saved").watchText(.hint).foregroundStyle(palette.primary)
+            case .applied?, .unchanged?:
+                Text(correction.done).watchText(.hint).foregroundStyle(palette.textMuted)
+            case nil, .waiting?:
+                Text("Waiting for iPhone").watchText(.hint).foregroundStyle(palette.textMuted)
+            }
+        } else {
+            tapStatus
+        }
+    }
+
+    @ViewBuilder
+    private var tapStatus: some View {
         switch PhoneLink.shared.result(of: card.id) {
         case .refused?:
             Text("Not saved").watchText(.hint).foregroundStyle(palette.primary)
@@ -157,8 +224,8 @@ struct WatchLoggedScreen: View {
                 HStack(spacing: metrics.gap) {
                     ForEach(row, id: \.self) { minutes in
                         wide("\(minutes) min earlier", metrics) {
-                            send(.earlier(id: card.entryID, minutes: minutes, expected: card.start ?? card.at), card.id)
-                            close()
+                            sendCorrection(.earlier(id: card.entryID, minutes: minutes, expected: card.start ?? card.at),
+                                           done: "Moved \(minutes) min earlier")
                         }
                         .accessibilityLabel("\(minutes) minutes earlier")
                     }
@@ -179,8 +246,7 @@ struct WatchLoggedScreen: View {
                 let chosen = (doneBy ?? state.me) == member.id
                 Button {
                     doneBy = member.id
-                    send(.doneBy(id: card.entryID, member: member.id), card.id)
-                    close()
+                    sendCorrection(.doneBy(id: card.entryID, member: member.id), done: "Saved")
                 } label: {
                     HStack(spacing: 8) {
                         Circle().fill(WatchPalette.parent(member.colour, look: look)).frame(width: 12, height: 12)

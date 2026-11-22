@@ -193,45 +193,44 @@ struct WatchStateTests {
     /// after that feed has finished: the feed would start at the old tap and move the alarms later.
     @Test func aStartTurnedDownIsNotAppliedWhenItArrivesAgain() {
         var data = household()
-        var log = WatchTapLog()
         let other = data.startFeed(babyID: baby, side: nil, by: parentB, timeZoneID: "Europe/London",
                                    now: now.addingTimeInterval(-300))
         let start = request(.start(feedID: "w-feed", bottle: nil, bottleID: "b"), at: now)
-        let new = log.firstSight(of: start.id)
-        #expect(new)
-        let first = data.applyWatch(start, babyID: baby, by: parentA, timeZoneID: "Europe/London")
-        #expect(!first)
+        #expect(data.watchReceipts.outcome(of: start.id) == nil)
+        let first = data.applyWatchRequest(start, babyID: baby, by: parentA, timeZoneID: "Europe/London")
+        data.watchReceipts.record(start.id, first)
+        #expect(first == .refused)
         _ = data.finishFeed(other, by: parentB, now: now.addingTimeInterval(600))
-        // The kept copy arrives: the phone has seen it, so it isn't applied.
-        let again = log.firstSight(of: start.id)
-        #expect(!again)
+        // The kept copy arrives: the phone has answered it, so it isn't applied.
+        #expect(data.watchReceipts.outcome(of: start.id) == .refused)
         #expect(data.events["w-feed"] == nil)
         #expect(data.feedInProgress(babyID: baby) == nil)
     }
 
     /// A side switch arriving again must not undo a newer one.
     @Test func anOldSideSwitchArrivingAgainIsNotApplied() {
-        var log = WatchTapLog()
+        var receipts = WatchReceipts()
         let left = request(.switchSide(feedID: "f", side: .left), at: now)
         let right = request(.switchSide(feedID: "f", side: .right), at: now.addingTimeInterval(60))
-        let sawLeft = log.firstSight(of: left.id)
-        let sawRight = log.firstSight(of: right.id)
-        let leftAgain = log.firstSight(of: left.id)
-        #expect(sawLeft)
-        #expect(sawRight)
-        #expect(!leftAgain)
+        receipts.record(left.id, .applied)
+        receipts.record(right.id, .applied)
+        #expect(receipts.outcome(of: left.id) == .applied)
+        // Answered once: a second answer doesn't replace the first.
+        receipts.record(left.id, .refused)
+        #expect(receipts.outcome(of: left.id) == .applied)
+        #expect(receipts.results.count == 2)
     }
 
     @Test func thePhoneRemembersManyTapsAndTellsTheWatchTheLatest() {
-        var log = WatchTapLog()
-        for number in 0..<250 { _ = log.firstSight(of: "tap-\(number)") }
-        #expect(log.ids.count == WatchTapLog.kept)
-        #expect(log.ids.last == "tap-249")
-        #expect(log.latest.count == WatchTapLog.told)
-        #expect(log.latest.first == "tap-220")
+        var receipts = WatchReceipts()
+        for number in 0..<250 { receipts.record("tap-\(number)", .applied) }
+        #expect(receipts.results.count == WatchReceipts.kept)
+        #expect(receipts.results.last?.id == "tap-249")
+        let told = receipts.told()
+        #expect(told.handled.count == WatchReceipts.told)
+        #expect(told.handled.first == "tap-220")
         // Still remembered, though no longer told to the watch.
-        let old = log.firstSight(of: "tap-100")
-        #expect(!old)
+        #expect(receipts.outcome(of: "tap-100") == .applied)
     }
 
     /// A start kept while the phone was out of reach, from before a feed logged since, would show

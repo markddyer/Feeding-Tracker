@@ -12,27 +12,60 @@ final class WatchRelay: NSObject {
     private var sent: WatchState?
     /// What the watch face was last sent: it has a small daily allowance of instant updates.
     private var faceSent: FaceFacts?
-    /// The watch's taps handled here, newest last: none is applied twice, and the watch stops
-    /// showing them as waiting. Kept, as the app may be woken for each tap separately.
-    private var handled: WatchTapLog {
-        get { WatchTapLog(ids: UserDefaults.standard.stringArray(forKey: "watch.handled") ?? []) }
-        set { UserDefaults.standard.set(newValue.ids, forKey: "watch.handled") }
+    /// Answers given again in this run, newest last: to a tap that arrived twice after its answer
+    /// left the latest 30, and `waiting` for one that depends on a tap not handled yet (outside
+    /// review of step 1, P2). Not kept: the watch sends such a tap again.
+    private var extra: [WatchResult] = []
+
+    /// The answers to the watch's taps (`HouseholdData.watchReceipts`). Until the first tap after
+    /// the update, the list an earlier build kept outside the file.
+    private func receipts(_ model: AppModel) -> WatchReceipts {
+        let saved = model.store.data.watchReceipts
+        guard saved.results.isEmpty, let earlier = Self.earlierReceipts() else { return saved }
+        return earlier
     }
 
-    /// The answers to the latest taps, newest last, for the watch's Logged card
-    /// (`11-watch-parity.md`, step 1). Kept, as the app may be woken for each tap separately.
-    private var results: [WatchResult] {
-        get {
-            UserDefaults.standard.data(forKey: "watch.results").flatMap { WatchCoding.decode([WatchResult].self, from: $0) } ?? []
-        }
-        set {
-            let kept = Array(newValue.suffix(WatchTapLog.told))
-            UserDefaults.standard.set(try? WatchCoding.encode(kept), forKey: "watch.results")
-        }
+    private static func earlierReceipts() -> WatchReceipts? {
+        let defaults = UserDefaults.standard
+        guard let handled = defaults.stringArray(forKey: "watch.handled") else { return nil }
+        let results = defaults.data(forKey: "watch.results").flatMap { WatchCoding.decode([WatchResult].self, from: $0) }
+        return .earlier(handled: handled, results: results ?? [])
     }
 
-    private func answer(_ id: String, _ outcome: WatchOutcome) {
-        results = results.filter { $0.id != id } + [WatchResult(id: id, outcome: outcome)]
+    private func tell(_ id: String, _ outcome: WatchOutcome) {
+        extra = Array((extra.filter { $0.id != id } + [WatchResult(id: id, outcome: outcome)]).suffix(WatchReceipts.told))
+    }
+
+    /// Applies a tap and notes its answer in the same checked save (outside review of step 1, P1).
+    /// Not saved: no answer, so the watch keeps the tap and sends it again. Returns the answer.
+    private func apply(_ id: String, _ model: AppModel, _ body: (inout HouseholdData) -> WatchOutcome) -> WatchOutcome? {
+        extra.removeAll { $0.id == id }
+        let earlier = Self.earlierReceipts()
+        let (outcome, saved) = model.store.changeChecked { data -> WatchOutcome in
+            if let earlier, data.watchReceipts.results.isEmpty { data.watchReceipts = earlier }
+            let outcome = body(&data)
+            data.watchReceipts.record(id, outcome)
+            return outcome
+        }
+        guard saved else {
+            SyncLog.add("watch: a tap couldn't be saved on this phone; the watch will send it again")
+            return nil
+        }
+        if earlier != nil {
+            UserDefaults.standard.removeObject(forKey: "watch.handled")
+            UserDefaults.standard.removeObject(forKey: "watch.results")
+        }
+        return outcome
+    }
+
+    /// Keeps the app awake while a tap's change is sent and its alarms are set.
+    private func settleInBackground() {
+        let application = UIApplication.shared
+        let task = application.beginBackgroundTask(withName: "Watch tap")
+        Task { @MainActor in
+            await QuickFeedRunner.settle()
+            application.endBackgroundTask(task)
+        }
     }
 
     private var session: WCSession? {
@@ -50,9 +83,10 @@ final class WatchRelay: NSObject {
     func state(of model: AppModel, now: Date = Date()) -> WatchState {
         guard let me = model.me else { return WatchState(madeAt: now, setUp: false) }
         let look = UserDefaults.standard.string(forKey: LookSetting.storageKey).flatMap(LookSetting.init(rawValue:))
+        let told = receipts(model).told(extra)
         return model.store.data.watchState(me: me, names: model.memberNames, colours: model.memberColours.mapValues(\.rawValue),
                                            bottleOnly: QuickFeedRunner.isBottleOnly, lookSetting: look ?? .automatic,
-                                           handled: handled.latest, results: results, now: now)
+                                           handled: told.handled, results: told.results, now: now)
     }
 
     /// Sends the watch its state, when something it shows has changed.
@@ -68,7 +102,7 @@ final class WatchRelay: NSObject {
         }
         // A feed started or finished, the baby fell asleep or woke, or a nappy was logged: the
         // watch face hears at once, if Feeding is on it.
-        let face = FaceFacts(glance: state.glance, sleep: state.sleep, nappy: state.lastNappy)
+        let face = FaceFacts(glance: state.glance, sleep: state.sleep, nappy: state.lastNappy?.onFace)
         if face != faceSent, session.isComplicationEnabled, session.remainingComplicationUserInfoTransfers > 0 {
             session.transferCurrentComplicationUserInfo([WatchKey.state: data])
             faceSent = face
@@ -88,39 +122,27 @@ final class WatchRelay: NSObject {
     fileprivate func handle(_ request: WatchRequest?) -> WatchState {
         let model = AppModel.shared
         guard let request, let me = model.me, let baby = model.baby else { return state(of: model) }
-        // A tap seen before (the watch's kept copy, after the message) is never applied again: a
-        // Start turned down while a feed ran would start a feed at the old tap.
-        guard !handled.contains(request.id) else {
-            update(model)
-            return state(of: model)
-        }
-        // One the system carried for longer than the watch keeps its own is turned down.
-        let tooOld = Date().timeIntervalSince(request.at) > watchTapLifetime
-        let changed = !tooOld && model.store.change {
-            $0.applyWatch(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier)
-        }
-        // Noted once the change is saved: a tap lost with the app can be sent again, and applying
-        // it twice changes nothing (each tap names what it creates).
-        var log = handled
-        log.record(request.id)
-        handled = log
-        answer(request.id, tooOld ? .refused : changed ? .applied : .unchanged)
-        // Nothing changed (a feed already finished, or a start while a feed runs): the watch still
-        // needs to hear that the tap was handled.
-        if !changed { update(model) }
-        if changed, case .finish(let id) = request.command, model.store.data.events[id]?.event.loggedBy == me {
-            // The details panel opens on Home next time, as after Finish in the app. It closes by
-            // itself once nothing is left to add (the watch may have saved the amount already).
-            UserDefaults.standard.set(id, forKey: FeedControls.detailsKey)
-        }
-        if changed {
-            let application = UIApplication.shared
-            let task = application.beginBackgroundTask(withName: "Watch tap")
-            Task { @MainActor in
-                await QuickFeedRunner.settle()
-                application.endBackgroundTask(task)
+        if let outcome = receipts(model).outcome(of: request.id) {
+            // A tap seen before (the watch's kept copy, after the message) is never applied again:
+            // a Start turned down while a feed ran would start a feed at the old tap. Its answer is
+            // given again, as the watch may have missed it (P2).
+            tell(request.id, outcome)
+        } else {
+            // One the system carried for longer than the watch keeps its own is turned down.
+            let tooOld = Date().timeIntervalSince(request.at) > watchTapLifetime
+            let outcome = apply(request.id, model) { data in
+                tooOld ? .refused
+                    : data.applyWatchRequest(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier)
             }
+            if outcome == .applied, case .finish(let id) = request.command, model.store.data.events[id]?.event.loggedBy == me {
+                // The details panel opens on Home next time, as after Finish in the app. It closes
+                // by itself once nothing is left to add (the watch may have saved the amount already).
+                UserDefaults.standard.set(id, forKey: FeedControls.detailsKey)
+            }
+            if outcome == .applied { settleInBackground() }
         }
+        // The watch hears the answer also when the tap came as a transfer, with no reply (P2).
+        update(model)
         return state(of: model)
     }
 
@@ -129,33 +151,18 @@ final class WatchRelay: NSObject {
     fileprivate func handle(_ request: WatchActionRequest) -> WatchState {
         let model = AppModel.shared
         guard let me = model.me, let baby = model.baby else { return state(of: model) }
-        if handled.contains(request.id) {
-            update(model)
-            return state(of: model)
-        }
-        if let after = request.after, !handled.contains(after) {
-            answer(request.id, .waiting)
-            update(model)
-            return state(of: model)
-        }
-        var outcome = WatchOutcome.unchanged
-        model.store.change {
-            outcome = $0.applyWatchAction(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier,
-                                          now: Date())
-        }
-        var log = handled
-        log.record(request.id)
-        handled = log
-        answer(request.id, outcome)
-        update(model)
-        if outcome == .applied {
-            let application = UIApplication.shared
-            let task = application.beginBackgroundTask(withName: "Watch tap")
-            Task { @MainActor in
-                await QuickFeedRunner.settle()
-                application.endBackgroundTask(task)
+        let receipts = receipts(model)
+        if let outcome = receipts.outcome(of: request.id) {
+            tell(request.id, outcome)
+        } else if let after = request.after, receipts.outcome(of: after) == nil {
+            tell(request.id, .waiting)
+        } else {
+            let outcome = apply(request.id, model) { data in
+                data.applyWatchAction(request, babyID: baby.name, by: me, timeZoneID: TimeZone.current.identifier, now: Date())
             }
+            if outcome == .applied { settleInBackground() }
         }
+        update(model)
         return state(of: model)
     }
 

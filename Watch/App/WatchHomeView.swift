@@ -22,6 +22,9 @@ struct WatchHomeView: View {
     @State private var pumping = false
     /// The medicine list, from page 3 when there are two or more.
     @State private var medicineList = false
+    /// Undo, Earlier and Done by sent from a Logged card, by tap, until the phone answers: one it
+    /// turns down after the card has closed opens a card that says so (outside review of step 1, P2).
+    @State private var corrections: [String: LoggedCard] = [:]
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -54,6 +57,7 @@ struct WatchHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { link.refresh() }
         }
+        .onChange(of: link.saved) { _, _ in noticeRefusedCorrections() }
         // The phone refused a Finish (it can't read that feed's details): its answer shows the feed
         // still running and the tap handled, so the amount question goes (engineering review of
         // "who does what", A2).
@@ -94,6 +98,32 @@ struct WatchHomeView: View {
             }
         }
         #endif
+    }
+
+    /// Page 3's rows with a tap the phone hasn't saved yet: "bath", or a medicine's name. One
+    /// undone before the phone heard isn't waiting to be shown.
+    private var waitingRows: Set<String> {
+        let actions = link.saved.actions
+        let undone = Set(actions.compactMap { if case .undo(let id) = $0.action { id } else { nil } })
+        return Set(actions.compactMap { request in
+            guard !undone.contains(request.entryID) else { return nil }
+            switch request.action {
+            case .bath: return "bath"
+            case .medicine(_, let name): return name
+            default: return nil
+            }
+        })
+    }
+
+    /// A correction the phone has answered is no longer followed; one it turned down shows its
+    /// card, unless another card is open (that one's own correction says so itself).
+    private func noticeRefusedCorrections() {
+        for (id, notice) in corrections {
+            let outcome = link.result(of: id)
+            guard outcome != .waiting, outcome != nil || !link.isWaiting(id) else { continue }
+            corrections[id] = nil
+            if outcome == .refused, logged == nil { logged = notice }
+        }
     }
 
     /// Start feed on the watch face, as Start feed in the app: a bottle-only watch asks which milk
@@ -153,7 +183,11 @@ struct WatchHomeView: View {
     @ViewBuilder
     private func mainScreen(_ state: WatchState?, now: Date) -> some View {
         if let card = logged, let state {
-            WatchLoggedScreen(card: card, state: state, send: { action, after in link.send(action, after: after) }) {
+            WatchLoggedScreen(card: card, state: state, send: { action, after in
+                let id = link.send(action, after: after)
+                corrections[id] = card.notice(LoggedCard.correctionName(action) + " not saved", tap: id)
+                return id
+            }) {
                 logged = nil
             }
             .id(card.id)
@@ -167,7 +201,7 @@ struct WatchHomeView: View {
             }
             .environment(\.watchLook, state.look(at: now))
         } else if medicineList, let state {
-            WatchMedicineListScreen(state: state, now: now) { name in
+            WatchMedicineListScreen(state: state, now: now, waiting: waitingRows) { name in
                 medicineList = false
                 given(name)
             } close: {
@@ -196,7 +230,7 @@ struct WatchHomeView: View {
             .id(question.bottle.id)
         } else if let tap = milkAsk, let state, state.faceStart == .askMilk,
                   now.timeIntervalSince(tap) < WatchFaceStart.questionLifetime {
-            MilkScreen(state: state, tappedAt: tap) { milk in
+            WatchMilkPage(state: state, tappedAt: tap) { milk in
                 if let milk {
                     link.send(.start(feedID: UUID().uuidString, bottle: milk, bottleID: UUID().uuidString), now: tap)
                 }
@@ -224,7 +258,7 @@ struct WatchHomeView: View {
                     .environment(\.watchDoubleTapAllowed, page == .care)
                     .tag(WatchPage.care)
                     if state.understands(WatchCapability.bath) || state.understands(WatchCapability.medicine) {
-                        WatchTodayPage(state: state, now: now) {
+                        WatchTodayPage(state: state, now: now, waiting: waitingRows) {
                             let id = UUID().uuidString
                             let at = Date()
                             let request = link.send(.bath(id: id), now: at)
@@ -264,9 +298,8 @@ struct WatchHomeView: View {
         } else {
             WatchIdlePage(state: state, now: now, waiting: link.waitingForPhone) { bottle in
                 link.send(.start(feedID: UUID().uuidString, bottle: bottle, bottleID: UUID().uuidString))
-            } breastfeed: {
-                link.send(.start(feedID: UUID().uuidString, bottle: nil, bottleID: UUID().uuidString,
-                                 doneBy: state.breastfeeder))
+            } askMilk: {
+                milkAsk = Date()
             } pumping: {
                 pumping = true
             }
@@ -374,49 +407,6 @@ struct WatchBarTimes: View {
         .watchText(.line)
         .foregroundStyle(palette.text)
         .lineLimit(1)
-    }
-}
-
-// MARK: - Start feed from the watch face
-
-/// "Formula or expressed?", after Start feed on the watch face on a bottle-only watch. The feed
-/// starts from the tap on the face, so the time is right however long the answer takes. Not now
-/// logs nothing.
-private struct MilkScreen: View {
-    let state: WatchState
-    let tappedAt: Date
-    let choose: (MilkKind?) -> Void
-    /// "Breastfeed (Sam)" (design DD15, 4B), offered when the phone names who breastfeeds.
-    let breastfeed: () -> Void
-    @Environment(\.watchLook) private var look
-
-    var body: some View {
-        let palette = WatchPalette.of(look)
-        let time = GlanceText.clock(tappedAt, timeZoneID: state.timeZoneID)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 7) {
-                Text(state.breastfeederName == nil ? "Formula or expressed?" : "Start a feed")
-                    .watchText(.label).foregroundStyle(palette.textMuted)
-                Text("Feed from \(Text(time).foregroundStyle(palette.text))")
-                    .watchText(.line)
-                    .foregroundStyle(palette.textMuted)
-                    .accessibilityLabel("The feed starts at \(time)")
-                ForEach([MilkKind.formula, .expressed], id: \.self) { milk in
-                    // The double tap presses the milk used last, as on the main screen.
-                    WatchBigButton(title: milk == .formula ? "Formula" : "Expressed milk", bottle: true,
-                                   doubleTap: milk == (state.lastMilk ?? .formula)) { choose(milk) }
-                        .accessibilityLabel(milk == .formula ? "Start a formula feed" : "Start an expressed milk feed")
-                }
-                if let name = state.breastfeederName {
-                    WatchBigButton(title: "Breastfeed (\(name))", bottle: false) { breastfeed() }
-                        .accessibilityLabel("Start \(name)'s breastfeed")
-                }
-                WatchBigButton(title: "Not now", prominent: false, compact: true) { choose(nil) }
-                    .padding(.top, 8)
-                    .accessibilityLabel("Not now, log no feed")
-            }
-            .padding(.horizontal, 2)
-        }
     }
 }
 

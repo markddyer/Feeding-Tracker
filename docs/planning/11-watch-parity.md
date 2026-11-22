@@ -205,3 +205,28 @@ To be built into the steps (from the review):
   amount picker); `PhoneLink.send` returns the tap's ID.
 - Left for step 2: Just finished, Earlier feed, a bottle during a feed, sides and bottles after
   Finish. Step 3: Undo of Start or Finish, Woke up's Earlier, Undo and "who got up", the night rota.
+
+### Codex review of step 1 (gpt-6.2-sol, 21 Nov 2026), and the fixes (22 Nov 2026)
+
+All 12 findings fixed:
+
+- **P1, answers saved with the change.** The phone's answers to the watch's taps are now in the
+  household file (`HouseholdData.watchReceipts`, `WatchReceipts`: 200 kept, the latest 30 told),
+  written in the same checked save as the tap's change (`HouseholdStore.changeChecked`). A tap whose
+  change isn't saved gets no answer, so the watch keeps it and sends it again; one saved is never
+  applied twice. The list an earlier build kept outside the file ("watch.handled") comes across on
+  the first tap after the update. The file part is only this phone's: never sent to iCloud.
+- **P2.** The watch hears the answer also for a tap that came as a transfer, with no reply. A tap
+  that arrives again is answered again (its answer may have left the latest 30). A tap the phone
+  held ("waiting") goes again from the watch once the tap before it is answered. The first kind of
+  tap is answered `refused` when the household changed since (a sleep or feed already running, the
+  entry gone), not "logged" (`applyWatchRequest`); the card then offers no changes. The Logged card
+  follows its Undo, Earlier or Done by and says whether it was saved, also after it has closed.
+  Page 3 says "Waiting for iPhone" on a row until the phone has saved its tap. Medicine names take
+  two lines. A nappy or Fell asleep undone before the phone heard isn't shown.
+- **P3.** Earlier moves a bath's or medicine's time on the watch at once. Details added to the
+  last nappy don't spend the watch face's instant updates (`WatchNappy.onFace`). VoiceOver reads
+  the nappy's colour and consistency.
+- Checked: full `FeedingCore` suite (652) and the app tests (176); in the paired simulators, a Bath
+  and a poo with its details from the watch were saved on the phone with their answers in the file.
+

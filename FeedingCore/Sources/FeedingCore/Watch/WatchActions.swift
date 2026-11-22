@@ -256,9 +256,16 @@ extension WatchState {
             if let colour { state.lastNappy?.colour = colour }
             if let consistency { state.lastNappy?.consistency = consistency }
         case .earlier(let id, let minutes, let expected):
-            if state.lastNappy?.id == id { state.lastNappy?.at = expected.addingTimeInterval(-Double(minutes) * 60) }
-            if state.sleep?.id == id, state.sleep?.asleep == true {
-                state.sleep?.start = expected.addingTimeInterval(-Double(minutes) * 60)
+            let moved = expected.addingTimeInterval(-Double(minutes) * 60)
+            if state.lastNappy?.id == id { state.lastNappy?.at = moved }
+            if state.sleep?.id == id, state.sleep?.asleep == true { state.sleep?.start = moved }
+            // A bath or medicine shows only its time: it moves while that is still the tap's, so
+            // a newer one is never replaced (outside review of step 1, P3).
+            func isTap(_ date: Date?) -> Bool { date.map { abs($0.timeIntervalSince(expected)) < 1 } ?? false }
+            if isTap(state.lastBath) { state.lastBath = moved }
+            if var medicines = state.medicines {
+                for index in medicines.indices where isTap(medicines[index].lastGiven) { medicines[index].lastGiven = moved }
+                state.medicines = medicines
             }
         case .doneBy(let id, let member):
             if state.lastNappy?.id == id { state.lastNappy?.doneBy = member }

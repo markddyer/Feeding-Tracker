@@ -184,6 +184,10 @@ public struct HouseholdData: Hashable, Sendable, Codable {
     /// value, that iCloud had no value for either: never fetched again (engineering review of
     /// "who does what", E3, D9 A). A part of the file an older build keeps as it is.
     public internal(set) var whoValuesChecked: Set<String> = []
+    /// The phone's answers to the watch's taps, saved with the change each tap made, in one save
+    /// (outside review of step 1 of `11-watch-parity.md`, P1). This phone's own: never sent to
+    /// iCloud, and a part of the file an older build keeps as it is.
+    public var watchReceipts = WatchReceipts()
 
     public init() {
         format = Self.currentFormat
@@ -617,7 +621,7 @@ public struct HouseholdData: Hashable, Sendable, Codable {
 
 extension HouseholdData {
     private static let knownParts: Set<String> = ["format", "events", "plainRecords", "syncState", "waitingForICloudSince",
-                                                  "whoValuesChecked"]
+                                                  "whoValuesChecked", "watchReceipts"]
 
     /// Reads every entry it can. An entry it can't read, and a part of the file it doesn't know, is
     /// kept as it was (step 0, CEO review D18). A file that isn't JSON at all still throws.
@@ -627,6 +631,7 @@ extension HouseholdData {
         syncState = try container.decode([String: Data].self, forKey: AnyCodingKey("syncState"))
         waitingForICloudSince = try container.decodeIfPresent(Date.self, forKey: AnyCodingKey("waitingForICloudSince"))
         whoValuesChecked = Set((try? container.decodeIfPresent([String].self, forKey: AnyCodingKey("whoValuesChecked"))) ?? [])
+        watchReceipts = (try? container.decodeIfPresent(WatchReceipts.self, forKey: AnyCodingKey("watchReceipts"))) ?? WatchReceipts()
         (events, keptEvents) = Self.split(try container.decode([String: Lenient<StoredEvent>].self,
                                                                forKey: AnyCodingKey("events")))
         (plainRecords, keptPlainRecords) = Self.split(try container.decode([String: Lenient<StoredPlainRecord>].self,
@@ -648,6 +653,9 @@ extension HouseholdData {
         try container.encodeIfPresent(waitingForICloudSince, forKey: AnyCodingKey("waitingForICloudSince"))
         if !whoValuesChecked.isEmpty {
             try container.encode(whoValuesChecked.sorted(), forKey: AnyCodingKey("whoValuesChecked"))
+        }
+        if !watchReceipts.results.isEmpty {
+            try container.encode(watchReceipts, forKey: AnyCodingKey("watchReceipts"))
         }
         try container.encode(Self.joined(events, keptEvents), forKey: AnyCodingKey("events"))
         try container.encode(Self.joined(plainRecords, keptPlainRecords), forKey: AnyCodingKey("plainRecords"))

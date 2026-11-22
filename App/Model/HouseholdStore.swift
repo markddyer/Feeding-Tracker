@@ -85,7 +85,9 @@ final class HouseholdStore {
     /// A change the parent is told is saved only once it is on this phone (the Journal's Save,
     /// eng OV3, task T17): the file is written first. If the write fails, the change is put back,
     /// nothing is sent, and `saved` is false, so the form stays open and says so. A change that
-    /// changes nothing counts as saved. Feeds keep `change`, which never holds a feed back.
+    /// changes nothing counts as saved. Feeds tapped in the app keep `change`, which never holds a
+    /// feed back. The watch's taps use this, with their answer in the same save (`WatchRelay`): one
+    /// not saved has no answer, and the watch keeps it and sends it again.
     func changeChecked<T>(_ body: (inout HouseholdData) -> T) -> (result: T, saved: Bool) {
         let before = data
         let result = body(&data)

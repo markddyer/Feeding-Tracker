@@ -27,6 +27,9 @@ enum WatchText {
     case side
     /// "Window 05:00".
     case line
+    /// "ago, at 20:58" and the bar's line on page 1: a little larger than `line`, to read at a
+    /// glance (Parent A, 21 Nov 2026).
+    case note
     /// "LAST FEED".
     case label
     /// "suggested".
@@ -40,6 +43,7 @@ enum WatchText {
         case .button: 17
         case .side: 15
         case .line: 13
+        case .note: 15
         case .label: 10.5
         case .hint: 10
         }
@@ -49,7 +53,7 @@ enum WatchText {
         switch self {
         case .mainTime, .careTime, .amount: .largeTitle
         case .button, .side: .headline
-        case .line: .footnote
+        case .line, .note: .footnote
         case .label, .hint: .caption2
         }
     }

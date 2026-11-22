@@ -11,7 +11,7 @@ import WidgetKit
 /// A tap goes as a message when the phone is in reach (the phone app is woken for it and replies
 /// with its new state), and otherwise as a transfer that the system delivers when the phone is
 /// near again. Either way it carries the moment of the tap. The same tap may arrive twice (as a
-/// message and as its kept transfer): the phone applies it only once (`WatchTapLog`).
+/// message and as its kept transfer): the phone applies it only once (`WatchReceipts`).
 @MainActor
 @Observable
 final class PhoneLink {
@@ -172,7 +172,18 @@ final class PhoneLink {
     }
 
     fileprivate func receive(_ state: WatchState) {
-        change { _ = $0.receive(state, now: Date()) }
+        var taken = false
+        change { taken = $0.receive(state, now: Date()) }
+        guard taken else { return }
+        // A tap the phone held ("waiting") for one it hadn't handled goes again once it has, so it
+        // isn't left until the next tap or a change of reach (outside review of step 1, P2). The
+        // phone stops saying "waiting" once it tries the tap, so this can't repeat.
+        let ready = saved.actions.filter { action in
+            guard let after = action.after, state.result(of: action.id) == .waiting,
+                  let first = state.result(of: after) else { return false }
+            return first != .waiting
+        }
+        for action in ready { deliver(action) }
     }
 
     fileprivate func activationDone() {
@@ -217,7 +228,7 @@ final class PhoneLink {
     /// don't change with; the Sleep and Nappy pieces show the sleep and the last nappy.
     private static func faceFacts(_ state: WatchState?) -> FaceFacts {
         FaceFacts(glance: state?.glance, feedID: state?.running?.id, mine: state?.running?.mine, side: state?.running?.side,
-                  sleep: state?.sleep, nappy: state?.lastNappy)
+                  sleep: state?.sleep, nappy: state?.lastNappy?.onFace)
     }
 
     private struct FaceFacts: Equatable {

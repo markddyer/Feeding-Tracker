@@ -82,6 +82,12 @@ public struct WatchNappy: Codable, Hashable, Sendable {
         self.consistency = consistency
         self.doneBy = doneBy
     }
+
+    /// Only what the watch face shows: details added later don't spend its small allowance of
+    /// instant updates (outside review of step 1, P3).
+    public var onFace: WatchNappy {
+        WatchNappy(id: id, at: at, wee: wee, poo: poo)
+    }
 }
 
 /// Everything the watch shows, made by the phone.
@@ -272,6 +278,14 @@ public struct WatchRequest: Codable, Hashable, Sendable, Identifiable {
         self.command = command
         self.at = at
     }
+
+    /// The entry a nappy or Fell asleep creates: what the Logged card's Undo removes.
+    public var createdID: String? {
+        switch command {
+        case .nappy(let id, _, _), .fellAsleep(let id): id
+        default: nil
+        }
+    }
 }
 
 /// A message from the watch: a tap, or no tap to ask for the state (when the watch app opens).
@@ -315,7 +329,11 @@ public struct WatchSaved: Codable, Hashable, Sendable {
     /// the phone answered it isn't shown at all.
     public var shown: WatchState? {
         let undone = Set(actions.compactMap { if case .undo(let id) = $0.action { id } else { nil } })
-        let state = pending.reduce(phone) { state, request in state?.applying(request) }
+        // A nappy or Fell asleep is the first kind of tap (`pending`): undone, it isn't shown either
+        // (outside review of step 1, P2).
+        let state = pending.filter { !undone.contains($0.createdID ?? "") }.reduce(phone) { state, request in
+            state?.applying(request)
+        }
         return actions.filter { !undone.contains($0.entryID) || $0.action == .undo(id: $0.entryID) }
             .reduce(state) { state, request in state?.applying(request) }
     }
@@ -374,40 +392,63 @@ public enum WatchCoding {
 
 // MARK: - On the phone
 
-/// The phone's record of the watch's taps it has handled, newest last. One tap can arrive twice:
+/// The phone's answers to the watch's taps it has handled, oldest first. One tap can arrive twice:
 /// as a message, and again as the transfer the watch kept for when the phone was out of reach.
 /// Only the first is applied, so a Start turned down while another feed ran can't start a feed
-/// later (which would move the alarms later), and an old side can't undo a newer one.
-public struct WatchTapLog: Hashable, Sendable {
+/// later (which would move the alarms later), and an old side can't undo a newer one. Kept in the
+/// household file (`HouseholdData.watchReceipts`) and written in the same save as the tap's change
+/// (outside review of step 1 of `11-watch-parity.md`, P1): a tap whose change wasn't saved has no
+/// answer, so the watch sends it again, and one that was saved is never applied twice.
+public struct WatchReceipts: Codable, Hashable, Sendable {
     /// How many taps the phone remembers.
     public static let kept = 200
     /// How many the watch is told about, in each state.
     public static let told = 30
 
-    public private(set) var ids: [String]
+    public private(set) var results: [WatchResult]
 
-    public init(ids: [String] = []) {
-        self.ids = Array(ids.suffix(Self.kept))
+    public init(_ results: [WatchResult] = []) {
+        self.results = Array(results.filter { $0.outcome != .waiting }.suffix(Self.kept))
     }
 
-    /// Records the tap. False when it was seen before: it must not be applied again.
-    public mutating func firstSight(of id: String) -> Bool {
-        guard !ids.contains(id) else { return false }
-        ids = Array((ids + [id]).suffix(Self.kept))
-        return true
+    /// From the list an earlier build kept outside the file: the taps it handled, and the answers
+    /// it last gave. A tap with no answer kept was applied, or found nothing to change.
+    public static func earlier(handled: [String], results: [WatchResult]) -> WatchReceipts {
+        WatchReceipts(handled.map { id in
+            let given = results.last { $0.id == id }?.outcome
+            return WatchResult(id: id, outcome: given == nil || given == .waiting ? .applied : given!)
+        })
     }
 
-    /// The latest taps, for the watch's `handled`.
-    public var latest: [String] { Array(ids.suffix(Self.told)) }
+    /// The answer given to this tap, when it was handled before: it is never applied again.
+    public func outcome(of id: String) -> WatchOutcome? {
+        results.last { $0.id == id }?.outcome
+    }
 
-    /// True when this tap was handled before.
-    public func contains(_ id: String) -> Bool { ids.contains(id) }
+    /// Notes a tap's answer. `waiting` isn't an answer: that tap comes again.
+    public mutating func record(_ id: String, _ outcome: WatchOutcome) {
+        guard outcome != .waiting, self.outcome(of: id) == nil else { return }
+        results = Array((results + [WatchResult(id: id, outcome: outcome)]).suffix(Self.kept))
+    }
 
-    /// Notes a tap as handled, once its change is saved (outside review of `11-watch-parity.md`:
-    /// noted before the change, a tap lost with the app could never be applied again).
-    public mutating func record(_ id: String) {
-        guard !ids.contains(id) else { return }
-        ids = Array((ids + [id]).suffix(Self.kept))
+    /// What the watch is told: the latest answers, then `extra` (an answer given again to a tap
+    /// that arrived twice, or `waiting`), each tap once, newest last. `handled` leaves out the taps
+    /// still waiting.
+    public func told(_ extra: [WatchResult] = []) -> (handled: [String], results: [WatchResult]) {
+        let again = Set(extra.map(\.id))
+        let latest = results.suffix(Self.told).filter { !again.contains($0.id) } + extra
+        return (latest.filter { $0.outcome != .waiting }.map(\.id), latest)
+    }
+
+    /// One answer this build can't read (from a newer one) is left out, not the rest.
+    public init(from decoder: any Decoder) throws {
+        let list = try decoder.singleValueContainer().decode([Lossy<WatchResult>].self)
+        self.init(list.compactMap(\.value))
+    }
+
+    public func encode(to encoder: any Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(results)
     }
 }
 
@@ -472,81 +513,87 @@ extension HouseholdData {
     /// a feed that has already finished, or a start while a feed runs.
     @discardableResult
     public mutating func applyWatch(_ request: WatchRequest, babyID: String, by me: MemberID, timeZoneID: String) -> Bool {
+        applyWatchRequest(request, babyID: babyID, by: me, timeZoneID: timeZoneID) == .applied
+    }
+
+    /// The same, with the phone's answer for the watch's Logged card: `unchanged` when it was
+    /// already so (the tap arrived twice), `refused` when it was turned down because the household
+    /// changed since (another feed or sleep logged, the entry gone), so the card says "Not saved"
+    /// and offers no changes to an entry that doesn't exist (outside review of step 1, P2).
+    public mutating func applyWatchRequest(_ request: WatchRequest, babyID: String, by me: MemberID,
+                                           timeZoneID: String) -> WatchOutcome {
         let at = request.at
-        let changed: Bool
         let id: String
         /// Other records the tap changed, sent at once too.
         var alsoChanged: [String] = []
         switch request.command {
         case .start(let feedID, let bottle, let bottleID, let doneBy):
             id = feedID
-            guard events[feedID] == nil, feedInProgress(babyID: babyID) == nil else { return false }
+            guard events[feedID] == nil else { return .unchanged }
+            guard feedInProgress(babyID: babyID) == nil else { return .refused }
             // A start kept while the phone was out of reach, from before a feed logged since:
             // starting it now would show a feed running for hours.
             let later = allEvents.contains { $0.isLiveFeed && $0.babyID == babyID && $0.startedAt > at }
-            guard !later else { return false }
+            guard !later else { return .refused }
             add(id: feedID, kind: .feed, babyID: babyID, startedAt: at,
                 payload: EventPayload(feed: FeedDetails(bottles: bottle.map { [Bottle(id: bottleID, milk: $0)] } ?? [])),
                 by: me, doneBy: bottle == nil ? doneBy : nil, timeZoneID: timeZoneID, now: at)
             // Start feed ends a running sleep, as in the app (the users' choice O).
             alsoChanged = endSleepForFeed(babyID: babyID, start: at, feedID: feedID, by: me, now: at)
-            changed = true
         case .switchSide(let feedID, let side):
             id = feedID
-            guard let feed = runningFeed(feedID), feed.event.loggedBy == me else { return false }
+            guard let feed = runningFeed(feedID), feed.event.loggedBy == me else { return .refused }
             let current = feed.payload?.feed?.breast.last.flatMap { $0.durationSeconds == nil ? $0.side : nil }
-            guard current != side else { return false }
-            changed = switchSide(feedID, to: side, by: me, now: max(at, feed.event.startedAt))
+            guard current != side else { return .unchanged }
+            guard switchSide(feedID, to: side, by: me, now: max(at, feed.event.startedAt)) else { return .refused }
         case .finish(let feedID):
             id = feedID
-            guard let feed = runningFeed(feedID) else { return false }
-            changed = finishFeed(feedID, by: me, now: max(at, feed.event.startedAt))
+            guard let feed = runningFeed(feedID) else {
+                return events[feedID].map { $0.event.deletedAt == nil && $0.event.endedAt != nil } == true ? .unchanged : .refused
+            }
+            guard finishFeed(feedID, by: me, now: max(at, feed.event.startedAt)) else { return .refused }
         case .setAmount(let feedID, let bottleID, let ml):
             id = feedID
             guard let feed = events[feedID]?.snapshot, feed.event.deletedAt == nil,
-                  feed.payload?.feed?.bottles.contains(where: { $0.id == bottleID && $0.ml != ml }) == true
-            else { return false }
-            changed = edit(feedID, by: me, now: at) { snapshot in
+                  let bottle = feed.payload?.feed?.bottles.first(where: { $0.id == bottleID }) else { return .refused }
+            guard bottle.ml != ml else { return .unchanged }
+            let changed = edit(feedID, by: me, now: at) { snapshot in
                 var details = snapshot.payload?.feed ?? FeedDetails()
                 if let index = details.bottles.firstIndex(where: { $0.id == bottleID }) { details.bottles[index].ml = ml }
                 snapshot.payload?.feed = details
             }
+            guard changed else { return .refused }
         case .discard(let feedID):
             id = feedID
-            guard let feed = events[feedID]?.snapshot, feed.event.deletedAt == nil, feed.event.loggedBy == me
-            else { return false }
-            changed = delete(feedID, by: me, now: max(at, feed.event.startedAt))
-            if changed {
-                alsoChanged = reopenSleepEnded(byFeed: feed.event, by: me, now: max(at, feed.event.startedAt))
-            }
+            guard let feed = events[feedID]?.snapshot, feed.event.loggedBy == me else { return .refused }
+            guard feed.event.deletedAt == nil else { return .unchanged }
+            guard delete(feedID, by: me, now: max(at, feed.event.startedAt)) else { return .refused }
+            alsoChanged = reopenSleepEnded(byFeed: feed.event, by: me, now: max(at, feed.event.startedAt))
         case .fellAsleep(let sleepID):
             id = sleepID
+            guard events[sleepID] == nil else { return .unchanged }
             // One sleep at a time. A tap kept while the phone was out of reach, from before a sleep
             // logged since, would make a second sleep over the first.
-            guard events[sleepID] == nil, sleepInProgress(babyID: babyID, now: at) == nil else { return false }
+            guard sleepInProgress(babyID: babyID, now: at) == nil else { return .refused }
             let later = allEvents.contains { $0.kind == .sleep && $0.deletedAt == nil && $0.babyID == babyID && $0.startedAt > at }
-            guard !later else { return false }
+            guard !later else { return .refused }
             startSleep(id: sleepID, babyID: babyID, startedAt: at, by: me, timeZoneID: timeZoneID, now: at)
-            changed = true
         case .wokeUp(let sleepID):
             id = sleepID
             // Only while the sleep the watch showed still runs: a late tap must not end a sleep
             // that began after it.
-            guard let sleep = events[sleepID]?.event, sleep.kind == .sleep, sleep.deletedAt == nil, sleep.endedAt == nil
-            else { return false }
+            guard let sleep = events[sleepID]?.event, sleep.kind == .sleep, sleep.deletedAt == nil else { return .refused }
+            guard sleep.endedAt == nil else { return .unchanged }
             let ended = endSleep(babyID: babyID, at: max(at, sleep.startedAt), by: me, now: max(at, sleep.startedAt))
+            guard !ended.isEmpty else { return .refused }
             alsoChanged = ended
-            changed = !ended.isEmpty
         case .nappy(let nappyID, let wee, let poo):
             id = nappyID
-            guard events[nappyID] == nil else { return false }
+            guard events[nappyID] == nil else { return .unchanged }
             addNappy(id: nappyID, babyID: babyID, wee: wee, poo: poo, at: at, by: me, timeZoneID: timeZoneID, now: at)
-            changed = true
         }
-        if changed {
-            for changedID in [id] + alsoChanged { events[changedID]?.uploadNotBefore = nil }
-        }
-        return changed
+        for changedID in [id] + alsoChanged { events[changedID]?.uploadNotBefore = nil }
+        return .applied
     }
 
     /// A feed that is still running and not removed.

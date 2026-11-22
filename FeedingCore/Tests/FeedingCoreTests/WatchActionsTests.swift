@@ -202,4 +202,115 @@ struct WatchActionsTests {
         ])
         #expect(saved.shown?.lastBath == nil)
     }
+
+    // MARK: The outside review of step 1
+
+    /// The answers are saved in the household file, with the change, and read back (P1).
+    @Test func theAnswersSurviveTheFile() throws {
+        var data = household()
+        data.watchReceipts.record("t1", .applied)
+        data.watchReceipts.record("t2", .refused)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .millisecondsSince1970
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        let read = try decoder.decode(HouseholdData.self, from: encoder.encode(data))
+        #expect(read.watchReceipts == data.watchReceipts)
+        #expect(read.keptParts.isEmpty)
+        // A phone with none writes nothing for them.
+        let empty = try JSONSerialization.jsonObject(with: encoder.encode(household())) as? [String: Any]
+        #expect(empty?["watchReceipts"] == nil)
+    }
+
+    /// An answer a newer build wrote that this one can't read is left out, not the rest.
+    @Test func anUnknownAnswerIsLeftOutNotTheRest() throws {
+        let json = #"[{"id":"t1","outcome":"applied"},{"id":"t2","outcome":"someday"},{"id":"t3","outcome":"refused"}]"#
+        let read = try JSONDecoder().decode(WatchReceipts.self, from: Data(json.utf8))
+        #expect(read.results.map(\.id) == ["t1", "t3"])
+    }
+
+    /// The list an earlier build kept outside the file comes across once, so no old tap is applied again.
+    @Test func theEarlierListComesAcross() {
+        let receipts = WatchReceipts.earlier(handled: ["t1", "t2", "t3"],
+                                             results: [WatchResult(id: "t2", outcome: .refused),
+                                                       WatchResult(id: "t3", outcome: .waiting)])
+        #expect(receipts.outcome(of: "t1") == .applied)
+        #expect(receipts.outcome(of: "t2") == .refused)
+        #expect(receipts.outcome(of: "t3") == .applied)
+    }
+
+    /// A tap that arrives again after its answer left the latest 30 is answered again, once, last;
+    /// one still waiting isn't counted as handled (P2).
+    @Test func anAnswerGivenAgainIsToldLast() {
+        var receipts = WatchReceipts()
+        for number in 0..<40 { receipts.record("tap-\(number)", .applied) }
+        let told = receipts.told([WatchResult(id: "tap-2", outcome: .applied), WatchResult(id: "x", outcome: .waiting)])
+        #expect(told.results.last?.id == "x")
+        #expect(told.results.filter { $0.id == "tap-2" }.count == 1)
+        #expect(told.handled.contains("tap-2"))
+        #expect(!told.handled.contains("x"))
+        // Asked again for one in the latest 30: still told once.
+        let again = receipts.told([WatchResult(id: "tap-39", outcome: .applied)])
+        #expect(again.results.filter { $0.id == "tap-39" }.count == 1)
+    }
+
+    /// A Fell asleep turned down because another sleep runs is "Not saved", not "logged"; the same
+    /// tap arriving twice is "unchanged" (P2).
+    @Test func aFellAsleepTurnedDownIsRefused() {
+        var data = household()
+        data.startSleep(id: "s0", babyID: baby, startedAt: now.addingTimeInterval(-600), by: parentB, timeZoneID: zone,
+                        now: now.addingTimeInterval(-600))
+        let late = WatchRequest(command: .fellAsleep(sleepID: "s1"), at: now)
+        #expect(data.applyWatchRequest(late, babyID: baby, by: parentA, timeZoneID: zone) == .refused)
+        #expect(data.events["s1"] == nil)
+        let first = WatchRequest(command: .nappy(nappyID: "n1", wee: true, poo: false), at: now)
+        #expect(data.applyWatchRequest(first, babyID: baby, by: parentA, timeZoneID: zone) == .applied)
+        #expect(data.applyWatchRequest(first, babyID: baby, by: parentA, timeZoneID: zone) == .unchanged)
+    }
+
+    /// A Finish for a feed already finished is "unchanged"; for one removed, "refused".
+    @Test func aFinishSaysWhetherTheFeedWasFinished() {
+        var data = household()
+        let start = WatchRequest(command: .start(feedID: "f1", bottle: nil, bottleID: "b"), at: now)
+        #expect(data.applyWatchRequest(start, babyID: baby, by: parentA, timeZoneID: zone) == .applied)
+        let finish = WatchRequest(command: .finish(feedID: "f1"), at: now.addingTimeInterval(600))
+        #expect(data.applyWatchRequest(finish, babyID: baby, by: parentA, timeZoneID: zone) == .applied)
+        #expect(data.applyWatchRequest(finish, babyID: baby, by: parentA, timeZoneID: zone) == .unchanged)
+        let gone = WatchRequest(command: .finish(feedID: "nothing"), at: now)
+        #expect(data.applyWatchRequest(gone, babyID: baby, by: parentA, timeZoneID: zone) == .refused)
+    }
+
+    /// A nappy or Fell asleep undone before the phone heard isn't shown (P2).
+    @Test func anUndoneNappyOrSleepIsNotShownWhileWaiting() {
+        var phone = WatchState(madeAt: now, setUp: true)
+        phone.lastNappy = WatchNappy(id: "old", at: now.addingTimeInterval(-3600), wee: true, poo: false)
+        let nappy = WatchRequest(command: .nappy(nappyID: "n1", wee: false, poo: true), at: now)
+        let sleep = WatchRequest(command: .fellAsleep(sleepID: "s1"), at: now)
+        let saved = WatchSaved(phone: phone, pending: [nappy, sleep], actions: [
+            WatchActionRequest(action: .undo(id: "n1"), at: now, after: nappy.id),
+            WatchActionRequest(action: .undo(id: "s1"), at: now, after: sleep.id),
+        ])
+        #expect(saved.shown?.lastNappy?.id == "old")
+        #expect(saved.shown?.sleep == nil)
+    }
+
+    /// Earlier moves a bath's or a medicine's time on the watch at once, only while it is still the
+    /// tap's (P3).
+    @Test func earlierMovesABathOrMedicineShownAtTheTap() {
+        var state = WatchState(madeAt: now, setUp: true)
+        state.lastBath = now
+        state.medicines = [WatchMedicine(name: "Vitamin D", lastGiven: now),
+                           WatchMedicine(name: "Other", lastGiven: now.addingTimeInterval(120))]
+        let moved = state.applying(WatchActionRequest(action: .earlier(id: "b1", minutes: 20, expected: now), at: now))
+        #expect(moved.lastBath == now.addingTimeInterval(-1200))
+        #expect(moved.medicines?[0].lastGiven == now.addingTimeInterval(-1200))
+        #expect(moved.medicines?[1].lastGiven == now.addingTimeInterval(120))
+    }
+
+    /// Details added to the last nappy don't change what the watch face shows (P3).
+    @Test func nappyDetailsAreNotOnTheFace() {
+        let plain = WatchNappy(id: "n1", at: now, wee: false, poo: true)
+        let detailed = WatchNappy(id: "n1", at: now, wee: false, poo: true, colour: .yellow, consistency: .loose, doneBy: parentB)
+        #expect(plain.onFace == detailed.onFace)
+    }
 }
