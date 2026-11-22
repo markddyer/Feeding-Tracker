@@ -404,6 +404,12 @@ Because the app code is the same for all four, the choice could have been made b
   - **Both phones:** each phone makes its own card from the same synced facts, so the facts match and only the joining words can differ.
   - **Cost:** about 1p a phone a day, under £1 a month for both. It is well inside the £10 limit.
 
+- **The look (Parent A, from side-by-side mockups, 22 Nov 2026):**
+  - **The daily card on Home: C, one slim line.** It sits under the greeting, above the "Last feed" tile, for example "Last night · longest sleep 3h 10m · 4 feeds", with the AI mark and ›. A tap opens the full card as a sheet: "Last night" and "Yesterday", each a few sentences with fact chips, then the NHS link and "Written by AI from your log." The "Last feed" tile stays near the top of Home.
+  - **"This week" on Graphs: the same style.** A slim line at the top of Graphs opens the full "This week" card. Each of its lines opens that graph's page (`10-graph-pages.md`).
+  - **Ask: A, a chat with bubbles.** Each answer bubble keeps its parts apart (A4): a "From your log" box with the app's own facts, then the AI's words, then the NHS card with the NHS's exact words, then "AI · not medical advice" with the health visitor and 111. "Before asking" shows suggestions and "Worried right now?" with Call 999 and Call 111. A danger sign gets the Get help now card in the chat, in place of an answer.
+  - `DESIGN.md` gets these parts when they are built.
+
 **Still to do before the AI part is switched on:**
 - **D12. The other parent's yes.** The facts leave the phones only after both parents agree, each on their own phone.
 
