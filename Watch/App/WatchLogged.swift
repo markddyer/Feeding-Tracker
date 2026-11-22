@@ -12,6 +12,7 @@ struct LoggedCard: Identifiable, Equatable {
         case bath
         case medicine
         case pump
+        case feed
         case asleep
         case awake
     }
@@ -194,6 +195,7 @@ struct WatchLoggedScreen: View {
         case .bath: Image(systemName: "bathtub.fill").foregroundStyle(palette.bottle)
         case .medicine: Image(systemName: "pills.fill").foregroundStyle(palette.textMuted)
         case .pump: DropsShape().fill(palette.textMuted).frame(width: 14, height: 14)
+        case .feed: BottleShape().fill(palette.bottle).frame(width: 14, height: 14)
         case .asleep: MoonShape().fill(palette.sleep).frame(width: 14, height: 14)
         case .awake: Image(systemName: "sun.max.fill").foregroundStyle(palette.wee)
         }

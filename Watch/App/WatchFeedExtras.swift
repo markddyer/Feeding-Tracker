@@ -28,14 +28,20 @@ struct WatchAddToFeedScreen: View {
 
     var body: some View {
         if let ask {
-            let feed = state.lastFeed?.id == ask.feedID ? state.lastFeed : nil
-            let choices = DetailChoices(feed?.details ?? FeedDetails(), bottleOnly: state.bottleOnly)
+            let feed = state.finishedFeed(ask.feedID)
+            // A breastfeed asks for sides even on a bottle-only watch, as the phone's panel.
+            let choices = DetailChoices(feed?.details ?? FeedDetails(), bottleOnly: state.bottleOnly && feed?.breastfeed != true)
             if let milk {
                 // A new bottle: its amount, then it is sent with it.
                 WatchAmountPicker(title: amountTitle(milk), start: state.startAmount(for: milk) ?? 60, noneTitle: "No amount") { ml in
-                    link.sendFeedExtra(.addBottle(feedID: ask.feedID, bottleID: UUID().uuidString, milk: milk, ml: ml),
-                                       feedID: ask.feedID)
-                    if let ml { link.rememberAmount(ml, milk: milk) }
+                    let bottleID = UUID().uuidString
+                    link.sendFeedExtra(.addBottle(feedID: ask.feedID, bottleID: bottleID, milk: milk, ml: ml), feedID: ask.feedID)
+                    if let ml {
+                        link.rememberAmount(ml, milk: milk)
+                    } else {
+                        // "No amount" means no amount: not asked again (outside review of step 2).
+                        self.ask?.skipped.insert(bottleID)
+                    }
                     self.milk = nil
                 }
                 .id(milk)
@@ -266,7 +272,11 @@ struct WatchEarlierFeedScreen: View {
             HStack(spacing: 6) {
                 WatchBigButton(title: "Back", prominent: false, compact: true) { done(nil) }
                     .frame(maxWidth: 76)
-                WatchBigButton(title: "Save", compact: true) { done(start) }
+                // The start counts back from when the screen opened; at most 12 hours before the
+                // Save itself, which is what the phone checks (outside review of step 2).
+                WatchBigButton(title: "Save", doubleTap: true, compact: true) {
+                    done(max(start, Date().addingTimeInterval(-watchEarliestFeed)))
+                }
                     .accessibilityLabel("Save a feed that started at \(state.clock(start))")
             }
         }

@@ -417,7 +417,9 @@ struct WatchActionsTests {
         // An earlier feed from before the last one doesn't move the time since it.
         let older = sided.applying(WatchActionRequest(action: .earlierFeed(feedID: "e1", start: now.addingTimeInterval(-7200)), at: now))
         #expect(older.lastFeedStart == now.addingTimeInterval(-600))
-        #expect(older.lastFeed?.id == "e1")
+        // It is kept with the recent feeds; the last feed stays the newest.
+        #expect(older.lastFeed?.id == "f1")
+        #expect(older.finishedFeed("e1") != nil)
         let later = sided.applying(WatchActionRequest(action: .justFinished(feedID: "j1", minutesAgo: 5), at: now))
         #expect(later.lastFeedStart == now.addingTimeInterval(-300))
     }
@@ -435,6 +437,54 @@ struct WatchActionsTests {
         #expect(state.lastFeed?.mine == true)
         #expect(state.lastFeed?.details.breast.map(\.side) == [.right])
         #expect(state.understands(WatchCapability.feedExtras))
+    }
+
+    // MARK: The outside review of step 2
+
+    func watch(_ data: HouseholdData, me: MemberID = parentA, bottleOnly: Bool = false) -> WatchState {
+        data.watchState(me: me, names: [parentA: "Sam", parentB: "Alex"], colours: [:], bottleOnly: bottleOnly,
+                        lookSetting: .automatic, now: now)
+    }
+
+    /// An Earlier feed older than the last one can still be added to once the phone has it.
+    @Test func anEarlierFeedOlderThanTheLastStaysOpen() {
+        var data = household()
+        _ = feed(&data, minutesAgo: 30)
+        #expect(apply(&data, .earlierFeed(feedID: "old", start: now.addingTimeInterval(-4 * 3600))) == .applied)
+        let state = watch(data)
+        #expect(state.lastFeed?.id != "old")
+        #expect(state.finishedFeed("old")?.start == now.addingTimeInterval(-4 * 3600))
+        let sided = state.applying(WatchActionRequest(action: .addSide(feedID: "old", side: .left), at: now))
+        #expect(sided.finishedFeed("old")?.details.breast.map(\.side) == [.left])
+    }
+
+    /// The other parent finished this parent's feed, with nothing added: offered, as on the phone.
+    @Test func aFeedFinishedForYouIsOffered() {
+        var data = household()
+        let id = data.startFeed(babyID: baby, side: nil, by: parentA, timeZoneID: zone, now: now.addingTimeInterval(-1800))
+        _ = data.finishFeed(id, by: parentB, now: now.addingTimeInterval(-600))
+        #expect(watch(data).lastFeed?.finishedForMe == true)
+        // Not to the parent who finished it, and not once something is added.
+        #expect(watch(data, me: parentB).lastFeed?.finishedForMe == nil)
+        _ = apply(&data, .addSide(feedID: id, side: .left))
+        #expect(watch(data).lastFeed?.finishedForMe == nil)
+        // Not for a feed this parent finished.
+        var own = household()
+        _ = feed(&own)
+        #expect(watch(own).lastFeed?.finishedForMe == nil)
+    }
+
+    /// A breastfeed is marked, so a bottle-only watch still asks for its sides after Finish.
+    @Test func aBreastfeedIsMarkedForTheDetails() {
+        var data = household()
+        let id = feed(&data)
+        _ = apply(&data, .addSide(feedID: id, side: .right))
+        #expect(watch(data, bottleOnly: true).lastFeed?.breastfeed == true)
+        var bottle = household()
+        let other = bottle.startFeed(babyID: baby, side: nil, bottle: .formula, by: parentA, timeZoneID: zone,
+                                     now: now.addingTimeInterval(-1800))
+        _ = bottle.finishFeed(other, by: parentA, now: now.addingTimeInterval(-900))
+        #expect(watch(bottle, bottleOnly: true).lastFeed?.breastfeed == nil)
     }
 }
 

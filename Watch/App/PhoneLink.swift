@@ -95,10 +95,27 @@ final class PhoneLink {
         return (first + new).max { $0.0 < $1.0 }?.1
     }
 
-    /// Sends a feed extra after the tap about the same feed that must come first.
+    /// Sends a feed extra after the tap about the same feed that must come first. An amount waits
+    /// for the tap that made its bottle, if the phone hasn't answered it, whichever queue it is in
+    /// (outside review of step 2).
     @discardableResult
     func sendFeedExtra(_ action: WatchAction, feedID: String, now: Date = Date()) -> String {
-        send(action, after: unansweredTap(about: feedID), now: now)
+        if case .amount(_, let bottleID, _) = action, let made = unansweredTap(making: bottleID) {
+            return send(action, after: made, now: now)
+        }
+        return send(action, after: unansweredTap(about: feedID), now: now)
+    }
+
+    /// The unanswered tap that made this bottle: a bottle-only Start, or a bottle added here.
+    private func unansweredTap(making bottleID: String) -> String? {
+        if let start = saved.pending.last(where: {
+            if case .start(_, let milk, let id, _) = $0.command { return milk != nil && id == bottleID }
+            return false
+        }) { return start.id }
+        return saved.actions.last { request in
+            if case .addBottle(_, let id, _, _) = request.action { return id == bottleID }
+            return false
+        }?.id
     }
 
     /// The phone's answer to a tap, once it has given one.

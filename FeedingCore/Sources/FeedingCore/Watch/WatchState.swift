@@ -55,13 +55,22 @@ public struct WatchLastFeed: Codable, Hashable, Sendable {
     public var details: FeedDetails
     /// Logged by this watch's parent.
     public var mine: Bool
+    /// A breastfeed: "Add to this feed" then asks for sides even on a bottle-only watch, as the
+    /// phone's panel (outside review of step 2).
+    public var breastfeed: Bool?
+    /// This parent's feed, finished for them by the other parent, with nothing added yet: the
+    /// watch offers "Add to this feed" once, as the phone does (`feedFinishedForMe`).
+    public var finishedForMe: Bool?
 
-    public init(id: String, start: Date, end: Date, details: FeedDetails, mine: Bool) {
+    public init(id: String, start: Date, end: Date, details: FeedDetails, mine: Bool, breastfeed: Bool? = nil,
+                finishedForMe: Bool? = nil) {
         self.id = id
         self.start = start
         self.end = end
         self.details = details
         self.mine = mine
+        self.breastfeed = breastfeed
+        self.finishedForMe = finishedForMe
     }
 }
 
@@ -171,6 +180,9 @@ public struct WatchState: Codable, Hashable, Sendable {
     public var me: MemberID?
     /// The latest finished feed (step 2).
     public var lastFeed: WatchLastFeed?
+    /// Every feed finished in the last 13 hours, newest first: "Add to this feed" keeps working on
+    /// an Earlier feed older than the last one (outside review of step 2).
+    public var recentFeeds: [WatchLastFeed]?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
@@ -532,14 +544,25 @@ extension HouseholdData {
         }
         state.medicines = watchMedicines(babyID: babyID, now: now)
         state.lastBath = lastBath(babyID: babyID, now: now)
-        let hidden = hiddenDuplicates(babyID: babyID)
-        state.lastFeed = visible.filter { $0.event.isLiveFeed && $0.event.babyID == babyID && !hidden.contains($0.event.id) }
-            .compactMap { feed in feed.event.endedAt.map { (feed, $0) } }
-            .max { ($0.0.event.startedAt, $0.0.event.id) < ($1.0.event.startedAt, $1.0.event.id) }
-            .map { feed, end in
-                WatchLastFeed(id: feed.event.id, start: feed.event.startedAt, end: end,
-                              details: feed.payload?.feed ?? FeedDetails(), mine: feed.event.loggedBy == me)
-            }
+        // `visible` already leaves out a copy logged on both phones.
+        let finished = visible.filter { $0.event.isLiveFeed && $0.event.babyID == babyID && $0.event.endedAt != nil }
+            .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
+        let recent = finished.enumerated().filter { index, feed in
+            index == 0 || now.timeIntervalSince(feed.event.startedAt) <= watchEarliestFeed + 3600
+        }.prefix(12).map { index, feed in
+            let details = feed.payload?.feed ?? FeedDetails()
+            // As the phone's Home: the latest feed, this parent's, finished by the other parent in
+            // the last two hours, with no side and no amount yet.
+            let forMe = index == 0 && state.running == nil && feed.event.loggedBy == me
+                && now.timeIntervalSince(feed.event.endedAt ?? now) < 2 * 3600
+                && feed.payload?.stamp(.endedAt).map { $0.by != me } == true
+                && details.breast.isEmpty && details.bottles.allSatisfy { $0.ml == nil }
+            return WatchLastFeed(id: feed.event.id, start: feed.event.startedAt, end: feed.event.endedAt ?? now, details: details,
+                                 mine: feed.event.loggedBy == me, breastfeed: isBreastfeed(feed) ? true : nil,
+                                 finishedForMe: forMe ? true : nil)
+        }
+        state.lastFeed = recent.first
+        state.recentFeeds = recent.isEmpty ? nil : Array(recent)
         return state
     }
 
@@ -666,10 +689,10 @@ extension WatchState {
             guard let running = state.running, running.id == feedID else { break }
             if let side = running.side { state.nextSide = side.other }
             // What "Add to this feed" asks next (step 2).
-            state.lastFeed = WatchLastFeed(id: feedID, start: running.startedAt, end: max(request.at, running.startedAt),
-                                           details: FeedDetails(breast: (running.sides ?? running.side.map { [$0] } ?? [])
-                                               .map { BreastSegment(side: $0) }, bottles: running.bottles),
-                                           mine: running.mine)
+            state.showFinished(WatchLastFeed(id: feedID, start: running.startedAt, end: max(request.at, running.startedAt),
+                                             details: FeedDetails(breast: (running.sides ?? running.side.map { [$0] } ?? [])
+                                                 .map { BreastSegment(side: $0) }, bottles: running.bottles),
+                                             mine: running.mine, breastfeed: running.breastfeed))
             state.running = nil
             state.previousFeedStart = state.lastFeedStart
         case .setAmount:

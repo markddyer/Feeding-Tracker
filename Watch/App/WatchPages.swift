@@ -33,27 +33,33 @@ struct WatchPageFrame<Content: View>: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let metrics = WatchMetrics(size: proxy.size)
+            // Clear of the screen's rounded corners: a wide button or a tile in the bottom row must
+            // sit inside the corner's curve. The Ultra's corners are rounder, so a large watch keeps
+            // more room (on the Ultra, "Stop · discard" was clipped 8 pt from the bottom, 22 Nov
+            // 2026); a small one keeps less, so page 1 still fits on 42 mm. The room the system keeps
+            // free at the bottom is used instead: it left an unused band on 42 mm.
+            let small = proxy.size.width < 190
+            let side: CGFloat = 6
+            let bottom: CGFloat = small ? 9 : 18
+            let inner = CGSize(width: max(0, proxy.size.width - 2 * side), height: max(0, proxy.size.height - bottom))
+            let metrics = WatchMetrics(size: inner)
             if typeSize.isAccessibilitySize {
                 // At the largest text sizes the words grow rather than being cut off, so the page
                 // may scroll, as Apple asks.
                 ScrollView {
                     VStack(alignment: .leading, spacing: 6) { content(metrics) }
-                        .frame(width: proxy.size.width, alignment: .leading)
+                        .frame(width: inner.width, alignment: .leading)
+                        .padding(.bottom, bottom)
                 }
+                .padding(.horizontal, side)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     content(metrics)
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .top)
+                .frame(width: inner.width, height: inner.height, alignment: .top)
+                .padding(.horizontal, side)
             }
         }
-        .padding(.horizontal, 4)
-        // The system keeps about 30 pt free at the bottom, which left a band of unused space, and
-        // pages that didn't fit in what was left ran into the corners anyway (42 mm, 22 Nov 2026).
-        // So the page uses that room, and keeps its own margin clear of the rounded corners (on the
-        // Ultra, buttons touching the bottom were clipped by them, 21 Nov 2026).
-        .padding(.bottom, 8)
         .ignoresSafeArea(.container, edges: .bottom)
         // No room kept for a large title: the label sits beside the clock, and the page starts just
         // under it (a large gap showed on the Ultra, 21 Nov 2026).
@@ -179,7 +185,8 @@ struct WatchTile<Mark: View>: View {
                     Text(hint).watchText(.hint).foregroundStyle(palette.textMuted).lineLimit(1)
                 }
             }
-            .padding(.horizontal, 2)
+            // A short tile's words get the whole width: "Just finished" on 42 mm.
+            .padding(.horizontal, short ? 0 : 2)
             .frame(width: wide ? nil : metrics.tileWidth, height: short ? metrics.shortTileHeight : metrics.tileHeight)
             .frame(maxWidth: wide ? .infinity : nil)
             .foregroundStyle(selected ? palette.onBreast : palette.text)
@@ -247,7 +254,7 @@ struct WatchIdlePage: View {
             }
             Spacer(minLength: 3)
             if let steps = state.windowSteps(at: now) {
-                let line = steps.line(state.clock)
+                let line = steps.line(state.clock, short: metrics.small)
                 VStack(alignment: .leading, spacing: 2) {
                     // One line on a small watch, so page 1 fits; two on a large one.
                     Text("\(Text(line.main).fontWeight(.semibold).foregroundStyle(palette.text))\(Text(line.more).foregroundStyle(palette.textMuted))")

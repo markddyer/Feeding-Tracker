@@ -29,6 +29,9 @@ struct WatchHomeView: View {
     @State private var earlierAsk: Date?
     /// Bottle during this parent's feed: which milk.
     @State private var bottleAsk: String?
+    /// The last feed finished for this parent by the other parent whose details were offered, so
+    /// the offer comes once (outside review of step 2).
+    @AppStorage("watch.detailsOffered") private var detailsOffered = ""
     /// Undo, Earlier and Done by sent from a Logged card, by tap, until the phone answers: one it
     /// turns down after the card has closed opens a card that says so (outside review of step 1, P2).
     @State private var corrections: [String: LoggedCard] = [:]
@@ -69,7 +72,10 @@ struct WatchHomeView: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { link.refresh() }
         }
-        .onChange(of: link.saved) { _, _ in noticeRefusedCorrections() }
+        .onChange(of: link.saved) { _, _ in
+            noticeRefusedCorrections()
+            offerDetailsFinishedForMe()
+        }
         // The phone refused a Finish (it can't read that feed's details): its answer shows the feed
         // still running and the tap handled, so the amount question goes (engineering review of
         // "who does what", A2).
@@ -134,8 +140,24 @@ struct WatchHomeView: View {
             let outcome = link.result(of: id)
             guard outcome != .waiting, outcome != nil || !link.isWaiting(id) else { continue }
             corrections[id] = nil
-            if outcome == .refused, logged == nil { logged = notice }
+            if outcome == .refused, logged == nil, addTo?.tap != id { logged = notice }
         }
+    }
+
+    /// The other parent finished this parent's feed: "Add to this feed" once, as the phone does.
+    private func offerDetailsFinishedForMe() {
+        guard let feed = link.shown?.lastFeed, feed.finishedForMe == true, feed.id != detailsOffered,
+              addTo == nil, logged == nil, question == nil else { return }
+        detailsOffered = feed.id
+        addTo = AddToFeed(feedID: feed.id, tap: nil)
+    }
+
+    /// A past feed sent from the watch: if the phone turns it down after "Add to this feed" has
+    /// closed, a card says so (outside review of step 2).
+    private func followPastFeed(_ tap: String, id: String, start: Date) {
+        corrections[tap] = LoggedCard(id: tap, entryID: id, title: "Feed from \(link.shown?.clock(start) ?? "")", at: start,
+                                      mark: .feed, canUndo: false, canEarlier: false, canDoneBy: false,
+                                      notice: "Not saved: a feed is already logged then")
     }
 
     /// Start feed on the watch face, as Start feed in the app: a bottle-only watch asks which milk
@@ -242,8 +264,10 @@ struct WatchHomeView: View {
                 justFinishedAsk = false
                 guard let minutes else { return }
                 let id = UUID().uuidString
-                let tap = link.send(.justFinished(feedID: id, minutesAgo: minutes))
-                if state.understands(WatchCapability.feedExtras) { addTo = AddToFeed(feedID: id, tap: tap, past: true) }
+                let at = Date()
+                let tap = link.send(.justFinished(feedID: id, minutesAgo: minutes), now: at)
+                addTo = AddToFeed(feedID: id, tap: tap, past: true)
+                followPastFeed(tap, id: id, start: at.addingTimeInterval(-Double(minutes) * 60))
             }
         } else if let opened = earlierAsk, let state {
             WatchEarlierFeedScreen(state: state, opened: opened) { start in
@@ -252,6 +276,7 @@ struct WatchHomeView: View {
                 let id = UUID().uuidString
                 let tap = link.send(.earlierFeed(feedID: id, start: start))
                 addTo = AddToFeed(feedID: id, tap: tap, past: true)
+                followPastFeed(tap, id: id, start: start)
             }
         } else if let feedID = bottleAsk {
             WatchBottleChoiceScreen { milk in

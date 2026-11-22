@@ -124,18 +124,21 @@ struct WindowSteps {
     /// The line over the bar: where now is, then what comes next. "Window opens in 20m" · "at
     /// 15:22"; then "In the feeding window" · "alert at 17:22", · "backup alarm 17:52", and once
     /// both have rung · "since 15:22".
-    func line(_ clock: (Date) -> String) -> (main: String, more: String) {
+    /// `short`: "In the window", for a small watch, where the line has one row and the time after
+    /// it must still show (outside review of step 2 of `11-watch-parity.md`).
+    func line(_ clock: (Date) -> String, short: Bool = false) -> (main: String, more: String) {
         let off = alertsEnabled ? "" : " · alerts off"
+        let inWindow = short ? "In the window" : "In the feeding window"
         switch phase {
         case .beforeWindow:
             return ("Window opens in \(GlanceText.elapsed(untilOpens))", " · at \(clock(opensAt))" + off)
         case .inWindow:
-            return ("In the feeding window", alertsEnabled ? " · alert at \(clock(alertAt))" : " · since \(clock(opensAt))" + off)
+            return (inWindow, alertsEnabled ? " · alert at \(clock(alertAt))" : " · since \(clock(opensAt))" + off)
         case .afterAlert:
             if let backupAt, now < backupAt {
-                return ("In the feeding window", " · backup alarm \(clock(backupAt))")
+                return (inWindow, " · backup alarm \(clock(backupAt))")
             }
-            return ("In the feeding window", " · since \(clock(opensAt))" + off)
+            return (inWindow, " · since \(clock(opensAt))" + off)
         }
     }
 

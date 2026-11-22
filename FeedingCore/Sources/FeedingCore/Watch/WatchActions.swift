@@ -320,11 +320,38 @@ extension WatchState {
     /// A feed logged afterwards, shown at once. Only while no feed runs (the phone turns it down
     /// otherwise); the window moves only if it is the latest.
     mutating func showPastFeed(_ id: String, from start: Date, to end: Date) {
-        guard running == nil, lastFeed?.id != id else { return }
-        lastFeed = WatchLastFeed(id: id, start: start, end: end, details: FeedDetails(), mine: true)
+        guard running == nil, finishedFeed(id) == nil else { return }
+        showFinished(WatchLastFeed(id: id, start: start, end: end, details: FeedDetails(), mine: true))
         let latest = max(start, lastFeedStart ?? start)
         lastFeedStart = latest
         previousFeedStart = latest
+    }
+
+    /// A finished feed, by its ID: the last one or one of the recent ones.
+    public func finishedFeed(_ id: String) -> WatchLastFeed? {
+        recentFeeds?.first { $0.id == id } ?? (lastFeed?.id == id ? lastFeed : nil)
+    }
+
+    /// Adds a feed just finished on the watch to the recent ones, and makes it the last one if it
+    /// started latest.
+    mutating func showFinished(_ feed: WatchLastFeed) {
+        var recent = (recentFeeds ?? lastFeed.map { [$0] } ?? []).filter { $0.id != feed.id }
+        recent.append(feed)
+        recent.sort { ($0.start, $0.id) > ($1.start, $1.id) }
+        recentFeeds = recent
+        lastFeed = recent.first
+    }
+
+    /// Changes a finished feed wherever the watch holds it.
+    mutating func changeFinished(_ id: String, _ change: (inout WatchLastFeed) -> Void) {
+        if lastFeed?.id == id, var feed = lastFeed {
+            change(&feed)
+            lastFeed = feed
+        }
+        if let index = recentFeeds?.firstIndex(where: { $0.id == id }), var feed = recentFeeds?[index] {
+            change(&feed)
+            recentFeeds?[index] = feed
+        }
     }
 
     /// True when the phone understands this new tap.
@@ -376,20 +403,20 @@ extension WatchState {
             if state.running?.id == id, state.running?.bottles.contains(where: { $0.id == bottleID }) == false {
                 state.running?.bottles.append(bottle)
             }
-            if state.lastFeed?.id == id, state.lastFeed?.details.bottles.contains(where: { $0.id == bottleID }) == false {
-                state.lastFeed?.details.bottles.append(bottle)
+            state.changeFinished(id) { feed in
+                if !feed.details.bottles.contains(where: { $0.id == bottleID }) { feed.details.bottles.append(bottle) }
             }
             state.lastMilk = milk
         case .addSide(let id, let side):
-            if state.lastFeed?.id == id, state.lastFeed?.details.breast.contains(where: { $0.side == side }) == false {
-                state.lastFeed?.details.breast.append(BreastSegment(side: side))
+            state.changeFinished(id) { feed in
+                if !feed.details.breast.contains(where: { $0.side == side }) { feed.details.breast.append(BreastSegment(side: side)) }
             }
         case .amount(let id, let bottleID, let ml):
             if state.running?.id == id, let index = state.running?.bottles.firstIndex(where: { $0.id == bottleID }) {
                 state.running?.bottles[index].ml = ml
             }
-            if state.lastFeed?.id == id, let index = state.lastFeed?.details.bottles.firstIndex(where: { $0.id == bottleID }) {
-                state.lastFeed?.details.bottles[index].ml = ml
+            state.changeFinished(id) { feed in
+                if let index = feed.details.bottles.firstIndex(where: { $0.id == bottleID }) { feed.details.bottles[index].ml = ml }
             }
         case .justFinished(let id, let minutesAgo):
             state.showPastFeed(id, from: request.at.addingTimeInterval(-Double(minutesAgo) * 60), to: request.at)

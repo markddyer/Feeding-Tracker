@@ -254,3 +254,22 @@ All 12 findings fixed:
   first test tap right after a fresh install of both apps didn't arrive; a second run worked both
   times. To watch for on the real watch.
 
+### Codex review of step 2 (gpt-6.2-sol, 22 Nov 2026), and the fixes
+
+10 findings (6 medium, 4 small), all fixed, with one more from the parents' Ultra:
+
+- An Earlier feed older than the last one stays open for "Add to this feed": the state carries
+  every feed finished in the last 13 hours (`WatchState.recentFeeds`, `finishedFeed(_:)`).
+- An amount names the unanswered tap that made its bottle (a bottle-only Start or `addBottle`),
+  so it can't reach the phone first.
+- A past feed the phone turns down after the panel has closed opens a card saying so.
+- A feed the other parent finished for this parent, with nothing added, is offered once
+  (`WatchLastFeed.finishedForMe`, the phone's `feedFinishedForMe` rule).
+- A breastfeed on a bottle-only watch asks for sides after Finish (`WatchLastFeed.breastfeed`).
+- On 41 and 42 mm the window line starts "In the window", so the backup alarm's time shows.
+- "No amount" on a new bottle isn't asked again; Earlier's Save clamps to 12 hours before the
+  Save and takes the double tap; the phone no longer repeats the duplicate check.
+- The parents' Ultra clipped "Stop · discard" at 8 pt from the bottom: pages now keep 6 pt at each
+  side and 18 pt at the bottom on larger watches (9 pt on 41 and 42 mm, so page 1 still fits).
+- Checked: full `FeedingCore` suite (662) and the app tests; screenshots on 42 and 49 mm.
+
