@@ -1,6 +1,6 @@
 # 11 · The watch does what the phone does
 
-Status: decided 21 Nov 2026 (the parents' choices below); reviewed by Codex the same night (below); the alarm fix it led to is built (`c4f74e1`); **steps 1 and 2 are built** (step 1: the three no-scroll pages, Bath, Medicine, poo details, Pumping, the Logged card with Undo, Earlier and Done by, the phone's answers, capabilities, the new taps' own message and queue; step 2: the feed extras); step 3 is next.
+Status: decided 21 Nov 2026 (the parents' choices below); reviewed by Codex the same night (below); the alarm fix it led to is built (`c4f74e1`); **steps 1 to 3 are built** (step 1: the three no-scroll pages, Bath, Medicine, poo details, Pumping, the Logged card with Undo, Earlier and Done by, the phone's answers, capabilities, the new taps' own message and queue; step 2: the feed extras; step 3: tonight's rota, Woke up's Undo, Earlier and who got up, and Undo of Finish).
 Mockups (outside the repo, in this project's gstack design folder):
 `designs/watch-parity-20261121/` (round1 to round5; approved: `round5-square.html`), and
 `designs/watch-bar-20261121/built.html` (the new watch bar, built in `8fb7a19`).
@@ -272,4 +272,21 @@ All 12 findings fixed:
 - The parents' Ultra clipped "Stop · discard" at 8 pt from the bottom: pages now keep 6 pt at each
   side and 18 pt at the bottom on larger watches (9 pt on 41 and 42 mm, so page 1 still fits).
 - Checked: full `FeedingCore` suite (662) and the app tests; screenshots on 42 and 49 mm.
+
+## Step 3, as built (22 Nov 2026)
+
+- Tonight's rota (`Watch/WatchTonight.swift`): `WatchState.tonight` (`WatchTonight`: the night,
+  who is on, no rota, taken, the ask for this parent, the other parent) and `choices(me:)`, the
+  same as the phone's Nights tile and ask card. `WatchAction` `claimNight`, `askNight`,
+  `declineAsk`, `withdrawAsk`, `bothPhones`, `undoTake` (capability `tonight`) run the phone's own
+  rota calls when they reach it; a night already past is turned down, and `undoTake` only works
+  within 10 minutes of the claim (after it is sent, both phones alert instead, as `undoTake`).
+- Woke up and Finish (capability `ends`): `gotUp`, `undoWake`, `undoFinish`, and `earlier` on a
+  sleep's end. Each changes only the end this parent's tap wrote, within 10 minutes
+  (`endWrittenHere`); Undo of Finish opens the side Finish closed again, and never while another
+  feed runs. Undo of Start stays "Stop · discard".
+- The watch: page 3's Tonight row and the Tonight screen (`WatchFeedExtras.swift`); the Woke up
+  card with Undo, Earlier and "You got up ›"; Undo beside Done on "Add to this feed" after Finish.
+- Checked: full `FeedingCore` suite (670) and the app tests (176); screenshots on 42 and 49 mm.
+  Not yet tried between the paired simulators or on the phones.
 

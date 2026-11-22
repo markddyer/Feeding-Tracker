@@ -13,6 +13,7 @@ struct LoggedCard: Identifiable, Equatable {
         case medicine
         case pump
         case feed
+        case night
         case asleep
         case awake
     }
@@ -32,6 +33,10 @@ struct LoggedCard: Identifiable, Equatable {
     var canDoneBy = true
     /// Set on a card that only says what happened to a correction: "Undo not saved".
     var notice: String?
+    /// What Undo sends, when not the entry's own Undo: "I'll take it" and an ask (step 3).
+    var undo: WatchAction?
+    /// After Woke up: the end the tap wrote. The card asks who got up, not who did it (step 3).
+    var gotUpEnd: Date?
 
     /// This card again, saying `text`, with nothing to change: for a correction (tap `tap`) the
     /// phone turned down after the card had closed (outside review of step 1, P2).
@@ -80,7 +85,8 @@ struct WatchLoggedScreen: View {
     static let lifetime: TimeInterval = 6
 
     var body: some View {
-        WatchPageFrame(label: mode == .earlier ? "When was it?" : mode == .doneBy ? "Done by" : "Logged") { metrics in
+        WatchPageFrame(label: mode == .earlier ? "When was it?" : mode == .doneBy ? (card.gotUpEnd == nil ? "Done by" : "Who got up")
+                                                                                  : "Logged") { metrics in
             switch mode {
             case .main: main(metrics)
             case .earlier: earlier(metrics)
@@ -122,7 +128,9 @@ struct WatchLoggedScreen: View {
     private func main(_ metrics: WatchMetrics) -> some View {
         WatchHero {
             VStack(alignment: .leading, spacing: 0) {
-                Text(card.title).watchText(.button).foregroundStyle(palette.text).lineLimit(2).minimumScaleFactor(0.7)
+                // One line on a small watch, so the buttons under it fit ("Woke up logged").
+                Text(card.title).watchText(.button).foregroundStyle(palette.text).lineLimit(metrics.small ? 1 : 2)
+                    .minimumScaleFactor(metrics.small ? 0.6 : 0.7)
                 Text("at \(Text(state.clock(card.at)).foregroundStyle(palette.text))")
                     .watchText(.line).foregroundStyle(palette.textMuted)
                 status
@@ -144,7 +152,7 @@ struct WatchLoggedScreen: View {
         Spacer(minLength: 3)
         HStack(spacing: metrics.gap) {
             if card.canUndo, !settled, state.understands(WatchCapability.undo) {
-                wide("Undo", metrics) { sendCorrection(.undo(id: card.entryID), done: "Undone") }
+                wide("Undo", metrics) { sendCorrection(card.undo ?? .undo(id: card.entryID), done: "Undone") }
             }
             if card.canEarlier, !settled, state.understands(WatchCapability.earlier) {
                 wide("Earlier", metrics) { mode = .earlier }
@@ -154,7 +162,8 @@ struct WatchLoggedScreen: View {
         if card.canDoneBy, !settled, state.understands(WatchCapability.doneBy), let members = state.members, members.count > 1 {
             let who = doneBy ?? state.me
             let name = who == state.me ? "you" : members.first { $0.id == who }?.name ?? "you"
-            WatchBigButton(title: "Done by \(name) ›", prominent: false, compact: true) { mode = .doneBy }
+            let title = card.gotUpEnd == nil ? "Done by \(name) ›" : "\(name == "you" ? "You" : name) got up ›"
+            WatchBigButton(title: title, prominent: false, compact: true) { mode = .doneBy }
         }
     }
 
@@ -196,6 +205,7 @@ struct WatchLoggedScreen: View {
         case .medicine: Image(systemName: "pills.fill").foregroundStyle(palette.textMuted)
         case .pump: DropsShape().fill(palette.textMuted).frame(width: 14, height: 14)
         case .feed: BottleShape().fill(palette.bottle).frame(width: 14, height: 14)
+        case .night: MoonShape().fill(palette.sleep).frame(width: 14, height: 14)
         case .asleep: MoonShape().fill(palette.sleep).frame(width: 14, height: 14)
         case .awake: Image(systemName: "sun.max.fill").foregroundStyle(palette.wee)
         }
@@ -248,7 +258,11 @@ struct WatchLoggedScreen: View {
                 let chosen = (doneBy ?? state.me) == member.id
                 Button {
                     doneBy = member.id
-                    sendCorrection(.doneBy(id: card.entryID, member: member.id), done: "Saved")
+                    if let end = card.gotUpEnd {
+                        sendCorrection(.gotUp(sleepID: card.entryID, member: member.id, end: end), done: "Saved")
+                    } else {
+                        sendCorrection(.doneBy(id: card.entryID, member: member.id), done: "Saved")
+                    }
                 } label: {
                     HStack(spacing: 8) {
                         Circle().fill(WatchPalette.parent(member.colour, look: look)).frame(width: 12, height: 12)

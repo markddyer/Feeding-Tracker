@@ -43,6 +43,31 @@ public enum WatchAction: Codable, Hashable, Sendable {
     case justFinished(feedID: String, minutesAgo: Int)
     /// "Earlier": a feed from `start`, for 20 minutes or until the tap (the phone's default).
     case earlierFeed(feedID: String, start: Date)
+
+    // Step 3, tonight's rota (W-D3), each for the night the watch showed (`WatchTonight`).
+
+    /// "I'll take it".
+    case claimNight(night: PlainDate)
+    /// "Ask Alex".
+    case askNight(night: PlainDate)
+    /// "Not tonight", to an ask.
+    case declineAsk(night: PlainDate)
+    /// Undo of an ask.
+    case withdrawAsk(night: PlainDate)
+    /// "Both phones tonight".
+    case bothPhones(night: PlainDate)
+    /// Undo of "I'll take it".
+    case undoTake(night: PlainDate)
+
+    // Step 3, Woke up and Finish. Each names the end the tap wrote, and changes nothing once that
+    // end has changed (a newer change is never undone).
+
+    /// "Who got up" after Woke up.
+    case gotUp(sleepID: String, member: MemberID, end: Date)
+    /// Undo of Woke up: the sleep runs again.
+    case undoWake(sleepID: String, end: Date)
+    /// Undo of Finish: the feed runs again.
+    case undoFinish(feedID: String, end: Date)
 }
 
 /// A new tap, with when it was made and the tap it depends on.
@@ -71,6 +96,11 @@ public struct WatchActionRequest: Codable, Hashable, Sendable, Identifiable {
             id
         case .addBottle(let id, _, _, _), .addSide(let id, _), .amount(let id, _, _), .justFinished(let id, _),
              .earlierFeed(let id, _):
+            id
+        case .claimNight(let night), .askNight(let night), .declineAsk(let night), .withdrawAsk(let night),
+             .bothPhones(let night), .undoTake(let night):
+            "night-\(night)"
+        case .gotUp(let id, _, _), .undoWake(let id, _), .undoFinish(let id, _):
             id
         }
     }
@@ -138,8 +168,13 @@ public enum WatchCapability {
     /// Step 2: a bottle or side added, an amount, Just finished and Earlier feed.
     public static let feedExtras = "feedExtras"
 
+    /// Step 3: tonight's rota.
+    public static let tonight = "tonight"
+    /// Step 3: Woke up's Undo, Earlier and "who got up", and Undo of Finish.
+    public static let ends = "ends"
+
     /// Everything this version understands.
-    public static let all = [bath, medicine, pump, pooDetails, earlier, doneBy, undo, results, feedExtras]
+    public static let all = [bath, medicine, pump, pooDetails, earlier, doneBy, undo, results, feedExtras, tonight, ends]
 }
 
 extension WatchActionRequest {
@@ -154,6 +189,8 @@ extension WatchActionRequest {
         case .doneBy: WatchCapability.doneBy
         case .undo: WatchCapability.undo
         case .addBottle, .addSide, .amount, .justFinished, .earlierFeed: WatchCapability.feedExtras
+        case .claimNight, .askNight, .declineAsk, .withdrawAsk, .bothPhones, .undoTake: WatchCapability.tonight
+        case .gotUp, .undoWake, .undoFinish: WatchCapability.ends
         }
     }
 }
@@ -205,6 +242,13 @@ extension HouseholdData {
             let changed = edit(id, by: me, now: max(at, snapshot.event.startedAt)) { snapshot in
                 if let colour { snapshot.payload?.nappy?.colour = colour }
                 if let consistency { snapshot.payload?.nappy?.consistency = consistency }
+            }
+            outcome = changed ? .applied : .refused
+        case .earlier(let id, let minutes, let expected) where endWrittenHere(id, expected, by: me, now: now) != nil:
+            // Woke up's Earlier (step 3): the end moves, never before the start.
+            guard minutes > 0, minutes <= 60, let event = events[id]?.event else { return .refused }
+            let changed = edit(id, by: me, now: max(at, event.startedAt)) { snapshot in
+                snapshot.event.endedAt = max(snapshot.event.startedAt, expected.addingTimeInterval(-Double(minutes) * 60))
             }
             outcome = changed ? .applied : .refused
         case .earlier(let id, let minutes, let expected):
@@ -273,9 +317,47 @@ extension HouseholdData {
             guard start <= at, at.timeIntervalSince(start) <= watchEarliestFeed + 60 else { return .refused }
             outcome = addPastFeed(id, babyID: babyID, from: start, to: min(start.addingTimeInterval(20 * 60), at), by: me,
                                   timeZoneID: timeZoneID, now: at)
+        case .claimNight, .askNight, .declineAsk, .withdrawAsk, .bothPhones, .undoTake:
+            // When it reaches the phone: the rota's order is the order the phone hears of things.
+            return applyWatchNight(request.action, by: me, now: now)
+        case .gotUp(let id, let member, let end):
+            guard let event = events[id]?.event, event.kind == .sleep, event.deletedAt == nil,
+                  let ended = event.endedAt, abs(ended.timeIntervalSince(end)) < 1 else { return .refused }
+            guard event.validGotUp != member else { return .unchanged }
+            outcome = setGotUp(id, to: member, for: event.endingID, by: me, now: max(at, ended)) ? .applied : .refused
+        case .undoWake(let id, let end):
+            guard let event = events[id]?.event, event.kind == .sleep, event.deletedAt == nil else { return .refused }
+            guard event.endedAt != nil else { return .unchanged }
+            guard endWrittenHere(id, end, by: me, now: now) != nil else { return .refused }
+            outcome = edit(id, by: me, now: now) { $0.event.endedAt = nil } ? .applied : .refused
+        case .undoFinish(let id, let end):
+            guard let event = events[id]?.event, event.isLiveFeed else { return .refused }
+            guard event.endedAt != nil else { return .unchanged }
+            // Only while no other feed runs: two feeds can't run at once.
+            guard endWrittenHere(id, end, by: me, now: now) != nil, feedInProgress(babyID: event.babyID) == nil
+            else { return .refused }
+            outcome = edit(id, by: me, now: now) { snapshot in
+                // The side Finish closed is open again, as the phone's Undo puts back what Finish changed.
+                if var feed = snapshot.payload?.feed, let last = feed.breast.indices.last,
+                   let started = feed.breast[last].startedAt, let seconds = feed.breast[last].durationSeconds,
+                   abs(started.addingTimeInterval(Double(seconds)).timeIntervalSince(end)) < 2 {
+                    feed.breast[last].durationSeconds = nil
+                    snapshot.payload?.feed = feed
+                }
+                snapshot.event.endedAt = nil
+            } ? .applied : .refused
         }
         if outcome == .applied { events[request.entryID]?.uploadNotBefore = nil }
         return outcome
+    }
+
+    /// The end of a feed or sleep, when it is still the one this parent's tap wrote (`expected`),
+    /// a moment ago (`watchUndoWindow`): Woke up's and Finish's corrections change only that.
+    func endWrittenHere(_ id: String, _ expected: Date, by me: MemberID, now: Date) -> Date? {
+        guard let snapshot = events[id]?.snapshot, snapshot.event.deletedAt == nil, let end = snapshot.event.endedAt,
+              abs(end.timeIntervalSince(expected)) < 1, let stamp = snapshot.payload?.stamp(.endedAt), stamp.by == me,
+              now.timeIntervalSince(stamp.at) <= watchUndoWindow else { return nil }
+        return end
     }
 
     /// Changes a feed's sides and bottles, as the phone's details panel does.
@@ -385,6 +467,11 @@ extension WatchState {
             let moved = expected.addingTimeInterval(-Double(minutes) * 60)
             if state.lastNappy?.id == id { state.lastNappy?.at = moved }
             if state.sleep?.id == id, state.sleep?.asleep == true { state.sleep?.start = moved }
+            // Woke up's Earlier moves the end it wrote.
+            if state.sleep?.id == id, let end = state.sleep?.end, abs(end.timeIntervalSince(expected)) < 1,
+               let start = state.sleep?.start {
+                state.sleep?.end = max(start, moved)
+            }
             // A bath or medicine shows only its time: it moves while that is still the tap's, so
             // a newer one is never replaced (outside review of step 1, P3).
             func isTap(_ date: Date?) -> Bool { date.map { abs($0.timeIntervalSince(expected)) < 1 } ?? false }
@@ -422,6 +509,20 @@ extension WatchState {
             state.showPastFeed(id, from: request.at.addingTimeInterval(-Double(minutesAgo) * 60), to: request.at)
         case .earlierFeed(let id, let start):
             state.showPastFeed(id, from: start, to: min(start.addingTimeInterval(20 * 60), request.at))
+        case .claimNight, .askNight, .declineAsk, .withdrawAsk, .bothPhones, .undoTake:
+            state.showNight(request.action)
+        case .gotUp:
+            break
+        case .undoWake(let id, _):
+            if state.sleep?.id == id { state.sleep?.end = nil }
+        case .undoFinish(let id, _):
+            guard state.running == nil, let feed = state.finishedFeed(id) else { break }
+            state.running = WatchFeed(id: id, startedAt: feed.start, mine: true, byName: "", byColour: state.myColour,
+                                      side: feed.details.breast.last.flatMap { $0.startedAt != nil ? $0.side : nil },
+                                      bottles: feed.details.bottles, breastfeed: feed.breastfeed,
+                                      sides: feed.details.breast.map(\.side))
+            state.recentFeeds?.removeAll { $0.id == id }
+            if state.lastFeed?.id == id { state.lastFeed = state.recentFeeds?.first }
         }
         return state
     }

@@ -537,6 +537,8 @@ struct WatchTodayPage: View {
     /// The rows with a tap the phone hasn't saved yet: "bath", or a medicine's name (outside review
     /// of step 1, P2). They say so until it has.
     var waiting: Set<String> = []
+    /// Tonight's row opens the Tonight screen (step 3), when the phone understands it.
+    var tonight: (() -> Void)?
     let bath: () -> Void
     let medicine: (String) -> Void
     let medicineList: () -> Void
@@ -573,6 +575,19 @@ struct WatchTodayPage: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Medicine: \(medicines.count) on your list. Opens the list")
+            }
+            if let open = tonight, let night = state.tonight, state.understands(WatchCapability.tonight) {
+                Spacer(minLength: metrics.gap)
+                Button(action: open) {
+                    WatchCareRow(title: "Tonight", note: TonightText.short(night, state: state), metrics: metrics) {
+                        MoonShape().fill(palette.sleep).frame(width: 15, height: 15)
+                    } trailing: {
+                        Image(systemName: "chevron.right").font(.system(size: 15, weight: .bold)).foregroundStyle(palette.textMuted)
+                            .padding(.trailing, 8)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Tonight: \(TonightText.short(night, state: state)). Opens tonight's choices")
             }
             Spacer(minLength: 0)
         }

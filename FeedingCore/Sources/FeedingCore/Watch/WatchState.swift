@@ -183,6 +183,8 @@ public struct WatchState: Codable, Hashable, Sendable {
     /// Every feed finished in the last 13 hours, newest first: "Add to this feed" keeps working on
     /// an Earlier feed older than the last one (outside review of step 2).
     public var recentFeeds: [WatchLastFeed]?
+    /// Tonight's rota (step 3).
+    public var tonight: WatchTonight?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
@@ -563,6 +565,7 @@ extension HouseholdData {
         }
         state.lastFeed = recent.first
         state.recentFeeds = recent.isEmpty ? nil : Array(recent)
+        state.tonight = watchTonight(me: me, other: names.keys.filter { $0 != me }.min { $0.rawValue < $1.rawValue }, now: now)
         return state
     }
 

@@ -29,6 +29,8 @@ struct WatchHomeView: View {
     @State private var earlierAsk: Date?
     /// Bottle during this parent's feed: which milk.
     @State private var bottleAsk: String?
+    /// Tonight's choices, from page 3 (step 3).
+    @State private var tonightOpen = false
     /// The last feed finished for this parent by the other parent whose details were offered, so
     /// the offer comes once (outside review of step 2).
     @AppStorage("watch.detailsOffered") private var detailsOffered = ""
@@ -46,8 +48,9 @@ struct WatchHomeView: View {
         _pooAsk = State(initialValue: WatchSamples.pooAsk())
         _pumping = State(initialValue: WatchSamples.screen == "pump")
         _medicineList = State(initialValue: WatchSamples.screen == "medicines")
+        _tonightOpen = State(initialValue: WatchSamples.screen == "tonight")
         // Step 2: `-watchScreen addToFeed`, `justFinished`, `earlierFeed` or `bottle`.
-        _addTo = State(initialValue: WatchSamples.screen == "addToFeed" ? AddToFeed(feedID: "sample-last", tap: nil) : nil)
+        _addTo = State(initialValue: WatchSamples.screen == "addToFeed" ? AddToFeed(feedID: "sample-last", tap: nil, finishedAt: Date()) : nil)
         _justFinishedAsk = State(initialValue: WatchSamples.screen == "justFinished")
         _earlierAsk = State(initialValue: WatchSamples.screen == "earlierFeed" ? Date() : nil)
         _bottleAsk = State(initialValue: WatchSamples.screen == "bottle" ? "sample" : nil)
@@ -198,9 +201,10 @@ struct WatchHomeView: View {
 
     /// Finish, then "Add to this feed" (step 2), or on an older phone each bottle's amount.
     private func finish(_ feed: WatchFeed) {
-        let tap = link.send(.finish(feedID: feed.id))
+        let at = Date()
+        let tap = link.send(.finish(feedID: feed.id), now: at)
         if link.shown?.understands(WatchCapability.feedExtras) == true {
-            addTo = AddToFeed(feedID: feed.id, tap: tap)
+            addTo = AddToFeed(feedID: feed.id, tap: tap, finishedAt: at)
         } else {
             question = AmountAsk(feedID: feed.id, bottles: feed.bottles.filter { $0.ml == nil })
         }
@@ -278,6 +282,11 @@ struct WatchHomeView: View {
                 addTo = AddToFeed(feedID: id, tap: tap, past: true)
                 followPastFeed(tap, id: id, start: start)
             }
+        } else if tonightOpen, let state, let tonight = state.tonight {
+            WatchTonightScreen(state: state, tonight: tonight) { choice in
+                tonightOpen = false
+                if let choice { night(choice, tonight) }
+            }
         } else if let feedID = bottleAsk {
             WatchBottleChoiceScreen { milk in
                 bottleAsk = nil
@@ -324,7 +333,7 @@ struct WatchHomeView: View {
                     .environment(\.watchDoubleTapAllowed, page == .care)
                     .tag(WatchPage.care)
                     if state.understands(WatchCapability.bath) || state.understands(WatchCapability.medicine) {
-                        WatchTodayPage(state: state, now: now, waiting: waitingRows) {
+                        WatchTodayPage(state: state, now: now, waiting: waitingRows, tonight: { tonightOpen = true }) {
                             let id = UUID().uuidString
                             let at = Date()
                             let request = link.send(.bath(id: id), now: at)
@@ -386,10 +395,35 @@ struct WatchHomeView: View {
         case .fellAsleep(let id):
             logged = LoggedCard(id: request, entryID: id, title: "Fell asleep logged", at: at, mark: .asleep)
         case .wokeUp(let id):
+            // Undo, Earlier and "who got up" (step 3), on a phone that understands them.
+            let ends = state.understands(WatchCapability.ends)
             logged = LoggedCard(id: request, entryID: id, title: "Woke up logged", at: at, mark: .awake,
-                                canUndo: false, canEarlier: false, canDoneBy: false)
+                                canUndo: ends, canEarlier: ends, canDoneBy: ends, undo: .undoWake(sleepID: id, end: at),
+                                gotUpEnd: at)
         default:
             break
+        }
+    }
+
+    /// A rota tap from the Tonight screen. "I'll take it" and an ask get the Logged card, with an
+    /// Undo that takes them back, as the phone's Undo bar does.
+    private func night(_ choice: WatchTonight.Choice, _ tonight: WatchTonight) {
+        let at = Date()
+        let other = TonightText.name(tonight.other, in: link.shown ?? WatchState(madeAt: at, setUp: false))
+        let night = tonight.night
+        switch choice {
+        case .take:
+            let tap = link.send(.claimNight(night: night), now: at)
+            logged = LoggedCard(id: tap, entryID: "night-\(night)", title: "You're on tonight", at: at, mark: .night,
+                                canEarlier: false, canDoneBy: false, undo: .undoTake(night: night))
+        case .ask:
+            let tap = link.send(.askNight(night: night), now: at)
+            logged = LoggedCard(id: tap, entryID: "night-\(night)", title: "You asked \(other)", at: at, mark: .night,
+                                canEarlier: false, canDoneBy: false, undo: .withdrawAsk(night: night))
+        case .decline:
+            link.send(.declineAsk(night: night), now: at)
+        case .bothPhones:
+            link.send(.bothPhones(night: night), now: at)
         }
     }
 

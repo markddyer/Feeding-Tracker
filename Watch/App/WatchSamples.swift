@@ -37,6 +37,17 @@ enum WatchSamples {
         state.medicines = [WatchMedicine(name: "Vitamin D", lastGiven: now.addingTimeInterval(-12 * 3600))]
         state.lastBath = now.addingTimeInterval(-26 * 3600)
         state.me = MemberID(rawValue: "sample-alex")
+        // Step 3: tonight's rota. `-sampleTonight` `me` (on duty), `other` (Sam took it), `asked`
+        // (Sam asks), otherwise nobody on.
+        let sam = MemberID(rawValue: "sample-sam")
+        let me = MemberID(rawValue: "sample-alex")
+        let tonightNight = PlainDate(now, in: TimeZone(identifier: "Europe/London") ?? .current)
+        switch UserDefaults.standard.string(forKey: "sampleTonight") {
+        case "me": state.tonight = WatchTonight(night: tonightNight, onDuty: me, noRota: false, taken: true, ask: .none, other: sam)
+        case "other": state.tonight = WatchTonight(night: tonightNight, onDuty: sam, noRota: false, taken: true, ask: .none, other: sam)
+        case "asked": state.tonight = WatchTonight(night: tonightNight, onDuty: sam, noRota: false, taken: false, ask: .askedOfMe, other: sam)
+        default: state.tonight = WatchTonight(night: tonightNight, onDuty: nil, noRota: true, taken: false, ask: .none, other: sam)
+        }
         state.members = [WatchMember(id: MemberID(rawValue: "sample-alex"), name: "Alex", colour: "lavender"),
                          WatchMember(id: MemberID(rawValue: "sample-sam"), name: "Sam", colour: "teal")]
         if UserDefaults.standard.bool(forKey: "sampleMedicines") {
@@ -99,6 +110,11 @@ enum WatchSamples {
     static var screen: String? { UserDefaults.standard.string(forKey: "watchScreen") }
 
     static func logged(now: Date = Date()) -> LoggedCard? {
+        // `-watchScreen woke`: the card after Woke up, with "who got up" (step 3).
+        if screen == "woke" {
+            return LoggedCard(id: "sample-tap", entryID: "sample-sleep", title: "Woke up logged", at: now, mark: .awake,
+                              undo: .undoWake(sleepID: "sample-sleep", end: now), gotUpEnd: now)
+        }
         guard screen == "logged" else { return nil }
         return LoggedCard(id: "sample-tap", entryID: "sample-nappy", title: "Wee logged", at: now, mark: .nappy(wee: true, poo: false))
     }

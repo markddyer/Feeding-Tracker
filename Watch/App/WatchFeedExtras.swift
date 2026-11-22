@@ -12,6 +12,8 @@ struct AddToFeed: Equatable {
     let tap: String?
     /// Logged afterwards (Just finished or Earlier): turned down only when a feed is logged then.
     var past = false
+    /// Finish on this watch, at this moment: the panel offers its Undo (step 3).
+    var finishedAt: Date?
     /// Bottles whose amount was left out here: not asked again.
     var skipped: Set<String> = []
 }
@@ -88,7 +90,18 @@ struct WatchAddToFeedScreen: View {
                 }
             }
             Spacer(minLength: 2)
-            WatchBigButton(title: "Done", compact: true) { self.ask = nil }
+            HStack(spacing: 6) {
+                // Undo of Finish: the feed runs again, as the phone's Undo (step 3).
+                if let end = ask.finishedAt, state.understands(WatchCapability.ends) {
+                    WatchBigButton(title: "Undo", prominent: false, compact: true) {
+                        link.sendFeedExtra(.undoFinish(feedID: ask.feedID, end: end), feedID: ask.feedID)
+                        self.ask = nil
+                    }
+                    .frame(maxWidth: 76)
+                    .accessibilityLabel("Undo Finish: the feed runs again")
+                }
+                WatchBigButton(title: "Done", compact: true) { self.ask = nil }
+            }
         }
     }
 
@@ -281,5 +294,79 @@ struct WatchEarlierFeedScreen: View {
             }
         }
         .onAppear { crownFocused = true }
+    }
+}
+
+// MARK: - Tonight (step 3)
+
+/// Tonight's words, for page 3's row and the Tonight screen.
+enum TonightText {
+    static func name(_ member: MemberID?, in state: WatchState) -> String {
+        state.members?.first { $0.id == member }?.name ?? "the other parent"
+    }
+
+    /// "You're on", "Alex's on", "Both phones alert", or the ask.
+    static func short(_ tonight: WatchTonight, state: WatchState) -> String {
+        let other = name(tonight.other, in: state)
+        switch tonight.ask {
+        case .askedOfMe: return "\(other) asks you to take it"
+        case .waiting: return "Asked \(other)"
+        case .declined: return "\(other) said not tonight"
+        case .none: break
+        }
+        guard let onDuty = tonight.onDuty else { return "Both phones alert" }
+        return onDuty == state.me ? "You're on" : "\(name(onDuty, in: state))'s on"
+    }
+
+    static func line(_ tonight: WatchTonight, state: WatchState) -> String {
+        if tonight.ask == .askedOfMe { return "\(name(tonight.other, in: state)) asks you to take tonight" }
+        guard let onDuty = tonight.onDuty else { return "Both phones alert tonight" }
+        return onDuty == state.me ? "You're on tonight" : "\(name(onDuty, in: state))'s on tonight"
+    }
+
+    static func button(_ choice: WatchTonight.Choice, _ tonight: WatchTonight, state: WatchState) -> String {
+        switch choice {
+        case .take: tonight.onDuty == nil && tonight.ask != .askedOfMe ? "I'll take tonight" : "I'll take it"
+        case .ask: "Ask \(name(tonight.other, in: state))"
+        case .decline: "Not tonight"
+        case .bothPhones: "Both phones tonight"
+        }
+    }
+}
+
+/// Tonight: who is on, and what the phone's Nights tile offers ("I'll take it", "Ask Alex",
+/// "Both phones tonight", or an ask's two answers), one above the other.
+struct WatchTonightScreen: View {
+    let state: WatchState
+    let tonight: WatchTonight
+    let choose: (WatchTonight.Choice?) -> Void
+    @Environment(\.watchLook) private var look
+
+    var body: some View {
+        WatchPageFrame(label: "Tonight") { metrics in
+            let palette = WatchPalette.of(look)
+            let choices = tonight.choices(me: state.me ?? MemberID(rawValue: ""))
+            // One line on a small watch, so three buttons still fit under it.
+            Text(TonightText.line(tonight, state: state))
+                .watchText(.note)
+                .fontWeight(.semibold)
+                .foregroundStyle(palette.text)
+                .lineLimit(metrics.small ? 1 : 2)
+                .minimumScaleFactor(metrics.small ? 0.65 : 0.8)
+                .fixedSize(horizontal: false, vertical: !metrics.small)
+            if tonight.ask == .waiting || tonight.ask == .declined {
+                Text(TonightText.short(tonight, state: state)).watchText(.hint).foregroundStyle(palette.textMuted)
+            }
+            Spacer(minLength: 2)
+            VStack(spacing: metrics.gap) {
+                ForEach(Array(choices.enumerated()), id: \.offset) { index, choice in
+                    WatchBigButton(title: TonightText.button(choice, tonight, state: state), prominent: index == 0,
+                                   compact: true) { choose(choice) }
+                }
+                if choices.count < 3 {
+                    WatchBigButton(title: "Back", prominent: false, compact: true) { choose(nil) }
+                }
+            }
+        }
     }
 }
