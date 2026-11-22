@@ -1202,18 +1202,756 @@ None in this review.
 - Lake Score: 2/3 (D2 and D4 picked the 10/10 option; D3 was answered in the parent's own words)
 - Decisions: D1 to D11, all answered by Parent A on 22 Nov 2026; two answers in their own words widened the plan (D3: the AI sees the numbers and finds patterns; D5: plain facts plus the NHS's interpretation, with links)
 
+## Engineering review: step 2, the daily card and "This week" (22 Nov 2026)
+
+**Target:** step 2 of "Smallest first version" above (`docs/planning/12-ai-insights-gauntlet.md`, item 2): the daily card on Home and "This week" on Graphs (D13 to D15, the look C), with what the plan already settled for it: Claude Sonnet 5.5 through Anthropic's Claude for Foundation Models package and App Attest (D2), both parents' yes (D12, A8), the medicine chips (R3), the summaries checked ahead of time (R7 via D9), one shared card (R8), the model tests, the off switch and the "this was wrong" button (A7), "What the AI sees" (A8), AI output kept as health data (A9), and the reviewer's note on two pairs of passages (above, "For step 2"). Step 1 is built (AI1 to AI6, commits `ac26354` to `47ed891`), and step 0's rules and intended purpose are written (`64a8b66`). D1 to D15 of the parents' decisions, the look (daily slim line C, Ask chat A) and step 1's R1 to R9 are settled and not reopened here. This review's questions are numbered D1, D2, … again; they are listed below as "step 2 D1" and so on where that could be unclear.
+
+**Scope record (after the complexity gate):** feature answers: none proposed (no cuts). Structure: A, the smaller grouping (step 2 D1, Parent A, 22 Nov 2026): one new file in `FeedingInsights` (`InsightCards.swift`: what the AI is sent, the card's form and its reading, when a card is made or made again, the two-yes rule) and three in the app (`App/Insights/InsightEngine.swift`: the one gate and the call to Claude; `InsightCardViews.swift`: Home's line, Graphs' line and the card; `InsightSettingsView.swift`: the yes, the off switch, "What the AI sees" and the "this was wrong" count), about 19 files with tests and docs, 2 new services (the engine and the card store). Accepted scope: step 2 as described in the plan, in that grouping. Pending remedies: S1, S2, S3, S4, S9.
+
+### Scope Challenge (step 2)
+
+**What already exists:**
+- The facts sheet and its AI view, with a revision value (`InsightFacts`, AI2); the answer checker and the AI's fixed form (`CardProposal`, `AnswerCheck.accept`, `CheckedCard`, whose maker is private to the checker: `InsightSafety.swift:432`, `:456`, `:528`); the passage chooser and Parent A's ticks (`NHSPassages.choose(for:checks:limit:)`, AI4); the Get help now card (AI5).
+- Household settings as records whose contents are encrypted in iCloud (`HouseholdData.putSetting`, `RecordMapping.swift:121`): the shared card and each parent's yes need no schema change.
+- Home's "Last night" line (`LastNightLine`, `HomeView.swift:38-40`), the graph pages (`GraphPage`, `GraphsView.swift:92`) and History's medicine rows.
+- Anthropic's package, read at tag 0.2.3 (7 Oct 2026, 35 source files, no other libraries): `ClaudeLanguageModel(name: .sonnet5_5, auth: .appAttest(clientID:), fixedEffort:, timeout:)`; App Attest runs by itself and keeps its tokens in this phone's keychain only (`AppAttestStore.swift:24-25`); any form, including one built while the app runs, goes to Claude as a strict rule the answer can't break (`RequestBuilder.swift:259`, `:642`); it writes nothing to the device's logs (no logging call in its source); its only extra is a User-Agent with the app's bundle ID and version (`Telemetry.swift`). A "user profile ID" would tie requests to a person: it stays unset.
+
+**Research (22 Nov 2026; Aside needed a new sign-in, so by web search):** guided generation is not trusted blindly on Apple's own model (a value outside a "one of" list was reported, [forum 812501](https://developer.apple.com/forums/thread/812501)), and deeply nested forms can loop ([forum 798773](https://developer.apple.com/forums/thread/798773)): keep the form flat and check it in code, as `AnswerCheck` does. App Attest: the entitlement is `com.apple.developer.devicecheck.appattest-environment`; TestFlight builds always use Apple's production service ([Apple](https://developer.apple.com/documentation/devicecheck/preparing-to-use-the-app-attest-service.md), [forum 788074](https://developer.apple.com/forums/thread/788074)); the first attestation can take 4 to 8 seconds ([forum 841427](https://developer.apple.com/forums/thread/841427)); some devices have stayed unable to attest ([forum 844380](https://developer.apple.com/forums/thread/844380)), so the plain fact cards are the fallback. **[Layer 1]** Apple's framework and Anthropic's package, no custom HTTP.
+
+**Minimum change, TODOs and distribution:** nothing in `TODOS.md` blocks step 2 (R9 is built, `47ed891`; X4's weekly look back is to be looked at again after "This week" is built). The package is new outside code: pinned to exactly 0.2.3 in `project.yml` (beta: "APIs might change during the beta"), resolved by the macOS CI runner; Linux CI is untouched (`FeedingCore` never depends on it). App Attest adds an entitlement and the App Attest capability on both App IDs (`04-apple-setup-checklist.md` gets the steps). Little Log goes to TestFlight as build 5.
+
+**Reality rows:**
+- premise-table (P1 to P10): the package has Sonnet 5.5 with structured output (`ClaudeModel.swift:85-90`, verified); App Attest tokens stay in this phone's keychain (`AppAttestStore.swift:24-25`, verified); the package's telemetry is only the User-Agent (`Telemetry.swift`, verified); a setting's contents are encrypted (`RecordMapping.swift:121`, verified); Home already has a "Last night" line in the AI line's place (`HomeView.swift:38-40`, verified); the facts revision covers the whole 28-day sheet (`InsightFacts.swift:430-444`, verified); a form built while the app runs is accepted (`RequestBuilder.swift:259`, verified by reading the source, not yet by a live call); Sonnet 5.5 is $2 and $10 per million tokens (Anthropic's pricing page, line 31, fetched 22 Nov 2026, verified); a card is about 4,000 tokens in and 400 out (line 282 above, unverified); the package writes nothing to the device's logs (its source, verified). unverified=1.
+- REALITY: premise-table pass 10 premises, unverified=1 (P9 token size) docs/planning/12-ai-insights-gauntlet.md:282
+- REALITY: already-done pass no step-2 work on origin; the only hit is the plan commit a28c846 docs/planning/12-ai-insights-gauntlet.md:343
+- REALITY: surface-check pass ClaudeLanguageModel(name:auth:fixedEffort:timeout:), .sonnet5_5 and .appAttest(clientID:) checked in the package source (tag 0.2.3) docs/planning/12-ai-insights-gauntlet.md:274
+- REALITY: binding-decisions pass R1 to R9, D1 to D15, look C and Ask A kept; R8 replaced the each-phone card docs/planning/12-ai-insights-gauntlet.md:1044
+- REALITY: numbers pass one card about 1.2p [estimated from the pricing page and the plan's 4,000/400]; one shared card a night, about 36p a month [estimated]; token size [re-measure before gate] docs/planning/12-ai-insights-gauntlet.md:282
+- REALITY: deferred-asks pass no linked issue docs/planning/12-ai-insights-gauntlet.md:343
+- REALITY: pr-count pass no ship policy file; commits go straight to the branch, one wave docs/planning/12-ai-insights-gauntlet.md:343
+- `PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=2 verdict=complete` (run before P7 was read in the source; P7 has since been verified, so unverified=1).
+
+**Findings:**
+1. **S1** [CRITICAL] (confidence: 9/10) `App/Home/HomeView.swift:38-40` — Home already shows "Last night" each morning until 12:00, under the greeting (`if let night = lastNight(at: context.date) { LastNightLine(...) }`), and the look C puts the AI's slim line in the same place, also starting "Last night" (line 410 above: "It sits under the greeting, above the 'Last feed' tile, for example 'Last night · longest sleep 3h 10m · 4 feeds'"). The mockup the parents chose from (`designs/ai-insights-20261122/round1.html:208-216`) did not show the existing line, so built as planned there would be two "Last night" lines, one above the other. Decision: step 2 D2.
+2. **S2** [CRITICAL] (confidence: 8/10) `FeedingCore/Sources/FeedingInsights/InsightSafety.swift:432` — the AI's fixed form (`public struct CardProposal: Hashable, Sendable, Codable`) lives in the part that builds on Linux with Foundation only, but Claude fills a form through Apple's framework, which only the app can use. A second, hand-written copy of the form in the app would be red flag 8 (a hand-synced list): a measure or pattern shape added on one side and not the other is silently never used, or always rejected. Decision: step 2 D3.
+3. **S3** [CRITICAL] (confidence: 8/10) `FeedingCore/Sources/FeedingInsights/InsightFacts.swift:430-444` with R8 (line 1044 above: "when an entry in its window changes, the next phone to open makes it again") — the revision is a fingerprint of the whole 28-day sheet (`/// A number that changes when any fact changes: FNV-1a over the sheet's JSON`), so a card would be made again after any edit in four weeks, a new weight, or a feed logged late, each a new call and a card changing under the parent's eyes; and while the two phones' logs differ during a sync, each sees the other's card as out of date and can make it again. Decision: step 2 D4.
+4. **S4** [INFORMATIONAL] (confidence: 7/10) lines 405 and 411 above — "This week" has its place and look, but not which days it covers, when it is made, or whether it is shared like the daily card. Decision: step 2 D5.
+5. **S5** [INFORMATIONAL] (confidence: 8/10) `InsightSafety.swift:464` (`fileprivate init(lines: ...)`) with R8 — only the checker can make a card a screen shows, so the shared setting can't hold a finished card: it holds the AI's form, the facts revision and the night, and each phone runs the checker on it against its own sheet. Accepted under approved contracts (R8, D10 of step 1; AI3's "Only it can make a `CheckedCard`"); no question.
+6. **S6** [INFORMATIONAL] (confidence: 8/10) line 276 above ("The simulator uses a development key from the gitignored `Config/Local.xcconfig`") — the key must never reach a phone build (D2: "no key in the app"): it is set only for the simulator's build settings, and read only in code built for the simulator; a test checks the phone builds' Info.plist has no key. Accepted under D2; no question.
+7. **S7** [INFORMATIONAL] (confidence: 7/10) `project.yml` — the package is in beta ("APIs might change during the beta", Anthropic's page): pinned to exactly 0.2.3, moved on only by choice, with the model tests run after a move. Accepted under D2 and A7 ("plan for the model changing"); no question.
+8. **S8** [INFORMATIONAL] (confidence: 7/10) D12 and A8 — the two-yes rule needs an owner: each parent's yes is a household setting of its own (with the date and the version of what they agreed to); the AI runs only while every member of the household has a current yes and no one has turned it off; one gate checks this before every call, retries included (O3); the first App Attest (4 to 8 seconds) runs when a parent says yes, not at 3am; a yes taken back stops the other phone once it has synced (a card it starts before then is the one call that can still happen). Accepted under D2, D12, A8 and O3; no question.
+9. **S9** [INFORMATIONAL] (confidence: 6/10) line 1138 above — two pairs of passages could be set against each other on one card (`weight-how-often` with `formula-enough`; `poo-how-often` with `feeding-well-signs`). The plan's note says they must not be set against each other; how is not decided. Decision: step 2 D6.
+
+### Decision ledger (step 2)
+
+#### S1: the two "Last night" lines on Home
+Finding: 1, CRITICAL, confidence 9/10, `App/Home/HomeView.swift:38-40`, this review
+Plan baseline: the look C (Parent A, 22 Nov 2026, line 410 above): one slim AI line under the greeting, above the "Last feed" tile, from the mockup `round1.html:208-216`, which did not show Home's existing "Last night" line (X3 of "who does what", 20 Nov 2026: the night's entries as shapes in each parent's colour and "Slept 6h 40m", from the night's end until 12:00).
+Runtime evidence: `HomeView.swift:38-40` shows `LastNightLine` under `GreetingHeader` until 12:00 (`LastNightLine.swift:4`); no AI line exists yet.
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| S1 the morning lines | one "Last night" line (X3); the AI line planned in the same place | pending: chosen from a mockup round (both lines merged, or two lines told apart) before Home's part is built; the engine, the card, Graphs' line and Settings are built first | one line: "Last night" gains the AI mark; a tap opens one sheet, the AI's card first, then the night's entries; after 12:00 a slim AI line alone until the evening | two lines: "Last night" as now; under it the AI line with its own words ("Your morning summary ✦ ›"), no repeated numbers, all day |
+| X3's "Last night" line | as approved 20 Nov 2026 | unchanged | its tap opens the shared sheet | unchanged |
+| Other step 2 choices (S2, S3, S4, S9) | pending | pending | pending | pending |
+
+Question D2:
+D2 — Two "Last night" lines on Home each morning
+Project: Little Log, AI insights step 2 (the daily AI card on Home).
+
+ELI10: Home already shows a "Last night" line every morning until noon: the night's entries as small shapes in each parent's colour, and "Slept 6h 40m". The AI card you picked (look C) is also a slim "Last night" line, in the same spot. The mockup you picked from did not show the existing line, so as planned there would be two "Last night" lines, one above the other.
+
+Stakes if we pick wrong: two near-identical lines on a tired morning are confusing, and they push "Last feed" further down.
+
+Recommendation: A, because you pick looks best from side-by-side mockups, and the rest of step 2 can be built while you look.
+(The options differ in kind, not in how complete they are.)
+
+A) Pick it from mockups first: I make a mockup page with both ways (one merged line, or two lines told apart), by day and at 3am. You pick. Home's part is built after that; the AI engine, the card, Graphs and Settings are built first. (human about half a day / Claude about 20 minutes)
+  ✅ You see both on a real-looking Home before choosing, as with every look so far
+  ✅ Nothing waits: the rest of step 2 is built meanwhile
+  ❌ One more round of choosing before the AI card shows on Home
+B) One merged line now: "Last night" gets the AI mark; a tap opens one card, the AI's part first, then the night's entries. After noon, a slim AI line shows alone.
+  ✅ Home stays short in the morning, with one line to tap
+  ❌ Chosen without seeing it, and the line changes shape at noon
+C) Two lines now, told apart: "Last night" stays as it is; under it, the AI line with its own words ("Your morning summary") and no repeated numbers, all day.
+  ✅ Each line keeps one job, and the AI line looks the same all day
+  ❌ Two lines in the morning push "Last feed" further down
+
+Net: choose by eye from mockups, or settle it now without seeing it.
+Header: Home lines
+Options:
+A) Pick from mockups first
+Recommended. A mockup page with both ways, by day and at 3am; Home's part is built after you pick. The engine, the card, Graphs and Settings are built meanwhile.
+B) One merged line now
+"Last night" gets the AI mark and opens one card (the AI first, then the night's entries); after noon a slim AI line shows alone.
+C) Two lines now
+"Last night" as it is; under it an AI line with its own words, no repeated numbers, all day.
+
+State: approved
+Actual answer: A) Pick from mockups first (recommended), Parent A, step 2 D2, 22 Nov 2026
+Accepted scope: a mockup page (gstack design folder, `designs/ai-insights-…`) showing Home with both ways, one merged "Last night" line and two lines told apart, by day and at 3am, for Parent A to pick before Home's part of step 2 is built. The engine, the card sheet, Graphs' "This week" line and Settings are built first. X3's "Last night" line is unchanged until the pick. Which way is built is decided by that pick, not here.
+History: none
+
+#### S2: how the AI's form reaches the app
+Finding: 2, CRITICAL, confidence 8/10, `FeedingCore/Sources/FeedingInsights/InsightSafety.swift:432`, this review
+Plan baseline: AI3 (step 1): the AI fills a fixed form, `CardProposal`, which only `AnswerCheck` turns into a card; D2: Claude through Apple's framework and Anthropic's package. How the form crosses from the Foundation-only part to the app was not set.
+Runtime evidence: `CardProposal` is `Codable` in `FeedingInsights` (Foundation only, Linux); the package sends any `GenerationSchema`, including one built while the app runs, as a strict rule the answer can't break (`RequestBuilder.swift:259`, `:642`, tag 0.2.3, read, not yet run).
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| S2 the form's one home | `CardProposal` in `FeedingInsights` only | `FeedingInsights` describes the form as plain data for each card (the measures, the pattern shapes, the sheet's days and nights, and only the passage and summary IDs offered for this card) and reads Claude's answer back into `CardProposal`; the app turns the description into Apple's run-time form in about 50 lines; Linux tests cover both directions | a second, hand-written copy of the form in the app (Apple's form types) and a converter, with a test that fails when the two lists differ | no form: Claude is asked for JSON text, which `FeedingInsights` reads |
+| What Claude can name | — | only IDs offered for this card | any measure or ID; wrong ones are turned down by the checker | anything; wrong ones are turned down by the checker |
+| The checker (`AnswerCheck`) | runs on every answer | runs on every answer | runs on every answer | runs on every answer |
+| S1 the Home lines | approved: mockups first (step 2 D2) | unchanged | unchanged | unchanged |
+| Other step 2 choices (S3, S4, S9) | pending | pending | pending | pending |
+
+Question D3:
+D3 — How the AI's answer form reaches the app
+Project: Little Log, AI insights step 2 (the daily AI card).
+
+ELI10: The AI's answer has to fit a form: which of the app's facts it points to, which patterns it claims, and which checked NHS passage it picks. The form and the checker live in the shared part that is tested on its own, away from the alarms. But the call to Claude is made from the app, which needs the form in Apple's own format. The question is how the app gets the form without a second copy that can drift.
+
+Stakes if we pick wrong: with two copies, a new kind of fact added in one place and not the other is never used, or always turned down, and nobody notices.
+
+Recommendation: A, because the form then has one home, and Claude can only pick passages that were offered and ticked.
+Completeness: A=10/10, B=8/10, C=6/10
+
+A) One form, built for each card: the shared part describes the form for this card, with only the facts on the sheet and only the passages offered and ticked, and it reads Claude's answer. The app turns that description into Apple's format in about 50 lines. (human about 1 day / Claude about 1.5 hours)
+  ✅ One home for the form, tested on its own like the checker
+  ✅ Claude cannot even name a passage that was not offered and ticked
+  ❌ The app builds the form while it runs, so a mistake shows in a test, not when the code is built
+B) A second copy in the app, with a test that fails when the two copies differ. (human about 1 day / Claude about 1 hour)
+  ✅ Apple's usual way, the easiest to read
+  ❌ Two places to change for every new fact, and any passage ID can be named (the checker turns wrong ones down)
+C) No form: ask Claude for plain text in a set layout, read by the shared part. (human about half a day / Claude about 40 minutes)
+  ✅ The least code
+  ❌ No strict form, so more answers are turned down and made again: more waiting and cost
+
+Net: one form with the strictest limits, Apple's usual way with a copy, or the least code with more turned-down answers.
+Header: AI form
+Options:
+A) One form, built per card
+Recommended. The shared part describes the form for each card and reads the answer; the app turns it into Apple's format. Claude can only name what was offered.
+B) A copy in the app
+Apple's usual form types in the app, with a test that fails when the two copies differ. Any passage ID can be named; the checker turns wrong ones down.
+C) Plain text, no form
+Claude answers in a set text layout that the shared part reads. Least code; more turned-down answers.
+
+State: approved
+Actual answer: A) One form, built per card (recommended), Parent A, step 2 D3, 22 Nov 2026
+Accepted scope: `FeedingInsights` (`InsightCards.swift`) describes the AI's form for each card as plain data: the measures and pattern shapes, the sheet's days and nights by date, and only the passage and summary IDs offered and ticked for this card; and it reads Claude's answer back into `CardProposal`. The app (`InsightEngine.swift`) turns the description into Apple's run-time form (about 50 lines) and sends it through the package. `AnswerCheck` still checks every answer. Linux tests: the description for a given sheet and passages, and reading answers (good, missing fields, unknown names). An app test: the run-time form built from a description is accepted by the framework.
+History: none
+
+#### S3: when a card is made again
+Finding: 3, CRITICAL, confidence 8/10, `FeedingCore/Sources/FeedingInsights/InsightFacts.swift:430-444`, this review
+Plan baseline: R8 (step 1 D10, Parent A): one shared card a night; "when an entry in its window changes, the next phone to open makes it again and replaces it for both"; the card records the facts revision it was made from (O4).
+Runtime evidence: the revision is a fingerprint of the whole 28-day sheet, weights and age included (`InsightFacts.swift:430-444`); a fingerprint can say "different", not "newer".
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| S3 what makes a card again | "an entry in its window changes" (R8), with the whole-sheet fingerprint as the test | the card's own night and day changed, and this phone holds a later change to them than the card saw (each card stores the time of the newest change it saw); at most 3 cards a night; never within 10 minutes of the last | any change to the 4-week sheet (the fingerprint as it is) | never: one card a night; if later entries arrive, the card says "Made at 07:10, before later entries" |
+| Bouncing between phones while they sync | possible | none: only the phone with newer entries makes it again | possible | none |
+| Calls a night | 1 or more | 1 to 3 | 1 or more, no limit | 1 |
+| S1, S2 | approved (step 2 D2, D3) | unchanged | unchanged | unchanged |
+| Other step 2 choices (S4, S9) | pending | pending | pending | pending |
+
+Question D4:
+D4 — When the morning card is made again
+Project: Little Log, AI insights step 2 (the shared daily card).
+
+ELI10: You chose one shared card each morning for both phones. The plan says it is made again when an entry it covers changes, say a 4am feed logged at 7:15. As written, the test for "changed" looks at all four weeks of entries, so editing a feed from two weeks ago or adding a weight would also make a new card. And while the two phones are still syncing, each could think the other's card is out of date and make it again, back and forth.
+
+Stakes if we pick wrong: extra AI calls, cost, and a card that keeps changing under you; or a card that misses the late entries.
+
+Recommendation: A, because only real late entries for that night and day make a new card, and the two phones can't bounce.
+Completeness: A=9/10, B=6/10, C=7/10
+
+A) Only for that night and day, at most 3 times: a card is made again only when the phone has a later change to that night or day than the card saw. At most 3 cards a night, and never within 10 minutes of the last one, while you may still be logging. (human about 1 day / Claude about 1 hour)
+  ✅ Late night entries still show in the morning card
+  ✅ No bouncing between phones, and at most 3 calls a night (about 4p)
+  ❌ A change made after the third card shows only in the next morning's card
+B) As written: any change in the four weeks makes a new card. (human about half a day / Claude about 30 minutes)
+  ✅ The card always matches the whole log
+  ❌ No limit on calls, and the card can change many times in a morning
+C) Never: one card a night. If entries arrive later, it says "Made at 07:10, before later entries". (human about half a day / Claude about 30 minutes)
+  ✅ One call a night, and the card never changes under you
+  ❌ A feed logged late in the morning is missing from that day's card
+
+Net: a few well-aimed remakes, every change, or none.
+Header: Card remake
+Options:
+A) That night only, up to 3
+Recommended. Made again only for later changes to that night and day; at most 3 a night, not within 10 minutes of the last.
+B) Any change in 4 weeks
+As written: any change to the four weeks of entries makes a new card. No limit on calls.
+C) Never made again
+One card a night; it says when it was made if entries arrive later.
+
+State: approved
+Actual answer: A) That night only, up to 3 (recommended), Parent A, step 2 D4, 22 Nov 2026
+Accepted scope: each shared card stores the night it covers, the fingerprint of that night's and that day's facts (not the whole sheet), and the time of the newest change to those entries it saw. A phone makes the card again only when its own newest change to that night or day is later than the card's; at most 3 cards for a night, and not within 10 minutes of the last one. A card made from older entries is never put back over a newer one. R8's "makes it again and replaces it for both" stands within these limits. Linux tests: a late entry remakes once; an edit outside the night and day doesn't; two phones with different logs don't bounce; the fourth remake and one within 10 minutes are refused; equal times.
+History: none
+
+#### S4: which days "This week" covers, and when it is made
+Finding: 4, INFORMATIONAL, confidence 7/10, lines 405 and 411 above, this review
+Plan baseline: D15 (Parent A): "the weekly 'This week' card stays on Graphs"; the look: the same slim-line style at the top of Graphs, each line opening its graph's page; "A weekly recap costs less than a penny a week" (line 290).
+Runtime evidence: none built; the facts sheet already holds 28 whole days and nights (`InsightFacts.daysBack`).
+Comparison grid:
+
+| Choice | Current | A | B |
+|---|---|---|---|
+| S4 the week covered and when it is made | not set | the last whole week, Monday to Sunday, made at the first open from Monday morning; one shared card a week, kept like the daily card (S3's rule, for that week's days); shown all week | the last 7 days ending yesterday, made again each morning with the daily card |
+| Calls | — | 1 a week (up to 3 with late entries) | 1 a day more (about 36p a month) |
+| S1 to S3 | approved (step 2 D2 to D4) | unchanged | unchanged |
+| S9 | pending | pending | pending |
+
+Question D5:
+D5 — Which days "This week" covers
+Project: Little Log, AI insights step 2 ("This week" at the top of Graphs).
+
+ELI10: You chose a weekly card at the top of Graphs, as well as the morning card on Home. The plan doesn't yet say which days it covers or when it is made. It can be the last whole week (Monday to Sunday), made on Monday morning and kept all week. Or it can be the last 7 days, made fresh every morning.
+
+Stakes if we pick wrong: a weekly card that changes every day reads like a second daily card; one that stays all week is up to 6 days old by Sunday.
+
+Recommendation: A, because a week that stays put is easier to look back on, and it costs one call a week.
+(The options differ in kind, not in how complete they are.)
+
+A) Last whole week, Monday to Sunday: made the first time either of you opens the app from Monday morning, shared by both phones like the morning card, and shown all week. (human about 1 day / Claude about 45 minutes)
+  ✅ A steady weekly look back, the same on both phones
+  ✅ One call a week, under 1p
+  ❌ By Sunday it is about last week, so up to 6 days old
+B) Last 7 days, made each morning: always the 7 days ending yesterday, made with the morning card. (human about 1 day / Claude about 45 minutes)
+  ✅ Always up to date
+  ❌ One more call every day (about 36p a month), and it changes daily like the morning card
+
+Net: a steady week you can look back on, or a rolling week that is always fresh.
+Header: This week
+Options:
+A) Last whole week (Mon to Sun)
+Recommended. Made from Monday morning, shared by both phones, shown all week. One call a week.
+B) Last 7 days, every morning
+The 7 days ending yesterday, made each morning with the morning card. One more call a day.
+
+State: approved
+Actual answer: A) Last whole week (Mon to Sun) (recommended), Parent A, step 2 D5, 22 Nov 2026
+Accepted scope: "This week" covers the last whole week, Monday to Sunday, in the household's time zone. It is made at the first open by either phone from Monday morning (the rota's morning) and kept as one shared card a week, encrypted, like the morning card, with S3's rule applied to that week's days (made again only for later changes to them, at most 3 times, not within 10 minutes). Shown at the top of Graphs all week; each line opens its graph's page. Linux tests: the week's dates across a clock change and a time zone change, the first open on a Tuesday, a week with days missing.
+History: none
+
+#### S9: two pairs of NHS passages that can look as if they disagree
+Finding: 9, INFORMATIONAL, confidence 6/10, line 1138 above, this review
+Plan baseline: the note "For step 2" (22 Nov 2026, from the summary review): `weight-how-often` (at most once a month up to 6 months) with `formula-enough` (8, 12 and 16 weeks), and `poo-how-often` (a few days without a poo is not constipation if soft) with `feeding-well-signs` (breastfed babies' poos in the first weeks); "the card and Ask must not set them against each other, or should show them apart". How was not decided.
+Runtime evidence: `NHSPassages.choose` can offer both of a pair on one card (it picks by kind and age, up to the limit; `NHSPassages.shownWith` is the only pairing rule).
+Comparison grid:
+
+| Choice | Current | A | B |
+|---|---|---|---|
+| S9 the two pairs | both of a pair can be offered on one card | never on the same card: a "not with" list beside `shownWith`; the chooser offers at most one of each pair on a card; a Linux test | can share a card; the AI is told not to compare passages, and the checker can't see that |
+| S1 to S4 | approved (step 2 D2 to D5) | unchanged | unchanged |
+
+Question D6:
+D6 — Two pairs of NHS passages that can look as if they disagree
+Project: Little Log, AI insights step 2 (the NHS passages on a card).
+
+ELI10: When the passages were checked, the reviewer found two pairs of NHS pages that can look as if they disagree. Weighing: one page says at most once a month up to 6 months; another says at 8, 12 and 16 weeks. Poo: one says a few days without a poo is fine if it is soft; another lists how often a breastfed baby poos in the first weeks. Each is the NHS's own words. Side by side on one card, they could worry you or seem to reassure you wrongly.
+
+Stakes if we pick wrong: a card that seems to say the NHS contradicts itself, or seems to say a few days without a poo is fine for a young breastfed baby.
+
+Recommendation: A, because it is a small rule, and a test can hold it.
+Completeness: A=9/10, B=5/10
+
+A) Never on the same card: the app picks at most one of each pair for a card. Both stay in Settings › NHS information, and either can show on another day. (human about 2 hours / Claude about 15 minutes)
+  ✅ The two never sit side by side, and a test holds it
+  ✅ Each still shows on its own, as the NHS wrote it
+  ❌ Some days the more useful one of a pair may wait for another day
+B) Allow both: the AI is told not to compare passages. (human about 1 hour / Claude about 5 minutes)
+  ✅ The app picks freely
+  ❌ Only an instruction to the AI; nothing in the code can check it
+
+Net: a small rule that keeps the pairs apart, or trust in an instruction.
+Header: NHS pairs
+Options:
+A) Never on the same card
+Recommended. The app offers at most one of each pair on a card; both stay in Settings and can show on other days.
+B) Allow both
+Both of a pair can share a card; the AI is told not to compare them.
+
+State: approved
+Actual answer: A) Never on the same card (recommended), Parent A, step 2 D6, 22 Nov 2026
+Accepted scope: a "not with" list in `NHSPassages` beside `shownWith`, holding the two pairs (`weight-how-often` with `formula-enough`; `poo-how-often` with `feeding-well-signs`); the chooser offers at most one of each pair on a card, by the same day's turn as now. Both stay in Settings › NHS information. A Linux test: over many days and limits, never both of a pair, and each still offered on some day.
+History: none
+
+**Scope Challenge result:** scope accepted as-is (the smaller grouping keeps every part). S1 to S4 and S9 approved (step 2 D2 to D6); S5 to S8 accepted under approved contracts.
+
+### Section 1: Architecture (step 2)
+
+```
+ the app comes to the front (scene active, Home or Graphs on screen; never a widget, the watch, Siri or a control: S13)
+        │
+        ▼
+ InsightCards.plan(data, me, now) ──────────────▶ .show(stored card)  ── AnswerCheck.accept on THIS phone's sheet (S5) ──▶ card
+        │  (FeedingInsights, Linux)                .plain(reason)      ── facts-only card, "Facts only today" (S12)
+        │  due? the rota's morning (D13, D14); Monday for "This week" (S4)
+        │  remake? only newer changes to its night/day or week, ≤3, not within 10 min (S3)
+        │  gate: every member's current yes, nobody off, not paused after 2 "wrong" reports (S8, A7)
+        ▼ .make(request)
+ request = InsightFacts (no text, no medicine; age in weeks, A6) + NHSPassages.choose (ticked, shownWith, notWith S9)
+           + instructions + the form described for this card (only offered fact days and passage IDs, S2)
+        │
+        ▼
+ InsightEngine (app) ── description → Apple's run-time form ── LanguageModelSession(ClaudeLanguageModel(.sonnet5_5,
+        │                .appAttest(clientID) on a phone | .apiKey only in the simulator, S6))
+        │  offline · attest failure · spend limit · timeout ──▶ .plain, and Settings says why (S12)
+        ▼ the answer (JSON fitting the form)
+ InsightCards.read ──▶ CardProposal ──▶ AnswerCheck.accept(facts, ticks)
+        │  turned down once: one retry with the reasons; twice: .plain (AI3)
+        ▼ accepted
+ InsightCards.store ──▶ the card's setting (encrypted payload: the form, its night or week, the fingerprint of its
+                        own days, the newest change it saw, how many made) ──▶ iCloud ──▶ the other phone (.show)
+```
+
+**Two shapes.** Shape 1 (picked, step 2 D1): `InsightCards` in `FeedingInsights` owns every rule (when a card is due, when it is made again, the gate, what is sent, the form, reading the answer, what is stored) behind four calls (`plan`, `read`, `store`, and the yes and "wrong" settings); the app's `InsightEngine` only turns the form into Apple's and makes the call. Shape 2: an app-side coordinator owns the schedule, the gate and the storage, and `FeedingInsights` keeps only pure helpers. Shape 1 hides more behind less, and every rule runs in Linux CI; shape 2 puts the remake limits and the two-yes rule where only a simulator can test them. **Red flags:** information leakage (setting key names for cards, yeses and "wrong" reports live only in `InsightCards`, as `passageCheck-` does in `NHSPassages`); split ownership (the stored card is the household's, "being made now" is the engine's, in memory only); two ways to do one task (the facts-only card and Home's "Last night" line overlap: settled by S1's mockups); a hand-synced list (S2, settled). No other flag.
+
+**Findings:**
+- **S10** [INFORMATIONAL] (confidence: 6/10) Anthropic's App Attest steps (the package page, "App Attest") don't say whether development-environment attestations are accepted, and Little Log Dev builds installed from Xcode attest in development unless the entitlement says production ([Apple](https://developer.apple.com/documentation/devicecheck/preparing-to-use-the-app-attest-service.md)). Remedy: `com.apple.developer.devicecheck.appattest-environment` = `production` in both variants' entitlements (TestFlight uses production anyway), and a live call from the Duo proves it before anything relies on it. Accepted under D2 (App Attest on phones); task T4's check.
+- **S11** [INFORMATIONAL] (confidence: 8/10) `InsightSafety.swift:437` — `CardProposal.needsHelpNow` was made for Ask, where a parent types words (A2, O2). On a card the AI sees only logged numbers, so a "needs help now" flag would be triage from the log, which "The line" forbids ("rank likely causes, or say how urgent something is") and D3 answers otherwise (the NHS's page beside the number). Remedy: the card's form has no flag; the card always ends with a quiet "Worried? Get help now ›" (no AI), as Settings has. Accepted under The line, D3 and R4; the link is part of S1's mockups.
+- **S12** [INFORMATIONAL] (confidence: 7/10) App Attest can stay stuck on a device ([forum 844380](https://developer.apple.com/forums/thread/844380)), and the spend limit (D11) and a retired model all come back as errors; "the app shows its plain fact cards" (D2) but nothing says why. Remedy: the facts-only card says "Facts only today", and Settings' AI row says, in plain words with no error codes, that the AI couldn't be reached and since when. Accepted under D2 and D11.
+- **S13** [INFORMATIONAL] (confidence: 7/10) `Shared/FeedIntents.swift` runs Siri and Control Center actions in the app's process (`allowedExecutionTargets` `[.main]`), so making a card on app launch would also run behind a Siri action. Remedy: making starts only when a scene becomes active with Home or Graphs on screen; never from the watch link, a widget, an intent or a notification. Accepted under D13 ("The AI never runs in the background").
+- **S14** [INFORMATIONAL] (confidence: 7/10) Each card is one call plus one retry when turned down (AI3); with S3's limit of 3 that is up to 6 calls a night, and a failed call (no signal) must not be tried again on every opening. Remedy: at most one attempt per opening and none within 10 minutes of the last (S3's wait). Accepted under S3 and D11.
+
+Security: what leaves the phone is the facts sheet (counts, amounts, times and dates; no text, names, notes, medicines or photos; the age in weeks), the chosen passages' IDs and checked summaries, and the instructions; nothing goes before every member's yes; App Attest's tokens stay in this phone's keychain; the package logs nothing; the card is stored encrypted, its setting's name shows only that a card exists for a night or week. Anyone in the household's iCloud share can write any setting, a yes included; the screens let each parent give only their own (D12), which is enough between two parents and is noted for A12 (other families).
+
+Dispositions: S10, S11, S12, S13, S14 accepted under the approved contracts named; no question.
+
+### Section 2: Code quality (step 2)
+
+- **S15** [INFORMATIONAL] (confidence: 8/10) The facts-only card and the card's fact chips write durations and times that screens already write (`ShareText.slept`, `GraphText`, History's medicine rows for R3's chips). Reuse those; no new formatter. Accepted (reuse; nothing to approve).
+- **S16** [INFORMATIONAL] (confidence: 9/10) The step 1 diagram (Section 1 above) says "ForAI view ──▶ (step 2: sent with the question, after both yeses)", but there is no `ForAI` type: the facts sheet itself has no text (`InsightFacts.swift:7-8`). The diagram is corrected to "InsightFacts (no text) ──▶ InsightCards" when step 2 is built. Accepted (a stale diagram).
+- **S17** [INFORMATIONAL] (confidence: 7/10) The package reports failures as `ClaudeError`, Apple's `LanguageModelError` or plain network errors (`ClaudeError.swift`, `ErrorMapper.swift`). `InsightEngine` maps them in one place to a short list the rest of the app reads (no signal, couldn't attest, unavailable), so no screen matches on the package's types. Accepted (one place for one decision).
+
+The effort level sent to Claude (`fixedEffort`) is measured, not guessed: the model tests (Section 3) run the same households at low and medium effort and keep the cheaper one unless it is turned down more often.
+
+Dispositions: S15, S16, S17 accepted; no question.
+
+### Section 3: Tests (step 2)
+
+Framework (from `CLAUDE.md`, "Testing" and "Commands"): Swift Testing in `FeedingCore` (Linux and macOS), the app's tests and the tap tests in the simulator, the accessibility audit as a report. Nothing of step 2 exists yet, so every new path is a gap; step 1's checker is already covered.
+
+```
+CODE PATHS                                              USER FLOWS
+[+] InsightCards.plan (FeedingInsights)                 [+] The yes (Settings › AI insights)
+  ├── [GAP] due: the rota's morning, before it, no        ├── [GAP] [→E2E] one parent says yes: nothing is sent
+  │         night hours, clock change both ways, travel   ├── [GAP] [→E2E] both say yes: "Making…", then the card
+  ├── [GAP] "This week" due: Monday, a first open on      └── [GAP] either turns it off: both stop
+  │         Tuesday, a week with missing days           [+] "This week" on Graphs
+  ├── [GAP] remake (S3): newer change, older change,      ├── [GAP] [→E2E] line → card → a line opens its graph page
+  │         change outside its days, 4th, within 10 min   └── [★★ TESTED] graph pages from the tab — GraphPageFlowTests
+  └── [GAP] gate: all yes, one off, a new member with   [+] The card
+            no yes, an old yes's version, paused          ├── [GAP] facts-only card ("Facts only today")
+[+] InsightCards.request                                   └── [GAP] "Worried? Get help now ›" opens the card (S11)
+  ├── [GAP] no medicine, no text, the age in weeks (A6) [+] Settings
+  ├── [GAP] passages: ticked only, shownWith, notWith     ├── [GAP] What the AI sees shows the sheet sent
+  └── [GAP] the form: only offered days and IDs (S2)      └── [GAP] "This was wrong" twice in 30 days: paused (A7)
+[+] InsightCards.read
+  └── [GAP] a good answer, a missing field, an unknown name
+[+] InsightCards.store / load
+  └── [GAP] round trip; an older build keeps it; the storage rule (S19)
+[+] AnswerCheck.accept  [★★★ TESTED] InsightSafetyTests (step 1)
+[+] NHSPassages "not with"  [GAP] extend NHSPassagesTests
+[+] InsightEngine (app)
+  ├── [GAP] the run-time form from a description is accepted by Apple's framework
+  ├── [GAP] a stand-in model: answer → card; turned down → retry → facts-only
+  └── [GAP] errors → the short list (S17)
+LLM integration: [GAP] [→EVAL] the model tests, 100 made-up households (S18)
+
+COVERAGE: 1/24 paths tested (4%)  |  Code paths: 1/17  |  User flows: 1/8 (the graph pages, as a regression)
+QUALITY: ★★★:1 ★★:1  |  GAPS: 23 (4 E2E, 1 eval)
+Legend: ★★★ behavior + edge + error | ★★ happy path | [→E2E] tap test | [→EVAL] a run against the real model
+```
+
+**Tests to add (required proof of the approved behavior; S18 waits for its answer):**
+- `FeedingCore/Tests/FeedingInsightsTests/InsightCardsTests.swift` (new, unit, Linux): every `plan`, `request`, `read` and `store` row above, with the time cases `CLAUDE.md` asks for (clock changes both ways, 30-minute offsets, travel, the clock set back, midnight, 21:00).
+  Value: protects=the gate, the remake limits and what leaves the phone; fails_when=a medicine or text reaches a request, a card is made with one yes, or remakes bounce; why_new=nothing covers InsightCards; seam=none; no_claim=the model's answers (no model runs)
+- `NHSPassagesTests` (extend): never both of a "not with" pair on one card, over many days and limits; each still offered on some day.
+- `AppTests/InsightEngineTests.swift` (new, simulator): the run-time form is accepted by Apple's framework; with a stand-in model (Apple's `LanguageModel` protocol, which the package itself uses, so no test-only hook) an answer becomes a card, a turned-down answer is retried once then falls back, and each error lands on the short list.
+  Value: protects=the app turns the form into Apple's and handles every failure; fails_when=a form change breaks the framework's form, or an error escapes as a crash or a blank line; why_new=no app test covers the engine; seam=none; no_claim=Claude's real answers and App Attest (stand-in model; no network)
+- `UITests/InsightCardFlowTests.swift` (new, FeedingDevAudit scheme): with made-up flags (a sample card, one or both yeses, a failure): Settings' yes and off switch, What the AI sees, "This week" → card → a graph page from the Graphs tab (the real path: the item-binding pitfall of 21 Nov), the facts-only card, the Get help now link. Home's part waits for S1's pick.
+  Value: protects=the paths a parent taps; fails_when=the graph page pops straight back, or the off switch doesn't stop the card; why_new=GraphPageFlowTests start from the tiles, not a card; seam=none; no_claim=a real call (sample card)
+- `AccessibilityAuditTests` (extend): the card sheet, Graphs' line and the Settings screens, both looks and large text.
+- Regression (CRITICAL to keep): `GraphPageFlowTests` and `GetHelpFlowTests` still pass unchanged after Graphs and Settings gain their new parts.
+- On a phone: a live call from the Duo with App Attest in Little Log Dev (S10) and in Little Log build 5.
+
+**Tests made obsolete by this plan:** none.
+
+- **S18** [INFORMATIONAL] (confidence: 8/10) A7 (approved): "The model tests run from the Mac before each TestFlight upload and whenever the model changes", a test set of 100 to 200 cases; how strict the run is was not set. Decision: step 2 D7.
+
+### Decision ledger (step 2, review sections)
+
+#### S18: how strict the model tests are
+Finding: S18, INFORMATIONAL, confidence 8/10, line 173 above (A7), this review
+Plan baseline: A7 (approved): a test set of 100 to 200 cases; the model tests run from the Mac before each TestFlight upload and whenever the model changes; only made-up data in the public repo; fall back to facts-only if a test invents a number or misses a danger sign. No pass mark was set for cards.
+Runtime evidence: none built; a card is about 1.2p to 2p at Sonnet 5.5's price [estimated]; numbers can't be invented by design (the checker writes every number; step 1).
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| S18 the run before a TestFlight upload | runs, no pass mark | 100 made-up households; upload only if at least 90 cards pass the checker within the one retry; every request free of text and medicine; no call before both yeses | 100 households; results read, never a gate | 30 households; upload only if at least 27 pass |
+| Cost a run | — | about £1.20 to £2 | about £1.20 to £2 | about 40p to 60p |
+| The Linux checks of what is sent (S5 to S8, Section 3) | required proof | unchanged | unchanged | unchanged |
+| S1 to S4, S9 | approved (step 2 D2 to D6) | unchanged | unchanged | unchanged |
+| S19 | pending | pending | pending | pending |
+
+Question D7:
+D7 — How strict the AI's test run is before each TestFlight build
+Project: Little Log, AI insights step 2 (the model tests you approved in A7).
+
+ELI10: You agreed the AI is tested before each TestFlight build and whenever the model changes. For the cards, that means making cards for made-up families (never your real data) with the real AI, and running each through the same checker the app uses. The question is how strict the run is: whether a poor result stops the upload, and how many made-up families it uses. Each run costs a little, from the AI account.
+
+Stakes if we pick wrong: too loose, and a model change that makes most cards fail would reach your phones as "Facts only today" every morning; too strict or too small, and it costs money for nothing or misses problems.
+
+Recommendation: A, because 100 families give a clear signal for about £1.50 a run, and a bad run stops the upload before it reaches your phones.
+Completeness: A=9/10, B=6/10, C=7/10
+
+A) 100 families, and a bad run stops the upload: the build goes to TestFlight only if at least 90 of 100 cards pass the checker (with the one retry), every request is free of text and medicines, and nothing is sent before both yeses. About £1.20 to £2 a run. (human about 2 days / Claude about 2 hours)
+  ✅ A model change that breaks the cards is caught before it reaches your phones
+  ✅ 100 cases is enough to see a real change from one run to the next
+  ❌ About £1.50 each TestFlight build, from the AI account's monthly allowance
+B) 100 families, results read but never stopping the upload. Same cost. (human about 2 days / Claude about 2 hours)
+  ✅ Nothing blocks an urgent build
+  ❌ A bad run can still reach your phones if it isn't read
+C) 30 families, upload only if at least 27 pass. About 50p a run. (human about 1.5 days / Claude about 1.5 hours)
+  ✅ Cheaper and quicker
+  ❌ Too few to tell a real change from chance
+
+Net: a firm check at about £1.50 a build, a report only, or a cheaper small check.
+Header: AI test run
+Options:
+A) 100 families, can stop it
+Recommended. Upload only if 90 of 100 made-up families' cards pass the checker; about £1.50 a run.
+B) 100 families, report only
+The same run; the results are read but never stop an upload.
+C) 30 families, can stop it
+Upload only if 27 of 30 pass; about 50p a run, but too few to be sure.
+
+State: approved
+Actual answer: C) 30 families, can stop it, Parent A, step 2 D7, 22 Nov 2026 (the recommendation was A)
+Accepted scope: the model tests before each TestFlight upload and after any change of model or package: 30 made-up households (fixtures in the repository, never real data), each made into a card by the real model and run through `AnswerCheck`; the upload goes ahead only if at least 27 pass within the one retry, every request is free of text and medicine, and no call is made before both yeses. About 40p to 60p a run, from the app's workspace. The run also compares low and medium effort (Section 2). Shortcut logged as decision `5b7b346c` (ceiling: 30 cases can't tell a real change from chance; upgrade to 100 households, gate at 90, when a run fails, when the model or package changes, or when a parent reports a wrong card); the model tests' code carries `gstack-shortcut(dec-5b7b346c)`. The Linux checks of what is sent stay required proof in every CI run.
+History: none
+
+Test Plan Artifact: `~/.gstack/projects/markddyer-Feeding-Tracker/markddyer-claude-focused-hamilton-47r7qx-eng-review-test-plan-20261122-212933.md` (saved; S19 listed as pending until answered).
+
+Dispositions (Section 3): the tests above are required proof of approved behavior; S18 approved (step 2 D7 C).
+
+### Section 4: Performance (step 2)
+
+- **S19** [INFORMATIONAL] (confidence: 8/10) `FeedingCore/Sources/FeedingCore/Store/HouseholdData.swift:579` — R8 keys each shared card "by that night", so a new setting record is added every night (and every week). `removePlainRecord` runs only when iCloud reports a record gone (`App/Sync/HouseholdSync.swift:553`); the app has no way to delete a setting itself. So the records grow by about 365 a year, all kept in `household.json` and loaded at every launch. Decision: step 2 D8.
+- **S20** [INFORMATIONAL] (confidence: 6/10) The plan's "about 4,000 tokens in" (line 282) is an estimate; 28 days and nights of values with their gaps, plus the instructions and the offered passages, may be 6,000 to 8,000. At Sonnet 5.5's price that is still about 2p a card, and the package caches the unchanging instructions by itself. The model tests (S18) measure it; no change. Accepted.
+- **S21** [INFORMATIONAL] (confidence: 7/10) Building the sheet from a year of entries takes about 80 ms in a debug build (step 1, measured); with the request and the form, making a card's request is kept off the main thread so the first screen isn't held up, and the call itself (App Attest's first 4 to 8 seconds, then the answer) never blocks a tap: the line says "Making…". The package's default 60-second limit stays. Accepted.
+
+Scale: one card a night and one a week for one household; at most 6 calls a night (S14); no loop over entries per call beyond building the sheet once.
+
+#### S19: how the shared cards are stored
+Finding: S19, INFORMATIONAL, confidence 8/10, `FeedingCore/Sources/FeedingCore/Store/HouseholdData.swift:579`, this review
+Plan baseline: R8 (step 1 D10, Parent A): "the first phone to make a night's morning card saves it as an encrypted household setting keyed by that night (no schema change)"; reopened here only for its storage key, because of a new concrete risk (records that grow without end and can't be deleted). What R8 does for the parents (one shared card a night, made once, replaced for both) is not reopened.
+Runtime evidence: settings are only ever added or replaced by the app (`putSetting`, `HouseholdSettingsRecords.swift:112`); removal happens only when iCloud reports a deletion (`HouseholdSync.swift:553`).
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| S19 the shared cards' records | one per night and one per week (R8's key), never removed | two records only, one for the morning card and one for "This week", each holding the latest card with its night or week inside; a new card replaces the old | one per night and week, plus new code that deletes those older than 14 days from iCloud | one per night and week, kept forever |
+| Records after a year | about 420 | 2 | about 16 | about 420 |
+| New sync code | — | none | deleting settings from iCloud (new) | none |
+| R8's behavior for the parents | approved | unchanged | unchanged | unchanged |
+| S1 to S4, S9, S18 | approved | unchanged | unchanged | unchanged |
+
+Question D8:
+D8 — How the shared morning card is kept in iCloud
+Project: Little Log, AI insights step 2 (the card shared by both phones).
+
+ELI10: You chose one card each morning that both phones show. To share it, the first phone saves it in your household's iCloud, and the other phone reads it. The plan saves a new record for every night, and one for every week. The app has no way to delete these records itself, so they would pile up: about 420 a year, all read each time the app opens. What you see is the same in every option.
+
+Stakes if we pick wrong: a household file that grows every night and slows the app's start over months, or new delete code in the part that syncs your feeds.
+
+Recommendation: A, because two records that are simply replaced never grow and need no new code in the sync.
+Completeness: A=9/10, B=8/10, C=5/10
+
+A) Two records, replaced: one for the morning card, one for "This week". Each holds the latest card and says which night or week it covers; a new card replaces the old one. (human about half a day / Claude about 20 minutes)
+  ✅ Never grows, and needs no new code in the sync that carries your feeds
+  ✅ The other phone still sees exactly the card for that night or week
+  ❌ Yesterday's card is gone once today's is made (no history of past cards)
+B) One per night, and delete those older than 14 days: new code that deletes old records from iCloud. (human about 2 days / Claude about 1.5 hours)
+  ✅ Keeps two weeks of past cards
+  ❌ New delete code in the sync that carries your feeds, more to go wrong
+C) One per night, kept forever, as the plan says now. (human about half a day / Claude about 20 minutes)
+  ✅ Every card is kept
+  ❌ About 420 records a year, all read at every start, for cards nobody reopens
+
+Net: two records that never grow, two weeks of history with new sync code, or everything kept forever.
+Header: Card storage
+Options:
+A) Two records, replaced
+Recommended. One record for the morning card and one for "This week"; each new card replaces the last.
+B) Per night, delete after 14 days
+Keeps two weeks of cards, with new code to delete old records from iCloud.
+C) Per night, kept forever
+As planned now: about 420 records a year, all read at every start.
+
+State: approved
+Actual answer: A) Two records, replaced (recommended), Parent A, step 2 D8, 22 Nov 2026
+Accepted scope: two household settings only, one for the morning card and one for "This week", each holding the latest card (encrypted payload: the form, the night or week it covers, the fingerprint of its own days, the newest change it saw, how many were made for it); a new card replaces the old one; a card for an older night or week never replaces a newer one. No new sync code. R8's behavior for the parents is unchanged; its "keyed by that night" becomes "holding its night". Linux tests: replace, refuse an older one, two phones saving at once (the later save wins, as R8 says), an older build skips and keeps the setting.
+History: R8 (step 1 D10) said "keyed by that night"; reopened for its storage key only, because per-night records grow without end and the app can't delete a setting.
+
+### Outside voice (Codex, step 2)
+
+Codex (`gpt-6.2-sol`, high effort, read-only, 22 Nov 2026, about 852,000 tokens in, 755,000 of them cached, and 6,400 out) read the plan's step list, "The line" and this review (cut at 30 KB; the rest from the file), and the code. 8 findings (1 Critical, 4 High, 3 Medium); its recommendation: "Revise Step 2 before implementation because the current design can publish false claims, authorize requests from stale consent, and overwrite fresher shared cards." Each finding was checked against the code before it was accepted.
+
+- **O1** [CRITICAL] (confidence: 9/10, verified) `InsightSafety.swift:538-546`, `:593-625`, `:742-743` — a count goes into the AI's sentence as a bare number (`case .count: return "\(Int(value.rounded()))"`), and the AI's own words are checked only against the banned, number and date lists. So "{1} feeds logged" passes with a wet-nappy count, and a pattern's sentence can say "fell" for a rise. The number is right and the sentence is false. Decision: step 2 D9.
+- **O2** [HIGH] (confidence: 8/10, verified) `HouseholdSync.swift:512-517` — after an iCloud account switch the household stays on the phone ("Feeds stay on this phone"), so yeses saved for the old pair would still be there. Accepted under D12 ("each on their own phone"), as a correction to S8: a yes counts only when given by a current participant of the household's iCloud share, from that participant's own iCloud account on their phone; this phone's own current iCloud user must be one of the yes-givers; a sign-out, an account switch or a share change closes the gate until the participants are read again. Tests: stale records after a switch, a third participant, a participant removed.
+- **O3** [HIGH] (confidence: 7/10, verified) `InsightSafety.swift:688-693` — a stored card names facts by "yesterday" or "last night", which mean another day once the card is older, and its patterns lean on days outside its own night and day. Accepted under D8 ("holding its night") and R5 ("a pattern that fails is left out"), as a correction to S5: when a card is stored, every fact and pattern names its dates outright; when either phone shows it (and when a slow answer comes back), each fact is written from that phone's log for those dates, and a pattern that no longer holds is left out on its own, not the whole card.
+- **O4** [HIGH] (confidence: 8/10, verified) `Event.swift:18` (`modifiedAt`) — S3's "newest change it saw" misses a late sync: an entry made at 04:05 on the other phone and synced after a 07:05 edit has the older time. A correction to how S3 is built, not to what it does: a card records which entries for its days it saw (each entry's ID and change time); a phone makes it again only when it holds an entry for those days the card didn't see, or a later change to one it did (deletions and entries moved in or out of its days included); the limit of 3 and the 10-minute wait stay as approved (step 2 D4 A). Two phones still can't bounce: the one missing entries the card saw has nothing new.
+- **O5** [HIGH] (confidence: 7/10, verified) `HouseholdData.swift:558` — the two shared records are resolved by their save time, so a slow answer from older entries can be saved over a fresher card, and both phones can spend the same remake. Decision: step 2 D10.
+- **O6** [MEDIUM] (confidence: 8/10, verified) `InsightSafety.swift:562-568` — the checker allows any passage the chooser could offer for the kinds logged and the patterns' kinds, not only the passages offered for this card, and checks pairs nowhere. Accepted under the plan ("1 or 2 NHS passages chosen by code"), D9 of step 1 and S9: the card stores the passages chosen for it; the checker allows only those, and when a card is shown, each passage must still be ticked, a `shownWith` partner must come with it, and a "not with" pair is never shown together.
+- **O7** [MEDIUM] (confidence: 8/10, verified) `ContentView.swift:98` (the last tab is restored) and the sync's late fetch — a card that starts only when the app comes to the front misses a parent who opens on History then moves to Graphs, or the second yes arriving while Home is open. Accepted under D13, as a correction to S13: the plan is looked at again whenever Home or Graphs comes on screen and whenever a sync finishes while one is on screen (never from a widget, the watch, an intent or a notification). Tests: a delayed fetch, a tab change.
+- **O8** [MEDIUM] (confidence: 8/10, verified) `InsightFacts.swift:147` — the sheet holds the age in days and every weight ever logged; sent as it is, it would give the birth date and an unbounded weight history. Accepted under A6 ("the baby's age in weeks, not the birth date") and R2 ("the last 4 weeks"): a request type of its own, built from the sheet, with the age in whole weeks and only the weights of the last 4 weeks plus the one before them; "What the AI sees" shows exactly that request; a test lists its fields.
+
+**Cross-model:** Codex and this review agree on the gate, the shared card and the remake limits being where the risk is; Codex alone found the checker's open sentence (O1), the stale yes after an account switch (O2), the dates drifting on a stored card (O3), the late-sync hole in S3's time stamp (O4), the save race (O5) and the bounded request (O8).
+
+#### O1: who writes a card's sentences
+Finding: O1, CRITICAL, confidence 9/10, `FeedingCore/Sources/FeedingInsights/InsightSafety.swift:593-625`, Codex (outside voice), verified by this review
+Plan baseline: AI3 (step 1): the AI writes each line with "{1}", "{2}" where the facts go, and each pattern's sentence; the checker writes the numbers and checks the AI's own words against the banned, number and date lists; "Smallest first version" item 2: "2 or 3 sentences from the model". R5: the AI states each pattern in a fixed form, checked against the facts, "the app writes its numbers".
+Runtime evidence: `write` puts a count in as a bare number (`InsightSafety.swift:742-743`); `fill` and `wordProblem` don't tie the words around a placeholder to its measure, or a pattern's words to its direction.
+Comparison grid:
+
+| Choice | Current | A | B | C | D |
+|---|---|---|---|---|---|
+| O1 who writes the sentences | the AI writes them around the numbers; word lists check its words | apply: the app writes every fact and pattern sentence from fixed wording for each measure and pattern shape; the AI chooses which facts and patterns to show, their order, and each passage's summary by ID; no words of the AI's own on the card | keep: as now; the checker's word lists and the 27-of-30 test gate | investigate (about 1 hour, nothing built for cards meanwhile): try tighter word rules (the app writes each number with its noun, "5 feeds", and each pattern's direction; comparison and judgment words banned), run swapped-measure and reversed-trend tests against both, then ask again | defer this change only: as now for the first build; asked again before AI cards reach TestFlight |
+| The checker | checks every card | still checks every choice (facts on the sheet, patterns true, passages offered and ticked) | unchanged | unchanged | unchanged |
+| The test gate (step 2 D7 C) | 27 of 30 | counts cards whose choices pass | unchanged | unchanged | unchanged |
+| S1 to S4, S9, S18, S19 | approved | unchanged | unchanged | unchanged | unchanged |
+| O5 | pending | pending | pending | pending | pending |
+
+Question D9:
+D9 — Who writes the sentences on the AI card
+Project: Little Log, AI insights step 2 (Codex's most serious finding, checked in the code).
+
+ELI10: The checker makes sure every number on a card is true: the app writes the numbers in, never the AI. But the AI writes the words around each number. So the AI could write "5 feeds logged" where 5 is really the count of wet nappies, or "feeds fell" when they rose. The number is right and the sentence is false, and the checker can't see it. Codex suggests the app writes every sentence itself, from fixed wording, and the AI only chooses which facts and patterns are worth showing, and in what order.
+
+Stakes if we pick wrong: a card about your baby that states something untrue, with a true-looking number in it.
+
+Recommendation: A, because then no sentence on the card can say something the log doesn't, and the AI still finds the patterns and picks what matters.
+Completeness: A=10/10, B=3/10, C=7/10, D=3/10
+
+A) Apply: the app writes every sentence: fixed wording for each kind of fact and pattern, such as "Longest sleep logged: 3h 10m, from 23:40" or "Feeds logged per day rose over the last 4 days". The AI chooses which ones to show, their order, and the summary for each NHS passage. The cards read a little plainer. (human about 2 days / Claude about 2 hours)
+  ✅ No false sentence is possible: every word about your log is the app's
+  ✅ The AI still finds the patterns and decides what is worth showing
+  ❌ Plainer wording, the same style each day, with no words of the AI's own
+B) Keep as now: the AI writes the sentences; only the word lists and the test run guard them. (no extra work)
+  ✅ The cards read in the AI's own, warmer words
+  ❌ A false sentence can still reach you, as Codex showed
+C) Investigate first, about 1 hour: try tighter rules (the app writes "5 feeds" with its noun, and each pattern's direction), test them against the tricks Codex named, then ask you again.
+  ✅ Might keep the AI's own words safely
+  ❌ More rules to keep up to date, and still a list of words that can miss one
+D) Defer: build as now, and ask again before the AI cards reach TestFlight.
+  ✅ Nothing changes yet
+  ❌ The first build has the hole; the question only waits
+
+Net: app-written sentences with no false claims possible, the AI's own words with a known hole, or a short trial of tighter rules.
+Header: Card words
+Options:
+A) The app writes the sentences
+Recommended. Fixed wording for each fact and pattern; the AI chooses which to show, their order and each passage's summary.
+B) Keep the AI's words
+As now: the AI writes the sentences; the word lists and the test run guard them.
+C) Try tighter rules first
+About 1 hour: test tighter word rules against Codex's tricks, then ask again.
+D) Defer
+Build as now; ask again before the AI cards reach TestFlight.
+
+State: approved
+Actual answer: A) The app writes the sentences (recommended), Parent A, step 2 D9, 22 Nov 2026
+Accepted scope: the card's form (S2) asks the AI only to choose: which facts (by scope and measure) and which patterns (shape, measure, days or nights, compared with which days) to show, their order, and for each offered passage one of its checked summaries by ID or none. The app writes every sentence from fixed wording per measure and per pattern shape (with "logged" in each, as R6 asks), and `AnswerCheck` checks every choice as now (facts on the sheet, patterns true, passages offered and ticked). The AI writes no words of its own on a card; templates written by the AI (`ProposedLine`, `PatternClaim.template`) are not used for cards, and their word lists stay for Ask (step 3) or go if Ask's review drops them. The wording lives with the checker in `FeedingInsights`, in Linux tests: every measure and shape has wording; a swapped measure or a reversed trend can't be chosen into a false sentence; the "logged" rule. "Smallest first version" item 2's "2 or 3 sentences from the model" becomes "2 or 3 sentences the app writes from the model's choices". The 27-of-30 gate counts cards whose choices pass. The wording is shown in S1's mockups.
+History: none
+
+#### O5: two phones saving the shared card at once
+Finding: O5, HIGH, confidence 7/10, `FeedingCore/Sources/FeedingCore/Store/HouseholdData.swift:558`, Codex (outside voice), verified by this review
+Plan baseline: R8 (step 1 D10): "If both phones make one at the same moment, the setting's later save wins and both show that one"; step 2 D8 A: two records, replaced, "a card for an older night or week never replaces a newer one", "No new sync code"; S3 (step 2 D4 A, with O4's correction): at most 3 cards a night.
+Runtime evidence: a setting is resolved by its save time when two phones change it; the app can only compare with the card it already holds before saving.
+Comparison grid:
+
+| Choice | Current | A | B | C | D |
+|---|---|---|---|---|---|
+| O5 the save race | later save wins (R8); older night never replaces newer (D8) | apply: before each call, a phone reserves the attempt with a conditional iCloud write (save only if the record is unchanged since read), counts failed calls, and compares again before publishing; new sync code | keep, made exact: just before saving, the phone compares with the card it holds now (O4's "entries seen") and doesn't save an answer made from fewer entries; each phone counts its own calls (at most 6 a night, failures included); a true same-moment race stays "later save wins" (R8); no new sync code (D8) | investigate (about 1 hour): measure how often two phones would make a card within the same minute from the sync log, then ask again | defer this change only: as now, asked again after a week of both phones |
+| Calls a night | up to 3 cards (S3) | up to 3 for the household | up to 3 cards; at most 6 calls per phone | unchanged | unchanged |
+| S1 to S4, S9, S18, S19, O1 | approved | unchanged | unchanged | unchanged | unchanged |
+
+Question D10:
+D10 — When both phones save the shared card at the same moment
+Project: Little Log, AI insights step 2 (Codex's finding on the shared card).
+
+ELI10: The card is shared through iCloud. If both phones make one at nearly the same moment, iCloud keeps whichever was saved last; you agreed to that. Codex points out a worse case: a slow answer, made from fewer entries, can arrive after a fresher card and be saved over it. It suggests new iCloud code so that only one phone at a time may make a card. You chose earlier to add no new sync code for the cards.
+
+Stakes if we pick wrong: now and then a slightly older card shows until the next remake; or new code in the part that syncs your feeds.
+
+Recommendation: B, because a check just before saving stops the slow-answer case, and only a true same-second race is left, which you already accepted.
+Completeness: A=9/10, B=8/10, C=7/10, D=5/10
+
+A) Apply: new iCloud code: a phone "books" the next card before asking the AI, so the two phones never both make one. (human about 2 days / Claude about 2 hours)
+  ✅ No race at all, and never more than 3 calls a night for the household
+  ❌ New code in the sync that carries your feeds, the thing you chose to avoid
+B) Keep, made exact: just before saving, a phone checks the card it already has and never saves an answer made from fewer entries. Each phone makes at most 6 calls a night, failed ones included. A true same-moment race still keeps the later save, as you agreed. (human about half a day / Claude about 30 minutes)
+  ✅ Stops the slow-answer case Codex found, with no new sync code
+  ✅ A hard cap on calls on each phone
+  ❌ In a true same-second race, the slightly older card can win until the next remake
+C) Investigate first, about 1 hour: count from the sync log how often both phones open within the same minute, then ask again.
+  ✅ Decide from how often it really happens
+  ❌ Waits, and the sync log only shows this phone's side
+D) Defer: build as now; ask again after a week of both phones using it.
+  ✅ Nothing to build now
+  ❌ The slow-answer case stays until then
+
+Net: no race with new sync code, a check before saving with no new sync code, or measure first.
+Header: Save race
+Options:
+A) Book each card in iCloud
+New sync code: only one phone at a time may make the card; no race at all.
+B) Check before saving
+Recommended. Never save an answer made from fewer entries; at most 6 calls a phone a night; a true same-moment race keeps the later save.
+C) Measure first
+About 1 hour: count how often both phones open together, then ask again.
+D) Defer
+Build as now; ask again after a week of use.
+
+State: approved
+Actual answer: B) Check before saving (recommended), Parent A, step 2 D10, 22 Nov 2026
+Accepted scope: just before saving a card, a phone compares its answer with the card it holds now (O4's "entries seen") and doesn't save an answer made from fewer entries, or for an older night or week; each phone makes at most 6 calls a night (failed calls included), counted on the phone; a true same-moment race keeps the later save (R8); no new sync code (step 2 D8). Linux tests: a slow answer from fewer entries isn't saved; the sixth call is the last; failed calls count.
+History: none
+
+Approval readiness: PASS. Checked: the structure (step 2 D1 A); S1 (D2 A), S2 (D3 A), S3 (D4 A, with O4's correction of how it is built), S4 (D5 A), S9 (D6 A), S18 (D7 C, shortcut `5b7b346c`), S19 (D8 A), O1 (D9 A), O5 (D10 B). Every other accepted remedy cites its approved contract: S5 and O3 (R8, AI3, R5, D8), S6 (D2), S7 (D2, A7), S8 and O2 (D2, D12, A8, O3 of step 1), S10 (D2), S11 (The line, D3, R4), S12 (D2, D11), S13 and O7 (D13), S14 (S3, D11), S15 to S17 (reuse and one place for one decision; no behavior change), S20 and S21 (no change; measured in S18's run), O6 (the plan's "chosen by code", step 1 D9, S9), O8 (A6, R2). Required proof: the tests in Section 3, the Test Plan Artifact, and the regression runs of `GraphPageFlowTests` and `GetHelpFlowTests`.
+
+### NOT in scope (step 2)
+- Ask (step 3): typed questions, tool calls into `FeedingCore`, the danger-sign check in front of it, and whether the AI writes any words of its own there (O1's lesson applies to Ask's answers too; Ask's review decides).
+- Siri, the watch showing the last card, and small links in context (step 4).
+- Other families (A12): a company, a privacy policy, App Review's health rules, a clinician's check of the wording.
+- The look of Home's morning line: picked by Parent A from mockups (S1) before Home's part is built.
+- A history of past cards (step 2 D8: two records, replaced).
+- Booking a card in iCloud before a call (step 2 D10 B: a check before saving instead).
+- 100-household model test runs, until the shortcut's trigger (step 2 D7 C, decision `5b7b346c`).
+- Insights on the Lock Screen, widgets, the watch face or in notifications (A9).
+
+### What already exists (step 2)
+See "What already exists" in the Scope Challenge above. Reused, not rebuilt: the facts sheet (with O8's request type built from it), the checker (now checking choices, O1), the passage chooser and Parent A's ticks (with "not with", S9), household settings for the cards and the yeses, the graph pages, History's medicine rows, `ShareText` and `GraphText` for wording, the Get help now card. New: `InsightCards` (FeedingInsights), `InsightEngine`, the card views and the AI's Settings screens (app), and the Claude package.
+
+### Failure modes (step 2)
+
+| New path | Realistic failure | Test | Handling | Seen by the parents |
+|---|---|---|---|---|
+| The gate | the iCloud account is switched; old yeses still on the phone (O2) | AI7 | closed until the share's participants are read again | yes: Settings says the AI is paused |
+| The request | a note or a medicine reaches what is sent | AI7 (the request's fields) | built from the sheet only; no `String` in it | n/a: can't be sent |
+| The call | no signal, App Attest stuck, spend limit, a retired model | AI8 (stand-in model) | facts-only card; Settings says why (S12) | yes: "Facts only today" |
+| Reading the answer | a malformed answer | AI7 | one retry, then facts-only | yes |
+| The card's words | a swapped measure or a reversed trend (O1) | AI7 | can't happen: the app writes every sentence | n/a |
+| The shared card | a slow answer from fewer entries (O5) | AI7 | not saved | n/a |
+| The shared card | an entry synced late (O4) | AI7 | made again once, within the limit of 3 | yes: the card updates |
+| A stored card | "yesterday" read on a later day (O3) | AI7 | dates stored outright; a pattern that no longer holds is left out | yes: fewer patterns |
+| "This week" | a clock-change week, a time zone change | AI7 | the household's time zone | n/a |
+| Graphs' line | the graph page pops straight back (21 Nov pitfall) | AI12 (from the tab) | one navigation style | caught by the test |
+| A model or package change | most cards turned down | AI13 (27 of 30) | the upload stops | n/a |
+
+Critical gaps (no test, no handling, silent): none.
+
+### Worktree parallelization strategy (step 2)
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| AI7 shared cards | `FeedingInsights` | — |
+| AI8 engine | `App/Insights`, `App/Model`, `project.yml` | AI7 |
+| AI9 Settings | `App/Insights`, `App/Home` (Settings) | AI7, AI8 |
+| AI10 mockups | the gstack design folder | — |
+| AI11 card views | `App/Insights`, `App/Home`, `App/Graphs`, `DESIGN.md` | AI7, AI8; Home's part also AI10's pick |
+| AI12 tap tests and audit | `UITests` | AI9, AI11 |
+| AI13 model tests | `FeedingInsights` fixtures, a test target | AI7, AI8, the Console's development key |
+| AI14 device checks and build 5 | — | AI8 to AI13, the Console's client ID |
+| AI15 docs | docs | AI11 |
+
+Lane A: AI7 → AI8 → AI9 → AI11 → AI12 → AI13 (shared `App/Insights`, in order). Lane B: AI10 (mockups for Parent A), now. Launch A and B; Home's part of AI11 waits for B's pick. Then AI14, then AI15. Conflict flags: AI9 and AI11 both touch `App/Insights` and `App/Home`: keep them in Lane A, in order.
+
+### Implementation Tasks (step 2)
+Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex; checkbox as you ship. (Effort ratios assumed: features ~30x, tests ~50x, design mockups ~10x, device checks ~3x.)
+
+- [ ] **AI7 (P1, human: ~5d / CC: ~4h)** — FeedingInsights — Shared cards: what is sent, the form, the app's wording, when a card is made, storage
+  - Surfaced by: S2 (D3 A), O1 (D9 A), O8, S3 (D4 A) with O4, S4 (D5 A), S8 with O2, S9 (D6 A), S5 with O3, O6, S19 (D8 A), O5 (D10 B), S14, A7's "wrong" reports
+  - Files: `FeedingCore/Sources/FeedingInsights/InsightCards.swift` (new), `InsightSafety.swift` (choices checked; the app's wording per measure and shape), `NHSPassages.swift` ("not with"), `FeedingCore/Tests/FeedingInsightsTests/InsightCardsTests.swift` (new), `InsightSafetyTests.swift`, `NHSPassagesTests.swift`
+  - Verify: `swift test --package-path FeedingCore` (Linux in CI too); every row of Section 3's diagram for `plan`, `request`, `read`, `store`; swapped measures and reversed trends; the time cases in `CLAUDE.md`
+- [ ] **AI8 (P1, human: ~3d / CC: ~2.5h)** — App — The engine: the package, App Attest, the gate before every call, the triggers
+  - Surfaced by: S2 (D3 A), S6, S7, S10, S13 with O7, S17, S21, S8 with O2, S14
+  - Files: `project.yml` (the package pinned to 0.2.3; the App Attest entitlement, `production`, both variants), `Config/Local.xcconfig.example` (the simulator's development key), `App/Insights/InsightEngine.swift` (new), `App/Model/AppModel.swift`, `App/ContentView.swift`, `AppTests/InsightEngineTests.swift` (new)
+  - Verify: `xcodebuild test -scheme FeedingDev` (the run-time form accepted; a stand-in model's answer, retry and fallback; the error list); no key in a phone build's Info.plist
+- [ ] **AI9 (P1, human: ~1.5d / CC: ~1h)** — App/Settings — The yes, the off switch, "What the AI sees", the "wrong" count, why the AI is unavailable
+  - Surfaced by: S8 with O2, O8, S12, A7, A8, D12
+  - Files: `App/Insights/InsightSettingsView.swift` (new), `App/Home/SettingsView.swift`
+  - Verify: tap tests in AI12; "What the AI sees" shows the exact request
+- [ ] **AI10 (P1, human: ~4h / CC: ~20min)** — Design — Mockups for Parent A: Home's morning line (one merged line, or two lines told apart), the card with the app's sentences, the facts-only card, "Worried? Get help now ›", Graphs' "This week" line; by day and at 3am
+  - Surfaced by: S1 (D2 A), O1 (D9 A), S11, S12
+  - Files: the gstack design folder (`designs/ai-insights-…`)
+  - Verify: Parent A picks; the pick goes in `DESIGN.md` and here
+- [ ] **AI11 (P1, human: ~2d / CC: ~2h)** — App — The card views: the card sheet, Graphs' "This week" line, Home's line as picked, medicine chips, "Making…"
+  - Surfaced by: S1, S4, S11, S12, S15, R3, D13 to D15
+  - Files: `App/Insights/InsightCardViews.swift` (new), `App/Home/HomeView.swift`, `App/Graphs/GraphsView.swift`, `DESIGN.md`
+  - Verify: screenshots by day and night, large text, the Duo's two columns
+- [ ] **AI12 (P1, human: ~1d / CC: ~45min)** — UITests — Tap tests and the audit for the new screens; regression runs
+  - Surfaced by: Section 3
+  - Files: `UITests/InsightCardFlowTests.swift` (new), `UITests/AccessibilityAuditTests.swift`
+  - Verify: `-only-testing:FeedingDevUITests/InsightCardFlowTests`, `GraphPageFlowTests`, `GetHelpFlowTests` pass; the audit read
+- [ ] **AI13 (P1, human: ~1.5d / CC: ~1.5h)** — Model tests — 30 made-up households; the upload stops unless 27 pass; effort and token size measured
+  - Surfaced by: S18 (D7 C, shortcut `5b7b346c`), S20, Section 2 (effort)
+  - Files: `FeedingCore/Tests/FeedingInsightsTests/Fixtures/households/` (made-up only), a model-test target or scheme run in the simulator with the development key, `CLAUDE.md` (its command), with `gstack-shortcut(dec-5b7b346c)` in its code
+  - Verify: the run before build 5; its pass count, cost and token size recorded here
+- [ ] **AI14 (P1, human: ~4h / CC: ~30min)** — Device — Console and Apple setup, a live App Attest call, Little Log build 5, the 11 new ticks, Parent B's yes
+  - Surfaced by: S10, D2, D12, the passage check (11 ticks waiting)
+  - Files: `docs/planning/04-apple-setup-checklist.md` (App Attest)
+  - Verify: a card made on the Duo in Little Log Dev, then in Little Log build 5; Settings › NHS information "All checked"
+- [ ] **AI15 (P2, human: ~2h / CC: ~20min)** — Docs — `DESIGN.md`, `CLAUDE.md`, the plan's step list and the step 1 diagram
+  - Surfaced by: S16, O1 (item 2's wording), AI10's pick
+  - Files: `DESIGN.md`, `CLAUDE.md`, this plan
+  - Verify: read through
+
+Carried, still open (not seen done): ET6, ET11, T12, T14, T15, T18, T19, T20, T21. Done: AI1 to AI6 (commits `ac26354` to `638ae3c`).
+
+### Unresolved decisions (step 2)
+None in this review. Home's morning line waits for Parent A's pick from mockups (step 2 D2 A, an approved step, AI10).
+
+### Completion summary (step 2)
+- Step 0: Scope Challenge — scope accepted as-is (the smaller grouping keeps every part)
+- Reality rows: 7/7 applicable rows emitted (`PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=2 verdict=complete`; P7 verified afterwards in the package source), 1 unverified premise (the token size)
+- Architecture Review: 5 issues found (S10 to S14)
+- Code Quality Review: 3 issues found (S15 to S17)
+- Test Review: diagram produced, 23 gaps identified, 1 decision (S18)
+- Performance Review: 3 issues found (S19 to S21)
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to the user (X4's look again after "This week" is already there)
+- Failure modes: 0 critical gaps flagged
+- Unresolved decisions: 0 in this review
+- Outside voice: Codex (`gpt-6.2-sol`), completed, 8 findings (1 Critical, 4 High, 3 Medium); 2 became decisions (D9, D10), 6 accepted under approved contracts
+- Parallelization: 2 lanes, 1 parallel / 1 sequential
+- Lake Score: 2/7 (D3 and D9 picked the 10/10 option; D4, D6, D7, D8 and D10 had none at 10/10, and D7 took the 7/10 option)
+- Decisions: step 2 D1 to D10, all answered by Parent A on 22 Nov 2026; one against the recommendation (D7 C, logged as a shortcut)
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 2 | ISSUES OPEN (20 Nov, "who does what"; none for AI insights) | 5 proposals, 4 accepted, 1 deferred |
-| Outside Review | Codex `gpt-6.2-sol` via `/plan-eng-review` | Independent 2nd opinion | 8 | completed | 9 findings (1 Critical, 6 High, 2 Medium) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 4 | ISSUES OPEN (issues mapped to tasks) | 27 issues, 0 critical gaps |
+| Outside Review | Codex `gpt-6.2-sol` via `/plan-eng-review` (host claude) | Independent 2nd opinion | 9 | completed (plan-review, 22 Nov, step 2) | 8 findings (1 Critical, 4 High, 3 Medium) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 5 | ISSUES OPEN (issues mapped to tasks AI7 to AI15) | 35 issues, 0 critical gaps |
 | Design Review | `/plan-design-review` | UI/UX gaps | 2 | ISSUES OPEN (20 Nov, "who does what"; none for AI insights) | score: 2/10 → 7/10, 30 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** Codex, plan-review phase, completed on 22 Nov 2026 (`gpt-6.2-sol`, about 479,000 tokens in, 412,000 cached, 4,400 out), 9 findings; all resolved (D9, D10, and 7 under approved contracts).
-- **CROSS-MODEL:** Codex and this review agreed on the facts sheet's role and the passage rules; Codex alone found the word list's hole (O1), the medicine route in Ask (O3), the two phones' cards (O4), the windows (O5), missing amounts (O6), "comes after" (O7) and the duplicate search's cost (O9).
-- **VERDICT:** ENG REVIEW done, issues mapped to tasks AI1 to AI6; no review is CLEAR for AI insights. A design review of the AI screens (the daily slim line, the card sheet, Ask's chat, the Get help now card) is still to come. Eng review required (not CLEAR until a run with no open issues).
+- **OUTSIDE COVERAGE:** Codex, plan-review phase, completed on 22 Nov 2026 for step 2 (`gpt-6.2-sol`, high effort, read-only; about 852,000 tokens in, 755,000 cached, 6,400 out), 8 findings; all resolved (D9 A, D10 B, and 6 accepted under approved contracts, each checked in the code).
+- **CROSS-MODEL:** Codex and this review agreed that the gate, the shared card and the remake limits carry the risk; Codex alone found the checker's open sentence (O1), the stale yes after an account switch (O2), dates drifting on a stored card (O3), the late-sync hole in S3's time stamp (O4), the save race (O5), the checker's wide passage list (O6), the narrow trigger (O7) and the request's age and weights (O8).
+- **VERDICT:** ENG REVIEW of step 2 done, issues mapped to tasks AI7 to AI15; no review is CLEAR for AI insights. Home's morning line is picked from mockups (AI10); a design review of the AI screens is still to come. Eng review required (not CLEAR until a run with no open issues).
 
-NO UNRESOLVED DECISIONS
+**UNRESOLVED DECISIONS:**
+- + 3 unresolved from prior reviews (the "who does what" CEO review, 20 Nov 2026)
