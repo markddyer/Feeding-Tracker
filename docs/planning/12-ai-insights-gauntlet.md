@@ -323,6 +323,8 @@ Because the app code is the same for all four, the choice could have been made b
 
 ## Smallest first version
 
+**Intended purpose (written 22 Nov 2026, A12; check every screen and any App Store sentence against it):** Little Log helps two parents keep and read their own records of their baby's care (feeds, sleep, nappies, growth, medicines and firsts), reminds them at the times they set, and points them to official UK information (the NHS) and to the people who can help: the midwife, the health visitor, the GP, NHS 111 and 999. It does not assess the baby's health, diagnose, triage, or advise on treatment or medicine doses. Its AI restates the household's own log in plain words, points out patterns that code has checked against the log, and shows the NHS's own words beside them, marked as AI; it never says what the numbers mean for this baby or what to do about them.
+
 0. **Before code:**
    - The parents answer the open decisions below, and the intended-purpose paragraph is written.
    - `CLAUDE.md`'s hard rules are rewritten to match D2 and D5:
