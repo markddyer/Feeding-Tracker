@@ -491,6 +491,7 @@ struct SpikeMenu: View {
                 NavigationLink("Alarm test (overnight)") { AlarmSpikeView() }
                 NavigationLink("Duo fold test") { FoldSpikeView() }
                 NavigationLink("Design pieces (both looks)") { DesignGalleryView() }
+                NavigationLink("AI connection test") { AIConnectionCheckView() }
             } header: {
                 Text("Tests")
             } footer: {

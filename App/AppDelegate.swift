@@ -14,6 +14,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             MainActor.assumeIsolated { NotificationTaps.shared.showFirst(id) }
         }
         #endif
+        #if FEEDING_DEV
+        // `-aiConnectionCheck YES`: the AI link from this phone, with a made-up week (AI14).
+        MainActor.assumeIsolated { AIConnectionCheck.runIfAsked() }
+        #endif
         // Work and half-made exports left by an app that was stopped (journal, outside voice OE8).
         MediaStore.removeLeftovers()
         MediaFiles.appGroup()?.removeHalfCopies()
