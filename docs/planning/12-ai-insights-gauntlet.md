@@ -335,20 +335,20 @@ Because the app code is the same for all four, the choice could have been made b
      - links the plan's API credits to one organization;
      - makes a workspace for the app, with a spend limit;
      - creates an App Attest "app integration" for both bundle IDs (Little Log and Little Log Dev), using the Apple team ID.
-1. **The parts with no AI**, in `FeedingInsights`, a new part of the FeedingCore package that the alarm code can't reach (R1), tested on Linux. They are useful even if the AI part were dropped:
+1. **The parts with no AI** (built 22 Nov 2026, AI1 to AI6; Little Log build 4), in `FeedingInsights`, a new part of the FeedingCore package that the alarm code can't reach (R1), tested on Linux. They are useful even if the AI part were dropped:
    - the facts sheet, with 4 weeks of values and the numbers the AI sees (R2);
    - the danger-sign check and the Get help now card, reachable from Settings at once (R4);
    - the NHS passage library, each passage with summaries checked ahead of time (R7), and its chooser;
    - the output checker, which also checks every pattern against the log (R5, R6).
 
    The engineering review below sets the details and the tasks.
-2. **The daily card on Home, and "This week" on Graphs** (D13 to D15). Each card has:
+2. **The daily card on Home, and "This week" on Graphs** (D13 to D15; built 23 Nov 2026, AI7 to AI14; Little Log builds 5 and 6). Each card has:
    - 4 to 6 facts from code;
    - 1 or 2 NHS passages chosen by code;
-   - 2 or 3 sentences from the model;
-   - its sources listed, and the mark that it was written by AI.
+   - the AI's picks from a fixed form: which facts, which patterns, which passages (step 2 D9, O1: the app writes every sentence and number, and checks each pattern against the log; the AI writes no words of its own);
+   - its sources listed, and the mark that it was picked by AI.
 
-   The daily card covers last night and yesterday. It is made automatically the first time the app opens after the night ends. Both cards are made when the app opens (never in the background), kept on the phone and not synced, and the same facts appear on both phones.
+   The daily card covers last night and yesterday. It is made automatically the first time the app opens after the night ends. Both cards are made when the app opens (never in the background). One card is shared by both phones (R8): the first phone to make it saves it, encrypted, for the household, and the other phone shows it. The same facts appear on both phones.
 3. **Ask:**
    - questions about the log, answered through tool calls into `FeedingCore`;
    - "What does the NHS say about wind?", answered with the passage word for word;
@@ -803,8 +803,8 @@ History: none
  WhoDidIt.night ───┤                            · last night, yesterday, and each day and night of 4 weeks (R2)
  weights ──────────┤                            · marks: longest, first, nothing logged from..to, details unread
  BabyAge ──────────┘                            · no text, no medicines (finding 9, D6, R3)
-                                              ForAI view ──▶ (step 2: sent with the question, after both yeses)
- lastGiven / medicines ──▶ medicine chips on the card (R3; the screen only, never ForAI)
+                                              InsightFacts (no text) ──▶ InsightCards (step 2: sent after both yeses; S16)
+ lastGiven / medicines ──▶ medicine chips on the card (R3; the screen only, never sent)
 
                                             InsightSafety.swift          (one word reader, two checks: D1)
  a parent's typed words (step 3) ──────────▶  DangerSigns.check ──match──▶ Get help now card (before any AI)
@@ -1909,14 +1909,15 @@ Synthesized from this review's findings. Each task derives from a specific findi
   - Surfaced by: S18 (D7 C, shortcut `5b7b346c`), S20, Section 2 (effort)
   - Files: `FeedingCore/Tests/FeedingInsightsTests/Fixtures/households/` (made-up only), a model-test target or scheme run in the simulator with the development key, `CLAUDE.md` (its command), with `gstack-shortcut(dec-5b7b346c)` in its code
   - Verify: the run before build 5; its pass count, cost and token size recorded here
-- [x] **AI14 (P1, human: ~4h / CC: ~30min)** — Device — Console and Apple setup, a live App Attest call, Little Log build 5, the 11 new ticks, Parent B's yes (23 Nov 2026, done so far: the Console integration holds both bundle IDs; **a live call from the Duo in Little Log Dev passed App Attest in 2.2 s and made a card in 3.5 s** (`App/Spikes/AIConnectionCheck.swift`: Home's Tests menu or `-aiConnectionCheck YES`, a made-up week, never the household's log); **Little Log build 5 uploaded** (commit `328d9c7` plus the build number; the model tests passed on the same AI code, 30 of 30). The upload no longer needs an Xcode sign-in: it uses an Admin App Store Connect API key (`04-apple-setup-checklist.md` §4), as Xcode 27's own upload sign-in ran out hours after each sign-in. **The 11 new ticks are made in build 5** (8 by a temporary tap test, never committed, 3 by Parent A by hand); the next full check is due by 20 Feb 2027. Done 23 Nov 2026: both parents said yes, each on their own phone, and Settings shows "On"; **the first real card was made in Little Log build 5 on Parent A's Duo** that afternoon ("Last night and yesterday", with the AI marks and an NHS passage), so Little Log passes App Attest on that phone. Not yet seen: a call from Parent B's phone (the first phone opened makes each card). The workspace's £10 spend limit (D11) was set on 22 Nov 2026. Found the same day, fixed in build 6: the card opens at full height, and Home's line follows a pause at once (commit `72b63ac`))
+- [x] **AI14 (P1, human: ~4h / CC: ~30min)** — Device — Console and Apple setup, a live App Attest call, Little Log build 5, the 11 new ticks, Parent B's yes (23 Nov 2026, done so far: the Console integration holds both bundle IDs; **a live call from the Duo in Little Log Dev passed App Attest in 2.2 s and made a card in 3.5 s** (`App/Spikes/AIConnectionCheck.swift`: Home's Tests menu or `-aiConnectionCheck YES`, a made-up week, never the household's log); **Little Log build 5 uploaded** (commit `328d9c7` plus the build number; the model tests passed on the same AI code, 30 of 30). The upload no longer needs an Xcode sign-in: it uses an Admin App Store Connect API key (`04-apple-setup-checklist.md` §4), as Xcode 27's own upload sign-in ran out hours after each sign-in. **The 11 new ticks are made in build 5** (8 by a temporary tap test, never committed, 3 by Parent A by hand); the next full check is due by 20 Feb 2027. Done 23 Nov 2026: both parents said yes, each on their own phone, and Settings shows "On"; **the first real card was made in Little Log build 5 on Parent A's Duo** that afternoon ("Last night and yesterday", with the AI marks and an NHS passage), so Little Log passes App Attest on that phone. Not yet seen: a call from Parent B's phone (the first phone opened makes each card). The workspace's £10 spend limit (D11) was set on 22 Nov 2026. Found the same day, fixed in build 6: the card opens at full height, and Home's line follows a pause at once (commit `e0f58d0`); build 6 uploaded the same day (commit `7d1440a`), after the model tests passed again (30 of 30, $1.45))
   - Surfaced by: S10, D2, D12, the passage check (11 ticks waiting)
   - Files: `docs/planning/04-apple-setup-checklist.md` (App Attest)
   - Verify: a card made on the Duo in Little Log Dev, then in Little Log build 5; Settings › NHS information "All checked"
-- [ ] **AI15 (P2, human: ~2h / CC: ~20min)** — Docs — `DESIGN.md`, `CLAUDE.md`, the plan's step list and the step 1 diagram
+- [x] **AI15 (P2, human: ~2h / CC: ~20min)** — Docs — `DESIGN.md`, `CLAUDE.md`, the plan's step list and the step 1 diagram
   - Surfaced by: S16, O1 (item 2's wording), AI10's pick
   - Files: `DESIGN.md`, `CLAUDE.md`, this plan
   - Verify: read through
+  - Done 23 Nov 2026: the step list marks steps 1 and 2 built, with item 2 in step 2 D9's terms (the AI picks; the app writes) and R8's one shared card; the step 1 diagram names `InsightFacts` and `InsightCards`, not a `ForAI` view (S16); `CLAUDE.md`'s hard rule and layout lines cover step 2. `DESIGN.md` already held AI10's pick (the AI mark, the merged "Last night" line, the card, the AI line, the Decisions Log row).
 
 Carried, still open (not seen done): ET6, ET11, T12, T14, T15, T18, T19, T20, T21. Done: AI1 to AI6 (commits `ac26354` to `638ae3c`).
 
