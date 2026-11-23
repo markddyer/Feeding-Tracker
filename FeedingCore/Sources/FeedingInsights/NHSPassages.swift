@@ -162,6 +162,17 @@ public enum NHSPassages {
     /// so the NHS's urgent mental health help always comes with it (summary review, 22 Nov 2026).
     static let shownWith = ["postnatal-depression-help": "mental-health-urgent"]
 
+    /// Pairs never shown on the same card (step 2 D6): each is the NHS's own words, but side by
+    /// side they read as if the NHS disagreed with itself (two weighing schedules), or as
+    /// reassurance one of them doesn't give (a few days without a poo, beside a breastfed baby's
+    /// poos in the first weeks).
+    static let notWith: [Set<String>] = [["weight-how-often", "formula-enough"], ["poo-how-often", "feeding-well-signs"]]
+
+    /// Whether two passages are a "not with" pair.
+    public static func notTogether(_ first: String, _ second: String) -> Bool {
+        notWith.contains([first, second])
+    }
+
     /// The chooser by topic. Not public: a card's topics come from the kinds logged (finding 3, A3).
     static func choose(topics: Set<InsightTopic>, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,
                        checks: PassageChecks, today day: PlainDate, limit: Int) -> [Passage] {
@@ -186,7 +197,7 @@ public enum NHSPassages {
         let start = ((day.days(since: copied) % candidates.count) + candidates.count) % candidates.count
         let picks = (0..<min(limit, candidates.count)).map { candidates[(start + $0) % candidates.count] }
         var shown: [Passage] = []
-        for passage in picks where !shown.contains(passage) {
+        for passage in picks where !shown.contains(passage) && !shown.contains(where: { notTogether($0.id, passage.id) }) {
             shown.append(passage)
             if let id = shownWith[passage.id], let partner = NHSPassages.passage(id) {
                 shown.removeAll { $0 == partner }

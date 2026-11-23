@@ -1881,7 +1881,7 @@ Lane A: AI7 → AI8 → AI9 → AI11 → AI12 → AI13 (shared `App/Insights`, i
 ### Implementation Tasks (step 2)
 Synthesized from this review's findings. Each task derives from a specific finding above. Run with Claude Code or Codex; checkbox as you ship. (Effort ratios assumed: features ~30x, tests ~50x, design mockups ~10x, device checks ~3x.)
 
-- [ ] **AI7 (P1, human: ~5d / CC: ~4h)** — FeedingInsights — Shared cards: what is sent, the form, the app's wording, when a card is made, storage
+- [x] **AI7 (P1, human: ~5d / CC: ~4h)** — FeedingInsights — Shared cards (built 23 Nov 2026: `InsightCards.swift`, `CardChoices` and `CardWording` in `InsightSafety.swift`, "not with" in `NHSPassages.swift`; 20 tests in `InsightCardsTests.swift`; 87 insights and 673 core tests pass on the Mac): what is sent, the form, the app's wording, when a card is made, storage
   - Surfaced by: S2 (D3 A), O1 (D9 A), O8, S3 (D4 A) with O4, S4 (D5 A), S8 with O2, S9 (D6 A), S5 with O3, O6, S19 (D8 A), O5 (D10 B), S14, A7's "wrong" reports
   - Files: `FeedingCore/Sources/FeedingInsights/InsightCards.swift` (new), `InsightSafety.swift` (choices checked; the app's wording per measure and shape), `NHSPassages.swift` ("not with"), `FeedingCore/Tests/FeedingInsightsTests/InsightCardsTests.swift` (new), `InsightSafetyTests.swift`, `NHSPassagesTests.swift`
   - Verify: `swift test --package-path FeedingCore` (Linux in CI too); every row of Section 3's diagram for `plan`, `request`, `read`, `store`; swapped measures and reversed trends; the time cases in `CLAUDE.md`

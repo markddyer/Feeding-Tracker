@@ -445,6 +445,40 @@ public struct CardProposal: Hashable, Sendable, Codable {
     }
 }
 
+/// A pattern the AI chose for a card: its fixed form only. The app writes its sentence (step 2 D9).
+public struct PatternChoice: Hashable, Sendable, Codable {
+    public var shape: PatternShape
+    public var measure: Measure
+    /// Nights (named by their evenings) rather than days.
+    public var nights: Bool
+    public var recent: DateSpan
+    public var earlier: DateSpan?
+
+    public init(_ shape: PatternShape, _ measure: Measure, nights: Bool = false, recent: DateSpan, earlier: DateSpan? = nil) {
+        self.shape = shape
+        self.measure = measure
+        self.nights = nights
+        self.recent = recent
+        self.earlier = earlier
+    }
+}
+
+/// Everything the AI chooses for a card (step 2 D9, Codex's O1): which facts and patterns to show,
+/// in what order, and a checked summary for each offered NHS passage. It writes no words: every
+/// sentence on a card is the app's (`CardWording`), so a true number can never sit in a false
+/// sentence.
+public struct CardChoices: Hashable, Sendable, Codable {
+    public var facts: [FactRef]
+    public var patterns: [PatternChoice]
+    public var passages: [PassageChoice]
+
+    public init(facts: [FactRef], patterns: [PatternChoice] = [], passages: [PassageChoice] = []) {
+        self.facts = facts
+        self.patterns = patterns
+        self.passages = passages
+    }
+}
+
 /// An NHS passage on a checked card, with the summary chosen for it, if any.
 public struct CheckedPassage: Hashable, Sendable {
     public let passage: Passage
@@ -585,6 +619,90 @@ public enum AnswerCheck {
         guard problems.isEmpty else { return .rejected(problems, needsHelpNow: proposal.needsHelpNow) }
         return .accepted(CheckedCard(lines: lines, patterns: patterns, passages: passages,
                                      needsHelpNow: proposal.needsHelpNow, factsRevision: facts.revision))
+    }
+
+    // MARK: A card from the AI's choices (step 2 D9)
+
+    static let maxFacts = 6
+
+    /// Checks the AI's choices for a card and writes every sentence from the app's own wording.
+    /// `offered` are the passages chosen by code for this card (O6): only they may appear, each
+    /// still ticked, a `shownWith` partner with its lead, never both of a "not with" pair.
+    ///
+    /// `leaveOut` false (making a card): any problem turns the whole card down, so the AI tries
+    /// again. `leaveOut` true (showing a stored card on a later look, or on the other phone): a
+    /// fact or pattern that no longer holds on this phone's log is left out on its own (R5, O3),
+    /// and the card is turned down only when nothing is left.
+    public static func accept(_ choices: CardChoices, offered: [String], facts: InsightFacts, checks: PassageChecks,
+                              timeZone: TimeZone, leaveOut: Bool = false) -> AnswerVerdict {
+        var problems: [Rejection] = []
+        func reject(_ part: String, _ reason: Rejection.Reason) { problems.append(Rejection(part: part, reason: reason)) }
+
+        if choices.facts.isEmpty && choices.patterns.isEmpty { reject("facts", .tooMany) }
+        if choices.facts.count > maxFacts { reject("facts", .tooMany) }
+        if choices.patterns.count > maxPatterns { reject("patterns", .tooMany) }
+        if choices.passages.count > maxPassages { reject("passages", .tooMany) }
+        if Set(choices.facts).count != choices.facts.count || Set(choices.patterns).count != choices.patterns.count {
+            reject("facts", .tooMany)
+        }
+
+        var lines: [String] = []
+        for (index, ref) in choices.facts.enumerated() {
+            if let sentence = CardWording.fact(ref, facts: facts, timeZone: timeZone) {
+                lines.append(sentence)
+            } else if !leaveOut {
+                reject("fact \(index + 1)", .unknownFact)
+            }
+        }
+
+        var patterns: [String] = []
+        for (index, choice) in choices.patterns.enumerated() {
+            let claim = PatternClaim(choice.shape, choice.measure, nights: choice.nights, recent: choice.recent,
+                                     earlier: choice.earlier, template: "")
+            switch check(claim, facts: facts, timeZone: timeZone) {
+            case .success(let names):
+                patterns.append(CardWording.pattern(choice, names: names, facts: facts))
+            case .failure(let reason):
+                if !leaveOut { reject("pattern \(index + 1)", reason) }
+            }
+        }
+
+        var passages: [CheckedPassage] = []
+        let today = facts.today
+        for choice in choices.passages {
+            guard offered.contains(choice.passageID), let passage = NHSPassages.passage(choice.passageID), let today,
+                  NHSPassages.isChecked(passage.id, copied: passage.copied, checks: checks, today: today) else {
+                if !leaveOut { reject("passage", .unknownPassage(choice.passageID)) }
+                continue
+            }
+            var summary: PassageSummary?
+            if let summaryID = choice.summaryID {
+                summary = NHSPassages.checkedSummaries(of: passage, checks: checks, today: today).first { $0.id == summaryID }
+                if summary == nil && !leaveOut { reject("passage", .unknownSummary(summaryID)) }
+            }
+            passages.append(CheckedPassage(passage: passage, summary: summary))
+        }
+        // A passage that must come with another (`shownWith`) goes if its partner can't come; a
+        // "not with" pair never shows together (step 2 D6): the later one goes.
+        let shownIDs = Set(passages.map(\.passage.id))
+        passages.removeAll { item in
+            guard let partner = NHSPassages.shownWith[item.passage.id], !shownIDs.contains(partner) else { return false }
+            if !leaveOut { reject("passage", .unknownPassage(partner)) }
+            return true
+        }
+        var kept: [CheckedPassage] = []
+        for item in passages {
+            if kept.contains(where: { NHSPassages.notTogether($0.passage.id, item.passage.id) }) {
+                if !leaveOut { reject("passage", .unknownPassage(item.passage.id)) }
+                continue
+            }
+            kept.append(item)
+        }
+
+        if leaveOut, lines.isEmpty, patterns.isEmpty { reject("facts", .unknownFact) }
+        guard problems.isEmpty else { return .rejected(problems, needsHelpNow: false) }
+        return .accepted(CheckedCard(lines: lines, patterns: patterns, passages: kept, needsHelpNow: false,
+                                     factsRevision: facts.revision))
     }
 
     // MARK: The AI's own words
@@ -878,5 +996,126 @@ public enum AnswerCheck {
         }
         let written = "\(date.day) \(months[date.month - 1])"
         return nights ? "the night of \(written)" : written
+    }
+}
+
+// MARK: - The app's own wording for a card (step 2 D9)
+
+/// Every sentence on a card, written by the app from the AI's choices: one fixed wording per
+/// measure and per pattern shape, each with "logged" (R6), so a number always sits beside the
+/// words that say what it counts, and a pattern's direction is the one the checker found.
+public enum CardWording {
+    /// A fact's sentence: "4 feeds logged last night." Nil when the sheet has no such fact.
+    public static func fact(_ ref: FactRef, facts: InsightFacts, timeZone: TimeZone) -> String? {
+        guard let number = AnswerCheck.number(ref, in: facts) else { return nil }
+        let value = AnswerCheck.write(number, unit: ref.measure.unit, timeZone: timeZone)
+        let one = Int(number.rounded()) == 1
+        if ref.scope == .latest {
+            switch ref.measure {
+            case .weight: return "Latest weight logged: \(value)."
+            case .weightChange: return "Change since the weight logged before it: \(value)."
+            default: return nil
+            }
+        }
+        guard let when = scope(ref.scope, facts: facts) else { return nil }
+        switch ref.measure {
+        case .feeds: return "\(value) \(one ? "feed" : "feeds") logged \(when)."
+        case .breastFeeds: return "\(value) \(one ? "breastfeed" : "breastfeeds") logged \(when)."
+        case .bottleFeeds: return "\(value) bottle \(one ? "feed" : "feeds") logged \(when)."
+        case .bottleML: return "\(value) from bottles logged \(when)."
+        case .pumpSessions: return "\(value) pumping \(one ? "session" : "sessions") logged \(when)."
+        case .pumpedML: return "\(value) pumped and logged \(when)."
+        case .sleep, .slept: return "\(value) of sleep logged \(when)."
+        case .daySleep: return "\(value) of daytime sleep logged \(when)."
+        case .nightSleep: return "\(value) of night-time sleep logged \(when)."
+        case .wees: return "\(value) wet \(one ? "nappy" : "nappies") logged \(when)."
+        case .poos: return "\(value) \(one ? "poo" : "poos") logged \(when)."
+        case .baths: return "\(value) \(one ? "bath" : "baths") logged \(when)."
+        case .longestGap: return "Longest gap between feed starts logged \(when): \(value)."
+        case .shortestGap: return "Shortest gap between feed starts logged \(when): \(value)."
+        case .longestSleep: return "Longest sleep logged \(when): \(value)."
+        case .longestSleepStart: return "The longest sleep logged \(when) began at \(value)."
+        case .wakeUps: return "\(value) \(one ? "wake-up" : "wake-ups") logged \(when)."
+        case .weight, .weightChange: return nil
+        }
+    }
+
+    /// A pattern's sentence, from the values the checker found (`AnswerCheck.check`).
+    public static func pattern(_ choice: PatternChoice, names: [String: String], facts: InsightFacts) -> String {
+        let per = choice.nights ? "night" : "day"
+        let noun = self.noun(choice.measure)
+        let recent = span(choice.recent, nights: choice.nights, facts: facts)
+        switch choice.shape {
+        case .higher, .lower:
+            let direction = choice.shape == .higher ? "rose" : "fell"
+            let earlier = choice.earlier.map { span($0, nights: choice.nights, facts: facts) } ?? ""
+            return "\(noun) per \(per) \(direction): \(names["recent"] ?? "") on average over \(recent), "
+                + "against \(names["earlier"] ?? "") over \(earlier)."
+        case .most, .least:
+            let when = AnswerCheck.when(choice.recent.first, nights: choice.nights, facts: facts)
+            let stretch = choice.earlier.map { span($0, nights: choice.nights, facts: facts) } ?? recent
+            return "\(noun) \(when): \(names["value"] ?? ""), \(superlative(choice.measure, most: choice.shape == .most)) "
+                + "of \(stretch)."
+        case .risingRun, .fallingRun:
+            let direction = choice.shape == .risingRun ? "rose" : "fell"
+            return "\(noun) per \(per) \(direction) every \(per) over \(recent)."
+        case .steady:
+            return "\(noun) per \(per) stayed between \(names["low"] ?? "") and \(names["high"] ?? "") over \(recent)."
+        case .comesAfter:
+            return "On \(names["count"] ?? "") of the \(names["of"] ?? "") nights with a bath logged over \(recent), "
+                + "the night's longest sleep logged began within 2 hours after the bath."
+        }
+    }
+
+    /// "last night", "yesterday", "on Sunday", "on the night of 18 November".
+    static func scope(_ scope: FactScope, facts: InsightFacts) -> String? {
+        switch scope {
+        case .yesterday: return facts.yesterday == nil ? nil : "yesterday"
+        case .lastNight: return facts.lastNight == nil ? nil : "last night"
+        case .day(let date):
+            return date == facts.yesterday?.date ? "yesterday" : "on " + AnswerCheck.when(date, nights: false, facts: facts)
+        case .night(let evening):
+            return evening == facts.lastNight?.evening ? "last night" : "on " + AnswerCheck.when(evening, nights: true, facts: facts)
+        case .latest: return nil
+        }
+    }
+
+    /// "the 4 days to Sunday", "the 7 nights to Sunday night".
+    static func span(_ span: DateSpan, nights: Bool, facts: InsightFacts) -> String {
+        let count = span.dates.count
+        let unit = nights ? (count == 1 ? "night" : "nights") : (count == 1 ? "day" : "days")
+        return "the \(count) \(unit) to \(AnswerCheck.when(span.last, nights: nights, facts: facts))"
+    }
+
+    static func noun(_ measure: Measure) -> String {
+        switch measure {
+        case .feeds: "Feeds logged"
+        case .breastFeeds: "Breastfeeds logged"
+        case .bottleFeeds: "Bottle feeds logged"
+        case .bottleML: "Milk from bottles logged"
+        case .pumpSessions: "Pumping sessions logged"
+        case .pumpedML: "Milk pumped and logged"
+        case .sleep, .slept: "Sleep logged"
+        case .daySleep: "Daytime sleep logged"
+        case .nightSleep: "Night-time sleep logged"
+        case .wees: "Wet nappies logged"
+        case .poos: "Poos logged"
+        case .baths: "Baths logged"
+        case .longestGap: "The longest gap between feed starts logged"
+        case .shortestGap: "The shortest gap between feed starts logged"
+        case .longestSleep: "The longest sleep logged"
+        case .longestSleepStart: "The longest sleep's start logged"
+        case .wakeUps: "Wake-ups logged"
+        case .weight: "Weight logged"
+        case .weightChange: "Weight change logged"
+        }
+    }
+
+    static func superlative(_ measure: Measure, most: Bool) -> String {
+        switch measure.unit {
+        case .seconds: most ? "the longest" : "the shortest"
+        case .ml: most ? "the most" : "the least"
+        default: most ? "the most" : "the fewest"
+        }
     }
 }
