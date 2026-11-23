@@ -2644,7 +2644,7 @@ Lane A: AI16 → AI17 → AI18 → AI19 → AI20 → AI22 (they share `FeedingIn
 
 ### Implementation Tasks (step 3)
 
-- [ ] **AI16 (P1, human: ~2d / CC: ~1.5h)** — FeedingInsights — Ask's rules in `InsightQuestions`
+- [x] **AI16 (P1, human: ~2d / CC: ~1.5h)** — FeedingInsights — Ask's rules in `InsightQuestions` (done 23 Nov 2026: `InsightQuestions.swift` holds the route, the request, the form, reading the answer, the repeat rule and the expiry; `InsightFacts.todaySoFar` and `QuestionWording` write today's facts; the checker for an answer, `CheckedAnswer` and the AI's sentences (`AnswerCheck.sentenceProblem`) sit in `InsightSafety.swift` beside the cards' checker, as only it may make what a screen shows; `MedicineQuestions` gives the logged time only for a look back (X4); `FormNode.text` for the sentences; 16 Linux tests in `InsightQuestionsTests.swift`)
   - Surfaced by: D1 A, D2 B, D3 A, D4 B, D5 A, D6 A, D9 A; Q8, Q9, Q11; X2, X4, X6
   - Files: `FeedingCore/Sources/FeedingInsights/InsightQuestions.swift` (new), `InsightSafety.swift` (X4's medicine rule; Ask's word lists beside the banned list), `FeedingCore/Tests/FeedingInsightsTests/InsightQuestionsTests.swift` (new)
   - What: `route` (danger signs and medicines on the exact text sent, then the gate, then the AI), the 7-day request with "today so far", the latest weights and the earlier question, the form ("needs help now" first, facts, passages, up to 2 sentences, "can't answer", the topic), `accept` (fact and passage checks, the word check on the AI's sentences, each failing sentence left out), the repeat rule, the expiry. Code writing or checking the AI's sentences carries `gstack-shortcut(dec-0d90be60)`.

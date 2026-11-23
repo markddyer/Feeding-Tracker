@@ -279,6 +279,9 @@ final class InsightEngine {
                 return DynamicGenerationSchema(name: name, description: about, anyOf: values)
             case .yesNo:
                 return DynamicGenerationSchema(type: Bool.self)
+            case .text:
+                // Ask's sentences (step 3 D2 B); their length and words are checked by the app.
+                return DynamicGenerationSchema(type: String.self)
             }
         }
         return try GenerationSchema(root: dynamic(form.root, name: "Card", about: nil), dependencies: [])

@@ -69,12 +69,14 @@ public struct CardRequest: Hashable, Sendable, Codable {
 // MARK: - The form the AI fills (D3, D9)
 
 /// The AI's form, as plain data, built for each card: the app turns it into Apple's run-time form.
-/// Every value is a choice from a list: the AI writes no words.
+/// On a card every value is a choice from a list: the AI writes no words. Ask's form alone has
+/// `text`, for its up to 2 checked sentences (step 3 D2 B).
 public indirect enum FormNode: Hashable, Sendable {
     case object(name: String, fields: [FormField])
     case list(of: FormNode, maximum: Int)
     case oneOf([String])
     case yesNo
+    case text(maximumLength: Int)
 }
 
 public struct FormField: Hashable, Sendable {
@@ -565,6 +567,11 @@ public enum InsightCards {
     /// The log as JSON. It is sent with no spaces or line breaks: 29% fewer tokens than spaced out
     /// (AI13 measured about 26,000 tokens a card spaced out; Parent A's D1 A, 23 Nov 2026).
     public static func json(_ request: CardRequest, timeZone: TimeZone, readable: Bool = false) -> String {
+        encode(request, timeZone: timeZone, readable: readable)
+    }
+
+    /// A request as JSON, times in the household's time zone: the cards' and Ask's (step 3).
+    static func encode<Request: Encodable>(_ request: Request, timeZone: TimeZone, readable: Bool = false) -> String {
         let encoder = JSONEncoder()
         encoder.outputFormatting = readable ? [.sortedKeys, .prettyPrinted] : [.sortedKeys]
         let formatter = DateFormatter()

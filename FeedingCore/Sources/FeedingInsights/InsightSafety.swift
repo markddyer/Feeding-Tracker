@@ -283,9 +283,19 @@ public enum MedicineQuestions {
             WordReader.contains(words, phrase: word.split(separator: " ").map(String.init), fuzzy: true)
         }
         guard named != nil || general else { return nil }
-        let asksWhen = words.contains { ["when", "last", "time", "since"].contains($0) }
-        return MedicineQuestion(medicine: named, asksWhenLastGiven: asksWhen && named != nil)
+        // Only a question that looks back gets the logged time; one that looks ahead ("When can I
+        // give …?", "… again?", "How much …?") or is unclear gets the fixed reply (step 3 X4: the
+        // app never times a dose, A5).
+        let looksBack = words.contains { lookingBack.contains($0) }
+        let looksAhead = words.contains { lookingAhead.contains($0) }
+        return MedicineQuestion(medicine: named, asksWhenLastGiven: named != nil && looksBack && !looksAhead)
     }
+
+    static let lookingBack: Set<String> = ["last", "did", "was", "were", "given", "gave", "had", "since"]
+    static let lookingAhead: Set<String> = [
+        "can", "could", "should", "shall", "will", "would", "may", "might", "next", "again", "until", "till", "safe",
+        "allowed", "ok", "okay", "much", "many", "often", "dose", "doses", "more", "another", "before", "after",
+    ]
 }
 
 // MARK: - The answer checker
@@ -640,12 +650,14 @@ public enum AnswerCheck {
     /// again. `leaveOut` true (showing a stored card on a later look, or on the other phone): a
     /// fact or pattern that no longer holds on this phone's log is left out on its own (R5, O3),
     /// and the card is turned down only when nothing is left.
+    /// `allowNoFacts` (Ask, step 3): an answer may hold only NHS passages and the AI's sentences.
     public static func accept(_ choices: CardChoices, offered: [String], facts: InsightFacts, checks: PassageChecks,
-                              timeZone: TimeZone, leaveOut: Bool = false) -> AnswerVerdict {
+                              timeZone: TimeZone, leaveOut: Bool = false, allowNoFacts: Bool = false,
+                              today: PlainDate? = nil) -> AnswerVerdict {
         var problems: [Rejection] = []
         func reject(_ part: String, _ reason: Rejection.Reason) { problems.append(Rejection(part: part, reason: reason)) }
 
-        if choices.facts.isEmpty && choices.patterns.isEmpty { reject("facts", .tooMany) }
+        if !allowNoFacts && choices.facts.isEmpty && choices.patterns.isEmpty { reject("facts", .tooMany) }
         if choices.facts.count > maxFacts { reject("facts", .tooMany) }
         if choices.patterns.count > maxPatterns { reject("patterns", .tooMany) }
         if choices.passages.count > maxPassages { reject("passages", .tooMany) }
@@ -679,7 +691,8 @@ public enum AnswerCheck {
         }
 
         var passages: [CheckedPassage] = []
-        let today = facts.today
+        // A household with nothing logged before today has no sheet day: Ask passes today's date.
+        let today = facts.today ?? today
         for choice in choices.passages {
             guard offered.contains(choice.passageID), let passage = NHSPassages.passage(choice.passageID), let today,
                   NHSPassages.isChecked(passage.id, copied: passage.copied, checks: checks, today: today) else {
@@ -710,7 +723,7 @@ public enum AnswerCheck {
             kept.append(item)
         }
 
-        if leaveOut, lines.isEmpty, patterns.isEmpty { reject("facts", .unknownFact) }
+        if leaveOut, !allowNoFacts, lines.isEmpty, patterns.isEmpty { reject("facts", .unknownFact) }
         guard problems.isEmpty else { return .rejected(problems, needsHelpNow: false) }
         return .accepted(CheckedCard(lines: lines, patterns: patterns, passages: kept, needsHelpNow: false,
                                      factsRevision: facts.revision, factRefs: factRefs, patternChoices: patternChoices))
@@ -1129,4 +1142,123 @@ public enum CardWording {
         default: most ? "the most" : "the fewest"
         }
     }
+}
+
+// MARK: - Ask's answers (step 3)
+
+/// An answer to a typed question that the checker passed: the only thing Ask's screen may show of
+/// the AI's answer. Only `AnswerCheck` can make one.
+public struct CheckedAnswer: Hashable, Sendable {
+    /// "From your log": the app's sentences for the facts the AI chose (the last 7 days and
+    /// nights, the latest weight, today so far).
+    public let lines: [String]
+    /// Up to 2 sentences of general information written by the AI (step 3 D2 B), each checked.
+    public let sentences: [String]
+    public let passages: [CheckedPassage]
+    public let needsHelpNow: Bool
+    /// The log and the NHS passages here can't answer it: the fixed line to people shows.
+    public let cannotAnswer: Bool
+    public let topic: QuestionTopic
+
+    fileprivate init(lines: [String], sentences: [String], passages: [CheckedPassage], needsHelpNow: Bool,
+                     cannotAnswer: Bool, topic: QuestionTopic) {
+        self.lines = lines
+        self.sentences = sentences
+        self.passages = passages
+        self.needsHelpNow = needsHelpNow
+        self.cannotAnswer = cannotAnswer
+        self.topic = topic
+    }
+}
+
+public enum QuestionVerdict: Hashable, Sendable {
+    case accepted(CheckedAnswer)
+    /// Turned down. The AI's "needs help now" flag is passed on all the same (O2, Q9).
+    case rejected([Rejection], needsHelpNow: Bool)
+}
+
+extension AnswerCheck {
+    static let maxSentences = 2
+
+    /// Checks the AI's answer to a typed question and writes every log sentence from the app's
+    /// own wording. Facts and passages go through the cards' checks (`accept(_ choices:)`); today's
+    /// facts through `QuestionWording`; the AI's own sentences through `sentenceProblem`.
+    /// `leaveOut` true (the last try, and showing a kept answer again, X8): a part that fails is
+    /// left out on its own; nothing that fails is ever shown.
+    public static func accept(_ answer: QuestionAnswer, offered: [String], facts: InsightFacts, today: TodaySoFar,
+                              checks: PassageChecks, names: [String], medicines: [String], timeZone: TimeZone,
+                              leaveOut: Bool = false) -> QuestionVerdict {
+        var problems: [Rejection] = []
+        func reject(_ part: String, _ reason: Rejection.Reason) { problems.append(Rejection(part: part, reason: reason)) }
+
+        if answer.facts.count + answer.today.count > maxFacts || Set(answer.today).count != answer.today.count {
+            if !leaveOut { reject("facts", .tooMany) }
+        }
+        let choices = CardChoices(facts: Array(answer.facts.prefix(maxFacts)), patterns: [], passages: answer.passages)
+        var lines: [String] = []
+        var passages: [CheckedPassage] = []
+        switch accept(choices, offered: offered, facts: facts, checks: checks, timeZone: timeZone, leaveOut: leaveOut,
+                      allowNoFacts: true, today: PlainDate(today.asOf, in: timeZone)) {
+        case .accepted(let checked):
+            lines = checked.lines
+            passages = checked.passages
+        case .rejected(let more, _):
+            problems += more
+        }
+        for (index, measure) in answer.today.prefix(maxFacts).enumerated() {
+            if let line = QuestionWording.today(measure, today, timeZone: timeZone) {
+                lines.append(line)
+            } else if !leaveOut {
+                reject("today \(index + 1)", .unknownFact)
+            }
+        }
+
+        // gstack-shortcut(dec-0d90be60): word lists can't catch a calm sentence with no banned word,
+        // upgrade when a parent reports a wrong or reassuring answer, a model test finds one, or
+        // before another family uses the app.
+        if answer.sentences.count > maxSentences && !leaveOut { reject("sentences", .tooMany) }
+        var sentences: [String] = []
+        for (index, sentence) in answer.sentences.prefix(maxSentences).enumerated() {
+            let text = sentence.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            if let problem = sentenceProblem(text, names: names, medicines: medicines) {
+                if !leaveOut { reject("sentence \(index + 1)", problem) }
+            } else {
+                sentences.append(text)
+            }
+        }
+
+        guard problems.isEmpty else { return .rejected(problems, needsHelpNow: answer.needsHelpNow) }
+        let nothing = lines.isEmpty && sentences.isEmpty && passages.isEmpty
+        return .accepted(CheckedAnswer(lines: lines, sentences: sentences, passages: passages,
+                                       needsHelpNow: answer.needsHelpNow, cannotAnswer: answer.cannotAnswer || nothing,
+                                       topic: answer.topic))
+    }
+
+    /// The first problem with one of the AI's own sentences in Ask (step 3 D2 B, Q8, Q11): what
+    /// the cards' checks refuse (digits, number and clock words, verdicts, people to call,
+    /// medicines, causes, blame, predictions, crediting the NHS), and also words about this baby,
+    /// the household's names and medicine names, and every medicine word the medicine check knows.
+    // gstack-shortcut(dec-0d90be60): word lists can't catch a calm sentence with no banned word,
+    // upgrade when a parent reports a wrong or reassuring answer, a model test finds one, or before
+    // another family uses the app.
+    static func sentenceProblem(_ text: String, names: [String], medicines: [String]) -> Rejection.Reason? {
+        if text.count > maxLength { return .tooLong }
+        if let problem = wordProblem(text) { return problem }
+        let words = WordReader.words(text)
+        for phrase in aboutTheBaby where WordReader.contains(words, phrase: phrase, fuzzy: false) {
+            return .banned(phrase.joined(separator: " "))
+        }
+        for name in names + medicines + MedicineQuestions.medicineWords {
+            let phrase = WordReader.words(name)
+            if !phrase.isEmpty, WordReader.contains(words, phrase: phrase, fuzzy: false) { return .banned(name) }
+        }
+        return nil
+    }
+
+    /// General information is about babies, never this one (D2 B: "nothing about this baby").
+    static let aboutTheBaby: [[String]] = [
+        "she", "he", "her", "him", "his", "hers", "shes", "hes", "herself", "himself", "your baby", "your babys",
+        "the baby", "the babys", "your little one", "your son", "your daughter", "your newborn",
+    ].map { $0.split(separator: " ").map(String.init) }
 }

@@ -132,6 +132,30 @@ public struct NightFacts: Hashable, Sendable, Codable, Identifiable {
     public var id: PlainDate { evening }
 }
 
+/// Today so far, for Ask (step 3 D3 A): today's counts until now, and the times of the last feed,
+/// nappy, sleep and bath (from the week Ask sends). Numbers and times only.
+public struct TodaySoFar: Hashable, Sendable, Codable {
+    public var day: DayFacts
+    public var lastFeed: Date?
+    public var lastNappy: Date?
+    public var lastSleepStart: Date?
+    /// Nil while the last sleep is still going.
+    public var lastSleepEnd: Date?
+    public var lastBath: Date?
+    public var asOf: Date
+
+    public init(day: DayFacts, lastFeed: Date?, lastNappy: Date?, lastSleepStart: Date?, lastSleepEnd: Date?,
+                lastBath: Date?, asOf: Date) {
+        self.day = day
+        self.lastFeed = lastFeed
+        self.lastNappy = lastNappy
+        self.lastSleepStart = lastSleepStart
+        self.lastSleepEnd = lastSleepEnd
+        self.lastBath = lastBath
+        self.asOf = asOf
+    }
+}
+
 /// A weight, as logged.
 public struct WeightFact: Hashable, Sendable, Codable {
     public var at: Date
@@ -187,19 +211,10 @@ extension InsightFacts {
             ageInDays = days >= 0 ? days : nil
         }
 
-        // Medicines never reach the sheet (D6). Entries after now (a clock set back) are left out.
-        let all = snapshots.filter {
-            $0.event.babyID == babyID && $0.event.deletedAt == nil && $0.event.kind != .medicine && $0.event.startedAt <= now
-        }
         // Only the 4 weeks, with 2 days before them for the first gap between feeds, are counted, so
-        // a year of entries costs no more than a month (O9). Copies logged on both phones are
-        // found among those and count once, as on every screen.
+        // a year of entries costs no more than a month (O9).
         let from = yesterdayDate.adding(days: -Self.daysBack - 2).firstMoment(in: timeZone)
-        let recent = all.filter { $0.event.startedAt >= from }
-        let pairs = duplicateFeeds(recent.map(\.event), confirmedDistinct: confirmedDistinct)
-            + duplicateCareEntries(recent, confirmedDistinct: confirmedDistinct)
-        let hidden = Set(pairs.map(\.duplicate))
-        let live = recent.filter { !hidden.contains($0.id) }
+        let (all, live) = Self.entries(snapshots, babyID: babyID, from: from, confirmedDistinct: confirmedDistinct, now: now)
 
         let past = live.filter { $0.event.startedAt <= endOfYesterday }
         // The first day of each kind, and of anything, from the whole log.
@@ -226,6 +241,44 @@ extension InsightFacts {
 
         weights = FeedingCore.weights(all, babyID: babyID).map { WeightFact(at: $0.at, grams: $0.grams) }
         revision = Self.revision(of: self)
+    }
+
+    /// The baby's entries up to `now` (`all`; entries after now, from a clock set back, are left
+    /// out), and those from `from` with copies logged on both phones counted once, as on every
+    /// screen (`live`). Medicines never reach the sheet (D6).
+    static func entries(_ snapshots: [EventSnapshot], babyID: String, from: Date, confirmedDistinct: Set<Set<String>>,
+                        now: Date) -> (all: [EventSnapshot], live: [EventSnapshot]) {
+        let all = snapshots.filter {
+            $0.event.babyID == babyID && $0.event.deletedAt == nil && $0.event.kind != .medicine && $0.event.startedAt <= now
+        }
+        let recent = all.filter { $0.event.startedAt >= from }
+        let pairs = duplicateFeeds(recent.map(\.event), confirmedDistinct: confirmedDistinct)
+            + duplicateCareEntries(recent, confirmedDistinct: confirmedDistinct)
+        let hidden = Set(pairs.map(\.duplicate))
+        return (all, recent.filter { !hidden.contains($0.id) })
+    }
+
+    // MARK: Today so far (Ask, step 3 D3 A)
+
+    /// Today's counts so far and the times of the last feed, nappy, sleep and bath, for Ask: the
+    /// same counting as the sheet's days, with "now" in place of the end of yesterday. Numbers and
+    /// times only: no notes, no medicines.
+    public static func todaySoFar(_ snapshots: [EventSnapshot], babyID: String, dayHours: DayHours, timeZone: TimeZone,
+                                  confirmedDistinct: Set<Set<String>>, now: Date) -> TodaySoFar {
+        let today = PlainDate(now, in: timeZone)
+        // Two days back, for the first gap between feeds and a sleep that began before midnight;
+        // the last of each kind is looked for over the week Ask sends.
+        let from = today.adding(days: -InsightQuestions.daysSent).firstMoment(in: timeZone)
+        let (_, live) = entries(snapshots, babyID: babyID, from: from, confirmedDistinct: confirmedDistinct, now: now)
+        let day = days(live, babyID: babyID, from: today, to: today, firstDays: [:], dayHours: dayHours,
+                       timeZone: timeZone, endOfYesterday: now).first ?? DayFacts(date: today)
+        func last(_ kind: EventKind) -> EventSnapshot? {
+            live.filter { $0.event.kind == kind }.max { $0.event.startedAt < $1.event.startedAt }
+        }
+        let sleep = last(.sleep)
+        return TodaySoFar(day: day, lastFeed: last(.feed)?.event.startedAt, lastNappy: last(.nappy)?.event.startedAt,
+                          lastSleepStart: sleep?.event.startedAt, lastSleepEnd: sleep?.event.endedAt,
+                          lastBath: last(.bath)?.event.startedAt, asOf: now)
     }
 
     // MARK: Days
@@ -451,5 +504,12 @@ extension HouseholdData {
         return InsightFacts(snapshots, babyID: babyID, birthDate: birthDate(babyID: babyID), dayHours: settings.dayHours,
                             timeZone: settings.timeZone, breastfeeder: breastfeeder, confirmedDistinct: distinctFeedPairs,
                             now: now)
+    }
+
+    /// Today so far, for Ask (step 3 D3 A).
+    public func todaySoFar(babyID: String, now: Date) -> TodaySoFar {
+        let settings = householdSettings
+        return InsightFacts.todaySoFar(snapshots, babyID: babyID, dayHours: settings.dayHours, timeZone: settings.timeZone,
+                                       confirmedDistinct: distinctFeedPairs, now: now)
     }
 }
