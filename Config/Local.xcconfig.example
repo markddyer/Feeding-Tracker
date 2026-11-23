@@ -7,3 +7,10 @@ DEVELOPMENT_TEAM = ABCDE12345
 CLAUDE_CLIENT_ID = clid_your_client_id
 // and, for the simulator only, an API key from the app's workspace (never in a phone build).
 CLAUDE_DEV_API_KEY =
+
+// TestFlight uploads: an App Store Connect API key (appstoreconnect.apple.com > Users and Access >
+// Integrations > Team Keys, role Admin: App Manager can't use the cloud distribution certificate).
+// Its file goes in ~/.appstoreconnect/private_keys/AuthKey_<key ID>.p8, never in the project.
+// The upload command in CLAUDE.md reads these two lines.
+ASC_KEY_ID = ABC123DEF4
+ASC_ISSUER_ID = 00000000-0000-0000-0000-000000000000

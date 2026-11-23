@@ -72,6 +72,8 @@ Also in place for the first upload (16 Nov 2026):
   2. Add yourself and Parent B to it.
   3. Each build expires after 90 days.
 
+- [x] An App Store Connect API key for TestFlight uploads (23 Nov 2026): **Users and Access › Integrations › App Store Connect API › Team Keys**, role **Admin** (App Manager can't use the cloud distribution certificate). Its file goes in `~/.appstoreconnect/private_keys/`, and its key ID and issuer ID in the gitignored `Config/Local.xcconfig` (`ASC_KEY_ID`, `ASC_ISSUER_ID`). Uploads then need no Xcode sign-in, which runs out hours after each sign-in for a command-line upload.
+
 ## 5. Parent B's iPhone
 - [ ] Update to **iOS 27.1 or later**. That is the app's minimum.
 - [ ] Accept the App Store Connect invite email.
@@ -85,3 +87,12 @@ Also in place for the first upload (16 Nov 2026):
 - [ ] The same permissions as Parent B: notifications, Time Sensitive and alarms.
 - [ ] Check that each Watch is supported by watchOS 27. That means Series 9–12, SE 3 or Ultra 2–4. Series 8 or earlier, SE 2 and Ultra 1 are **not** supported.
 - [ ] Check that the household owner's iCloud has some free storage. If it fills up, sync stops for both of you.
+
+## 7. AI insights: App Attest and the Claude Console (23 Nov 2026)
+`docs/planning/12-ai-insights-gauntlet.md`, D2 and S10. The phones reach Claude with Apple's App Attest (each install proves it is the real app) and a client ID, with no key in the app.
+- [x] Claude Console (platform.claude.com), **Settings › App integrations › Create app integration**: name "Little Log", workspace "Little Log" (it can't be changed later), the Apple team ID, and both bundle IDs, `com.tracker.feeding` and `com.tracker.feeding.dev` (one integration takes up to 32). Its client ID (`clid_…`, not a secret) goes in the gitignored `Config/Local.xcconfig` as `CLAUDE_CLIENT_ID`.
+- [x] Claude Console, **API keys**: a key for the simulator only, in `Config/Local.xcconfig` as `CLAUDE_DEV_API_KEY`. A phone build never carries it (check the built app's `Info.plist`: `ClaudeDevAPIKey` is empty).
+- [ ] Claude Console: the "Little Log" workspace's spend limit, £10 a month (D11).
+- [x] App Attest capability on both App IDs: `project.yml` gives both variants the entitlement `com.apple.developer.devicecheck.appattest-environment` = `production`, and automatic signing (`-allowProvisioningUpdates`) adds the capability to the App ID. `production` in a build from Xcode too, so it is the same as TestFlight (S10).
+- [x] Check from a real phone, with a made-up week and no yes: Little Log Dev › Home's Tests menu › **AI connection test**, or launch with `-aiConnectionCheck YES`, then read the "ai-check:" lines in the sync log (see `CLAUDE.md`). On the Duo, 23 Nov 2026: App Attest passed in 2.2 s and a card was made in 3.5 s.
+- [ ] Little Log (TestFlight build 5 or later): each parent's **Yes** in Settings › AI insights runs App Attest at once; a failure shows under "This phone".
