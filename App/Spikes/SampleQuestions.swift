@@ -6,7 +6,8 @@ import Foundation
 /// `-sampleQuestions` (Little Log Dev only): made-up questions in Ask, for screenshots and tap
 /// tests; no AI runs. `answer` (a log question with its answer), `help` (a danger sign),
 /// `medicine` (a medicine question), `closed` (AI insights off), `failed` (couldn't reach the AI),
-/// `people` (the third question on a topic), or `all` for one of each.
+/// `people` (the third question on a topic), `parentHelp` (the AI's button on a parent's question), or
+/// `all` for one of each.
 enum SampleQuestions {
     static func make(_ state: String, now: Date) -> [KeptQuestion] {
         let zone = TimeZone(identifier: "Europe/London") ?? .current
@@ -36,6 +37,9 @@ enum SampleQuestions {
         case "closed": return [closed]
         case "failed": return [failed]
         case "people": return [people]
+        case "parentHelp":
+            return [KeptQuestion(id: "sample-parent-help", askedAt: at(2), text: "I'm so tired I can't think straight",
+                                 kind: .parentHelp)]
         case "all": return [asked, help, medicine, closed, failed, people]
         default: return []
         }

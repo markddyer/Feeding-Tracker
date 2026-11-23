@@ -199,6 +199,8 @@ private struct AnswerBubble: View {
         switch question.kind {
         case .helpNow:
             HelpNowInChat()
+        case .parentHelp:
+            HelpNowInChat(passage: NHSPassages.passage(InsightQuestions.parentHelpPassage) ?? NHSPassages.urgent)
         case .lastGiven:
             Tile(label: "From your log") {
                 Text(lastGivenLine(zone: zone)).feedText(.body)
@@ -320,12 +322,16 @@ private struct FixedReply: View {
 /// The Get help now card in the chat, in place of an answer (A2): the NHS's urgent list word for
 /// word, with Call 999 and Call 111. No AI, works with no signal.
 private struct HelpNowInChat: View {
+    /// The baby's urgent list, or, when the AI pressed the button on a question about how a parent
+    /// feels, the NHS's urgent help for mental health (step 3 D13 A).
+    var passage: Passage = NHSPassages.urgent
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Get help now")
                 .feedText(.dayHeading)
                 .accessibilityAddTraits(.isHeader)
-            NHSPassageTile(passage: NHSPassages.urgent)
+            NHSPassageTile(passage: passage)
             CallButtons()
         }
         .accessibilityElement(children: .contain)

@@ -53,8 +53,18 @@ struct QuestionEngineTests {
     @Test func theHelpFlagWinsEvenInAnUnreadableAnswer() async throws {
         let job = try #require(job())
         let answerer = FixedAnswerer(.success(#"{"needsHelpNow":true,"topic":"nonsense"}"#))
-        #expect(await ask(job, answerer) == .helpNow)
+        #expect(await ask(job, answerer) == .helpNow(forParent: false))
         #expect(answerer.calls == 1)
+    }
+
+    /// Step 3 D13 A: the button on a question about how a parent feels brings the parent's help.
+    @Test func theHelpFlagOnAParentsFeelingsBringsTheirHelp() async throws {
+        let job = try #require(job("I'm so tired I can't think straight"))
+        #expect(await ask(job, FixedAnswerer(.success(#"{"needsHelpNow":true,"topic":"feelings"}"#)))
+                == .helpNow(forParent: true))
+        #expect(await ask(job, FixedAnswerer(.success(#"{"needsHelpNow":true,"topic":"sleep"}"#)))
+                == .helpNow(forParent: false))
+        #expect(NHSPassages.passage(InsightQuestions.parentHelpPassage) != nil)
     }
 
     @Test func twoUnreadableAnswersGiveTheFixedReply() async throws {

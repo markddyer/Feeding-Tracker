@@ -447,8 +447,9 @@ extension ModelTests {
                                                                          participants: [household.parentA, household.parentB],
                                                                          now: household.now).make })
         switch result {
-        case .helpNow:
-            return outcome(question.flagAllowed ? "passed" : "flagged help", answer: "Get help now (the AI's flag)")
+        case .helpNow(let forParent):
+            return outcome(question.flagAllowed ? "passed" : "flagged help",
+                           answer: forParent ? "Get help now for a parent (the AI's flag)" : "Get help now (the AI's flag)")
         case .closed(let closed):
             return outcome("error: the gate closed (\(closed))")
         case .failed(.turnedDown):

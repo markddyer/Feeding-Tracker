@@ -369,9 +369,9 @@ final class InsightEngine {
                 let people = InsightQuestions.needsPeopleLine(answer.topic, kept: log.questions, now: now)
                 log.add(KeptQuestion(askedAt: now, text: typed, kind: .asked, answer: answer, offered: job.offered,
                                      peopleLine: people))
-            case .helpNow:
+            case .helpNow(let forParent):
                 SyncLog.add("ask: the AI's flag, Get help now")
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: .helpNow))
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: forParent ? .parentHelp : .helpNow))
             case .closed:
                 log.add(KeptQuestion(askedAt: now, text: typed, kind: .closed))
             case .failed(let failure):
@@ -384,8 +384,9 @@ final class InsightEngine {
 
     enum QuestionResult: Hashable, Sendable {
         case answered(QuestionAnswer)
-        /// The AI's "needs help now" flag (A2's second net), read before anything else (X6).
-        case helpNow
+        /// The AI's "needs help now" flag (A2's second net), read before anything else (X6). On a
+        /// question about how a parent feels, the parent's urgent help shows (step 3 D13 A).
+        case helpNow(forParent: Bool)
         case closed(CardClosed)
         case failed(InsightFailure)
     }
@@ -414,7 +415,9 @@ final class InsightEngine {
                 return .failed(failure(error))
             }
             let json = Data(text.utf8)
-            if InsightQuestions.readsNeedsHelpNow(json) { return .helpNow }
+            if InsightQuestions.readsNeedsHelpNow(json) {
+                return .helpNow(forParent: InsightQuestions.readsTopic(json) == .feelings)
+            }
             guard let answer = InsightQuestions.read(json) else {
                 note = InsightCards.unreadableNote
                 continue
@@ -425,7 +428,7 @@ final class InsightEngine {
                 if let closed = gate() { return .closed(closed) }
                 return .answered(answer)
             case .rejected(let problems, let needsHelpNow):
-                if needsHelpNow { return .helpNow }
+                if needsHelpNow { return .helpNow(forParent: answer.topic == .feelings) }
                 note = InsightCards.retryNote(problems)
             }
         }

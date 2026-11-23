@@ -127,6 +127,17 @@ final class QuestionsFlowTests: XCTestCase {
         keep(app, "An answer")
     }
 
+    /// The AI's button on a question about how a parent feels shows the NHS's urgent help for
+    /// mental health, with both call buttons, not the baby's list (step 3 D13 A).
+    func testTheHelpButtonOnAParentsQuestionShowsTheirHelp() {
+        let app = launch(["-sampleInsightCard", "YES", "-sampleQuestions", "parentHelp", "-openScreen", "ask"])
+        XCTAssertTrue(app.staticTexts["Get help now"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'mental health'")).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'babies under 3 months'")).firstMatch.exists,
+                       "not the baby's list")
+        XCTAssertTrue(app.buttons["Call 9 9 9"].exists)
+    }
+
     /// The third question on a topic within 2 hours starts with the line to people.
     func testTheThirdOnATopicBringsPeople() {
         let app = launch(["-sampleInsightCard", "YES", "-sampleQuestions", "people", "-openScreen", "ask"])

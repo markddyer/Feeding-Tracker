@@ -97,6 +97,9 @@ public enum QuestionRoute: Hashable, Sendable {
 public struct KeptQuestion: Hashable, Sendable, Codable, Identifiable {
     public enum Kind: String, Hashable, Sendable, Codable {
         case helpNow, lastGiven, medicineReply, closed, asked, couldNotAsk
+        /// The AI pressed "needs help now" on a question about how a parent feels: the NHS's urgent
+        /// mental health page, not the baby's urgent list (step 3 D13 A, after the model tests).
+        case parentHelp
     }
 
     public var id: String
@@ -328,6 +331,17 @@ public enum InsightQuestions {
         guard let object = try? JSONSerialization.jsonObject(with: json) as? [String: Any] else { return false }
         return object["needsHelpNow"] as? Bool ?? false
     }
+
+    /// The topic on its own, read with the flag (step 3 D13 A): nil when it can't be read.
+    public static func readsTopic(_ json: Data) -> QuestionTopic? {
+        guard let object = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
+              let topic = object["topic"] as? String else { return nil }
+        return QuestionTopic(rawValue: topic)
+    }
+
+    /// The NHS page the help button shows for a parent (step 3 D13 A), whether ticked or not, like the
+    /// baby's urgent list: the call buttons matter most.
+    public static let parentHelpPassage = "mental-health-urgent"
 
     // MARK: Checking and showing
 
