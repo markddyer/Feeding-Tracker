@@ -1,4 +1,5 @@
 import FeedingCore
+import FeedingInsights
 import SwiftUI
 
 /// The home screen (`docs/planning/05-visual-redesign.md`, "Home"): a greeting and the baby's
@@ -19,6 +20,8 @@ struct HomeView: View {
     @State private var timeChange: TimeChange?
     @State private var pooDetails: PooDetailsTarget?
     @State private var editingMedicines = false
+    /// The morning card, from the afternoon's slim line (with no night's entries).
+    @State private var morningCard: MorningCardRequest?
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.secondColumnShowing) private var secondColumnShowing
 
@@ -34,9 +37,15 @@ struct HomeView: View {
                     if case .askedOfMe(let ask) = facts.askStatus {
                         AskCard(ask: ask, facts: facts, me: me, onUndo: { undo = $0 })
                     }
-                    // Each morning until 12:00: last night, as a handover (X3, DD4).
-                    if let night = lastNight(at: context.date) {
-                        LastNightLine(night: night, zone: model.store.data.householdSettings.timeZone)
+                    // Each morning until 12:00: last night, as a handover (X3, DD4), with the AI's
+                    // card when there is one (AI insights, the parents' pick A). From then until
+                    // the night starts, the card alone as a slim line.
+                    let night = lastNight(at: context.date)
+                    let card = night != nil || cardLineTime(context.date) ? CardShown.now(.morning, at: context.date) : .nothing
+                    if let night {
+                        LastNightLine(night: night, zone: model.store.data.householdSettings.timeZone, card: card)
+                    } else if card.isAI {
+                        AICardLine(title: CardText.title(.morning), shown: card) { morningCard = MorningCardRequest() }
                     }
                     HeroTile(facts: facts)
                     if let feed = facts.feedInProgress {
@@ -91,6 +100,21 @@ struct HomeView: View {
         .sheet(isPresented: $editingMedicines) {
             NavigationStack { MedicineListEditor() }
         }
+        .sheet(item: $morningCard) { request in
+            InsightCardSheet(kind: .morning, night: request.night)
+        }
+    }
+
+    /// By day on the household's clock: the morning card's slim line shows then, once "Last night"
+    /// has gone at 12:00, until the night starts. Feeding Dev: `-homeCardLine YES` shows it at any
+    /// hour, without "Last night", for screenshots.
+    private func cardLineTime(_ now: Date) -> Bool {
+        #if FEEDING_DEV
+        if UserDefaults.standard.bool(forKey: "homeCardLine") { return true }
+        #endif
+        let settings = model.store.data.householdSettings
+        if case .day = settings.dayHours.period(at: now, in: settings.timeZone) { return true }
+        return false
     }
 
     private var log: CareLog {
@@ -122,8 +146,8 @@ struct HomeView: View {
     }
 
     /// Feeding Dev only: launch with `-homeSheet pooDetails` (the poo's colour and consistency,
-    /// for the last nappy), `changeTime` (Change time, for the last nappy) or `medicines` (the
-    /// medicine list), for screenshots.
+    /// for the last nappy), `changeTime` (Change time, for the last nappy), `medicines` (the
+    /// medicine list) or `insightCard` (the morning's AI card), for screenshots.
     private func openDevSheet() {
         #if FEEDING_DEV
         let last = lastNappy(model.store.data.visibleSnapshots(babyID: babyID), babyID: babyID, now: Date())
@@ -134,6 +158,9 @@ struct HomeView: View {
             if let last { timeChange = TimeChange(ids: [last.id], field: .start, title: "Wee and poo", at: last.at) }
         case "medicines":
             editingMedicines = true
+        case "insightCard":
+            // The morning card as "Last night" opens it, with the night's entries under it.
+            morningCard = MorningCardRequest(night: lastNight(at: Date()))
         default:
             break
         }
@@ -152,6 +179,7 @@ struct HomeView: View {
     private func lastNight(at now: Date) -> LastNight? {
         let who = model.store.data.whoDidIt(babyID: babyID, now: now)
         #if FEEDING_DEV
+        if UserDefaults.standard.bool(forKey: "homeCardLine") { return nil }
         if UserDefaults.standard.bool(forKey: "homeLastNight") {
             let today = PlainDate(now, in: model.store.data.householdSettings.timeZone)
             let night = who.night(today.adding(days: -1))

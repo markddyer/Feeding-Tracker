@@ -1,4 +1,5 @@
 import FeedingCore
+import FeedingInsights
 import SwiftUI
 
 /// "Last night" at the top of Home (X3, DD4, 3A): one slim line on `sleep-tint`, from the night's
@@ -6,9 +7,13 @@ import SwiftUI
 /// colour of who did it (who got up, for a wake-up), in time order, at most 8 then "+N", and
 /// "Slept 6h 40m ›". A tap opens the night's entries. A handover, not a score: no counts per
 /// parent here.
+/// With AI insights on (step 2, AI11, the parents' pick A): the AI mark before the ›, and a tap
+/// opens one card, the AI's part first (or the facts only), then the night's entries. With no card
+/// it is exactly as before.
 struct LastNightLine: View {
     let night: LastNight
     let zone: TimeZone
+    var card: CardShown = .nothing
     @State private var open = false
     @ScaledMetric(relativeTo: .body) private var shape: CGFloat = 15
 
@@ -31,6 +36,11 @@ struct LastNightLine: View {
                         .monospacedDigit()
                         .fixedSize()
                 }
+                switch card {
+                case .card: AIMark()
+                case .making: ProgressView().controlSize(.small)
+                case .nothing, .factsOnly: EmptyView()
+                }
                 Image(systemName: "chevron.right")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(Theme.textMuted)
@@ -43,10 +53,15 @@ struct LastNightLine: View {
         }
         .buttonStyle(PressStyle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ShareText.spokenLastNight(night))
-        .accessibilityHint("Shows last night's entries")
+        .accessibilityLabel(ShareText.spokenLastNight(night) + (card == .nothing ? "" : card.isAI ? ", with a card picked by AI" : ""))
+        .accessibilityHint(card == .nothing ? "Shows last night's entries" : "Shows the card and last night's entries")
+        .accessibilityIdentifier("lastNightLine")
         .sheet(isPresented: $open) {
-            LastNightSheet(night: night, zone: zone, sides: sides)
+            if card == .nothing {
+                LastNightSheet(night: night, zone: zone, sides: sides)
+            } else {
+                InsightCardSheet(kind: .morning, night: night)
+            }
         }
     }
 }
@@ -73,7 +88,7 @@ private struct FlowShapes: View {
 }
 
 /// Lays its children out left to right, starting a new row when the width runs out.
-private struct WrapLayout: Layout {
+struct WrapLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

@@ -187,6 +187,26 @@ struct CardFormTests {
         #expect(!json.contains(parentA.rawValue))
     }
 
+    @Test func thePlainCardHasTheAppsOwnFacts() {
+        // "Facts only today" (S12): no AI, the same wording as a card, each line's fact kept.
+        let data = household(loggedDays(from: date("2026-11-09"), feeds: Array(repeating: 8, count: 13)))
+        guard let card = InsightCards.plainCard(data, babyID: baby, now: now) else { Issue.record("no card"); return }
+        #expect(card.lines.contains("8 feeds logged yesterday."))
+        #expect(card.lines.count == card.refs.count)
+        #expect(card.refs.contains { $0.scope.isNight })
+        #expect(card.period == InsightCards.currentPeriod(.morning, data: data, babyID: baby, now: now))
+        #expect(InsightCards.plainCard(HouseholdData(), babyID: baby, now: now) == nil)
+    }
+
+    @Test func everyMeasureOnAGraphOpensIt() {
+        for measure in Measure.allCases where measure != .baths {
+            #expect(measure.graph != nil, "\(measure)")
+        }
+        #expect(Measure.wakeUps.graph == .asleep)
+        #expect(FactScope.night(date("2026-11-21")).date == date("2026-11-21"))
+        #expect(FactScope.latest.date == nil)
+    }
+
     @Test func whatTheAISeesIsWhatIsSent() {
         // Settings' "What the AI sees" (A8, O8) shows the same request a card sends, before any yes too.
         let entries = loggedDays(from: date("2026-11-09"), feeds: Array(repeating: 8, count: 13))
@@ -328,7 +348,55 @@ struct CardRemakeTests {
             Issue.record("expected the stored card"); return
         }
         #expect(card.made == 1)
-        #expect(InsightCards.show(card, data: data, babyID: baby, now: made)?.lines == ["8 feeds logged yesterday."])
+        let shown = InsightCards.show(card, data: data, babyID: baby, now: made)
+        #expect(shown?.lines == ["8 feeds logged yesterday."])
+        // Each sentence keeps the fact behind it, to sit under its day and open its graph (AI11).
+        #expect(shown?.factRefs == [FactRef(.day(date("2026-11-21")), .feeds)])
+        #expect(InsightCards.isCurrent(card, for: card.period))
+    }
+
+    @Test func whatTheScreenShows() {
+        let later = made.addingTimeInterval(.hours(1))
+        func onScreen(_ data: HouseholdData, _ kind: CardKind = .morning) -> CardOnScreen {
+            InsightCards.onScreen(kind, data: data, babyID: baby, me: parentA, now: later)
+        }
+        // No yes from both: nothing new, so "Last night" stays as it was.
+        #expect(onScreen(household(days)) == .nothing)
+        // Both said yes, no card yet: made soon, or the facts only.
+        guard case .noCard(_, let plain) = onScreen(consenting(household(days))) else {
+            Issue.record("expected no card yet"); return
+        }
+        #expect(plain?.lines.isEmpty == false)
+        // The shared card once made.
+        var data = withCard(days)
+        guard case .card(let card, _) = onScreen(data) else { Issue.record("expected the card"); return }
+        #expect(card.lines == ["8 feeds logged yesterday."])
+        // Either parent's off: nothing; two "wrong" reports: paused, with the facts only.
+        var off = data
+        off.setInsightYes(false, member: parentB, now: later)
+        #expect(onScreen(off) == .nothing)
+        data.reportWrongCard(now: made)
+        data.reportWrongCard(now: made.addingTimeInterval(60))
+        guard case .paused(_, let facts) = onScreen(data) else { Issue.record("expected paused"); return }
+        #expect(facts != nil)
+        // "This week" has no facts-only card: its facts are the graphs.
+        if case .noCard(_, let weekPlain) = InsightCards.onScreen(.week, data: consenting(household(days)), babyID: baby,
+                                                                  me: parentA, now: at(2026, 11, 23, 9)) {
+            #expect(weekPlain == nil)
+        } else {
+            Issue.record("expected no week card yet")
+        }
+    }
+
+    @Test func theCardsTimeCoversYesterdayAndLastNight() {
+        guard let period = InsightCards.currentPeriod(.morning, data: withCard(days), babyID: baby, now: made) else {
+            Issue.record("no period"); return
+        }
+        let window = InsightCards.window(period, dayHours: .standard, timeZone: london)
+        #expect(window.contains(at(2026, 11, 21, 9)))
+        #expect(window.contains(at(2026, 11, 22, 3)))
+        #expect(!window.contains(at(2026, 11, 20, 23)))
+        #expect(!window.contains(at(2026, 11, 22, 9)))
     }
 
     @Test func aLateSyncedEntryWithAnOlderChangeTimeStillRemakes() {

@@ -218,9 +218,49 @@ enum SampleData {
                 data.askNight(tonight, by: me, now: now.addingTimeInterval(-300))
                 data.claimNight(tonight, by: other, now: now.addingTimeInterval(-120))
             }
+            if defaults.bool(forKey: "sampleInsightCard") {
+                addInsightCards(&data, me: me, other: other, now: now)
+            }
         }
         if defaults.bool(forKey: "sampleFirsts") {
             addFirsts(into: store, me: me, other: other, now: now)
+        }
+    }
+
+    /// `-sampleInsightCard YES` (AI insights, AI11): both parents' yes, every NHS passage ticked, and
+    /// a made-up card for this morning and, with `-sampleWeek 30`, for "This week": choices as the
+    /// AI might make them, passed by the same checker. No AI runs.
+    static func addInsightCards(_ data: inout HouseholdData, me: MemberID, other: MemberID, now: Date) {
+        let babyID = "sample-baby"
+        let zone = data.householdSettings.timeZone
+        data.setInsightYes(true, member: me, now: now)
+        data.setInsightYes(true, member: other, now: now)
+        let today = PlainDate(now, in: zone)
+        for passage in NHSPassages.all {
+            for id in [passage.id] + passage.summaries.map(\.id) {
+                data.setPassageCheck(id, checkedOn: today, now: now)
+            }
+        }
+        for kind in CardKind.allCases {
+            guard case .make(let job, _) = InsightCards.plan(kind, data: data, babyID: babyID, me: me, participants: [me, other],
+                                                             tries: LocalCardTries(), now: now) else { continue }
+            let period = job.request.period
+            let sheet = data.insightFacts(babyID: babyID, now: now)
+            let day = period.days.last
+            var wanted = [FactRef(.day(day), .feeds), FactRef(.day(day), .wees), FactRef(.day(day), .sleep)]
+            if let night = period.nights?.last {
+                wanted = [FactRef(.night(night), .feeds), FactRef(.night(night), .longestSleep)] + wanted
+            }
+            let facts = wanted.filter { CardWording.fact($0, facts: sheet, timeZone: zone) != nil }
+            let passages = job.request.passages.prefix(1).map { PassageChoice($0.id, summary: $0.summaries.first?.id) }
+            let steady = PatternChoice(.steady, .feeds, recent: DateSpan(day.adding(days: -3), day))
+            for patterns in [[steady], []] {
+                let choices = CardChoices(facts: facts, patterns: patterns, passages: passages)
+                if case (.accepted, let card?) = InsightCards.accept(choices, job: job, data: data, babyID: babyID, now: now) {
+                    data.storeInsightCard(card, now: now)
+                    break
+                }
+            }
         }
     }
 

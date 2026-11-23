@@ -1,5 +1,6 @@
 import Charts
 import FeedingCore
+import FeedingInsights
 import SwiftUI
 
 /// The Graphs tab (plan v1, Phase 2; the user's choices of 16 Nov 2026, from
@@ -17,6 +18,10 @@ struct GraphsView: View {
     @State private var width: CGFloat = 0
     /// The graph page open now.
     @State private var page: GraphPageRequest?
+    /// "This week" (AI insights, AI11), and the graph page one of its lines asked for: opened once
+    /// the card has closed, the same way as a tap on a graph (one navigation style, 21 Nov 2026).
+    @State private var weekCardOpen = false
+    @State private var pageAfterCard: GraphPageRequest?
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -40,6 +45,11 @@ struct GraphsView: View {
                     Text("Graphs")
                         .feedText(.title)
                         .accessibilityAddTraits(.isHeader)
+                    // Last week's AI card, Monday to Sunday (step 2 D5, D15).
+                    let week = CardShown.now(.week, at: context.date)
+                    if week.isAI {
+                        AICardLine(title: weekTitle(week), shown: week) { weekCardOpen = true }
+                    }
                     Picker("Time shown", selection: $rangeName) {
                         Text("7 days").tag(GraphRange.week.rawValue)
                         Text("4 weeks").tag(GraphRange.fourWeeks.rawValue)
@@ -90,11 +100,29 @@ struct GraphsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .navigationDestination(item: $page) { GraphPage(request: $0) }
+        .task {
+            #if FEEDING_DEV
+            // `-graphsSheet week`: "This week" open at launch, for screenshots.
+            if UserDefaults.standard.string(forKey: "graphsSheet") == "week" { weekCardOpen = true }
+            #endif
+        }
+        .sheet(isPresented: $weekCardOpen, onDismiss: {
+            page = pageAfterCard
+            pageAfterCard = nil
+        }) {
+            InsightCardSheet(kind: .week, openGraph: { pageAfterCard = GraphPageRequest(kind: $0, day: $1) })
+        }
         .sheet(isPresented: $addingGrowth) {
             if let me = model.me {
                 CareEditor(mode: .newGrowth, me: me, babyID: model.baby?.name ?? "")
             }
         }
+    }
+
+    /// "This week · Mon 17 to Sun 23 Nov".
+    private func weekTitle(_ shown: CardShown) -> String {
+        if case .card(_, let period) = shown { return "This week · \(CardText.weekShort(period.days))" }
+        return "This week"
     }
 
     /// Every growth entry of the baby, oldest first, for the tile's length and head line.

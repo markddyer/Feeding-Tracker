@@ -73,6 +73,18 @@ enum CardMakeResult: Hashable, Sendable {
     case failed(InsightFailure)
 }
 
+/// Why the last look at a kind of card made none, for its period: the screens then show the
+/// facts-only card (S12) rather than "Making…".
+struct CardOutcome: Hashable, Sendable {
+    enum Reason: Hashable, Sendable {
+        case failed(InsightFailure)
+        case closed(CardClosed)
+    }
+
+    let period: CardPeriod
+    let reason: Reason
+}
+
 @MainActor
 @Observable
 final class InsightEngine {
@@ -85,6 +97,8 @@ final class InsightEngine {
     private(set) var lastFailureAt: Date?
     /// True while this phone gets ready after a yes (S8).
     private(set) var preparing = false
+    /// Why the last look at each kind made no card, with its period; cleared when one is made.
+    private(set) var outcomes: [CardKind: CardOutcome] = [:]
 
     @ObservationIgnored var answerer: (any CardAnswerer)? = ClaudeAnswerer.fromInfo(Bundle.main.infoDictionary)
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -95,6 +109,10 @@ final class InsightEngine {
         if let name = UserDefaults.standard.string(forKey: "sampleInsightFailure"), let failure = InsightFailure(rawValue: name) {
             lastFailure = failure
             lastFailureAt = Calendar.current.date(bySettingHour: 7, minute: 10, second: 0, of: Date())
+        }
+        // `-sampleInsightMaking YES`: both cards stay "Making…", for screenshots.
+        if UserDefaults.standard.bool(forKey: "sampleInsightMaking") {
+            making = Set(CardKind.allCases)
         }
         #endif
     }
@@ -126,17 +144,49 @@ final class InsightEngine {
     /// when a card could be made, just before the call (O2).
     func look(_ kind: CardKind, model: AppModel = .shared) async {
         guard !making.contains(kind), let babyID = model.baby?.name else { return }
+        guard let period = InsightCards.currentPeriod(kind, data: model.store.data, babyID: babyID, now: Date()) else {
+            outcomes[kind] = nil
+            return
+        }
         let first = InsightCards.plan(kind, data: model.store.data, babyID: babyID, me: model.me, participants: nil,
                                       tries: tries(kind), now: Date())
-        guard case .closed(.notChecked, _) = first else { return }
+        switch first {
+        case .closed(.notChecked, _):
+            break
+        case .closed(let closed, _):
+            outcomes[kind] = CardOutcome(period: period, reason: .closed(closed))
+            return
+        default:
+            return
+        }
         making.insert(kind)
         defer { making.remove(kind) }
-        let participants = await model.sync.householdParticipants()
+        // Signed out, no household yet or no signal: nothing can be sent, so the card shows the
+        // facts only and Settings says why (S12).
+        guard let participants = await model.sync.householdParticipants() else {
+            fail(.noSignal, kind, period)
+            return
+        }
         let plan = InsightCards.plan(kind, data: model.store.data, babyID: babyID, me: model.me,
                                      participants: participants, tries: tries(kind), now: Date())
-        guard case .make(let job, _) = plan else { return }
+        let job: CardJob
+        switch plan {
+        case .make(let planned, _):
+            job = planned
+        case .closed(let closed, _):
+            outcomes[kind] = CardOutcome(period: period, reason: .closed(closed))
+            return
+        case .show:
+            // The stored card stands. If none of it holds on this phone any more, the screen shows
+            // the facts only rather than waiting.
+            outcomes[kind] = CardOutcome(period: period, reason: .closed(.later))
+            return
+        case .none:
+            outcomes[kind] = nil
+            return
+        }
         guard let answerer else {
-            fail(.noKey)
+            fail(.noKey, kind, period)
             return
         }
         let result = await Self.make(job, data: { model.store.data }, babyID: babyID, answerer: answerer,
@@ -146,9 +196,15 @@ final class InsightEngine {
             _ = model.store.change { $0.storeInsightCard(card, now: Date()) }
             lastFailure = nil
             lastFailureAt = nil
+            outcomes[kind] = nil
         case .failed(let failure):
-            fail(failure)
+            fail(failure, kind, period)
         }
+    }
+
+    private func fail(_ failure: InsightFailure, _ kind: CardKind, _ period: CardPeriod) {
+        fail(failure)
+        outcomes[kind] = CardOutcome(period: period, reason: .failed(failure))
     }
 
     /// One try at a card: a call, and one more with the checker's reasons if the answer is turned

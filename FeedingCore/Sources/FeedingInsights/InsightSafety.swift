@@ -494,14 +494,21 @@ public struct CheckedCard: Hashable, Sendable {
     public let needsHelpNow: Bool
     /// The facts sheet it was made from: a newer revision means it is made again (O4).
     public let factsRevision: UInt64
+    /// On a card (step 2), the fact behind each of `lines` and the pattern behind each of
+    /// `patterns`, in the same order: the card shows each under its day or night and opens its
+    /// graph. Empty for Ask's answers.
+    public let factRefs: [FactRef]
+    public let patternChoices: [PatternChoice]
 
     fileprivate init(lines: [String], patterns: [String], passages: [CheckedPassage], needsHelpNow: Bool,
-                     factsRevision: UInt64) {
+                     factsRevision: UInt64, factRefs: [FactRef] = [], patternChoices: [PatternChoice] = []) {
         self.lines = lines
         self.patterns = patterns
         self.passages = passages
         self.needsHelpNow = needsHelpNow
         self.factsRevision = factsRevision
+        self.factRefs = factRefs
+        self.patternChoices = patternChoices
     }
 }
 
@@ -647,21 +654,25 @@ public enum AnswerCheck {
         }
 
         var lines: [String] = []
+        var factRefs: [FactRef] = []
         for (index, ref) in choices.facts.enumerated() {
             if let sentence = CardWording.fact(ref, facts: facts, timeZone: timeZone) {
                 lines.append(sentence)
+                factRefs.append(ref)
             } else if !leaveOut {
                 reject("fact \(index + 1)", .unknownFact)
             }
         }
 
         var patterns: [String] = []
+        var patternChoices: [PatternChoice] = []
         for (index, choice) in choices.patterns.enumerated() {
             let claim = PatternClaim(choice.shape, choice.measure, nights: choice.nights, recent: choice.recent,
                                      earlier: choice.earlier, template: "")
             switch check(claim, facts: facts, timeZone: timeZone) {
             case .success(let names):
                 patterns.append(CardWording.pattern(choice, names: names, facts: facts))
+                patternChoices.append(choice)
             case .failure(let reason):
                 if !leaveOut { reject("pattern \(index + 1)", reason) }
             }
@@ -702,7 +713,7 @@ public enum AnswerCheck {
         if leaveOut, lines.isEmpty, patterns.isEmpty { reject("facts", .unknownFact) }
         guard problems.isEmpty else { return .rejected(problems, needsHelpNow: false) }
         return .accepted(CheckedCard(lines: lines, patterns: patterns, passages: kept, needsHelpNow: false,
-                                     factsRevision: facts.revision))
+                                     factsRevision: facts.revision, factRefs: factRefs, patternChoices: patternChoices))
     }
 
     // MARK: The AI's own words

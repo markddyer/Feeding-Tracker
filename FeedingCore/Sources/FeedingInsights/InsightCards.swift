@@ -160,6 +160,63 @@ public enum CardClosed: Hashable, Sendable {
     case later
 }
 
+/// What a screen shows for one kind of card (AI11).
+public enum CardOnScreen: Hashable, Sendable {
+    /// No card yet (no night, or under 3 days logged in the week), or the AI isn't on (no yes from
+    /// both, or turned off): nothing new on screen.
+    case nothing
+    /// The shared card, checked against this phone's log; `period` is the card's own.
+    case card(CheckedCard, period: CardPeriod)
+    /// The AI is on but no card for now can be shown: being made, or the facts only. `plain` is
+    /// the morning's facts-only card.
+    case noCard(CardPeriod, plain: PlainCard?)
+    /// Paused after two "this was wrong" reports (A7): the facts only.
+    case paused(CardPeriod, plain: PlainCard?)
+}
+
+/// The morning card with no AI (S12): the app's fixed facts and the passages offered.
+public struct PlainCard: Hashable, Sendable {
+    public let period: CardPeriod
+    public let lines: [String]
+    /// The fact behind each line, in order.
+    public let refs: [FactRef]
+    public let passages: [Passage]
+}
+
+extension FactScope {
+    /// The day or night (by its evening) a fact is about; nil for the latest weight.
+    public var date: PlainDate? {
+        switch self {
+        case .day(let date), .night(let date): date
+        case .yesterday, .lastNight, .latest: nil
+        }
+    }
+
+    public var isNight: Bool {
+        switch self {
+        case .night, .lastNight: true
+        case .day, .yesterday, .latest: false
+        }
+    }
+}
+
+extension Measure {
+    /// The graph page a fact or pattern about this measure opens (AI11, `10-graph-pages.md`);
+    /// nil when no graph shows it.
+    public var graph: GraphKind? {
+        switch self {
+        case .feeds, .breastFeeds, .bottleFeeds: .feeds
+        case .bottleML: .bottles
+        case .pumpSessions, .pumpedML: .pumped
+        case .sleep, .daySleep, .nightSleep, .slept, .longestSleep, .longestSleepStart, .wakeUps: .asleep
+        case .wees, .poos: .nappies
+        case .longestGap, .shortestGap: .gaps
+        case .weight, .weightChange: .weight
+        case .baths: nil
+        }
+    }
+}
+
 /// What the app does for one kind of card now.
 public enum CardPlan: Hashable, Sendable {
     /// Nothing to show (no night or week yet).
@@ -256,18 +313,85 @@ public enum InsightCards {
     /// too, so a deletion counts as a change. Medicines aren't on a card's facts.
     static func seen(_ period: CardPeriod, snapshots: [EventSnapshot], babyID: String, dayHours: DayHours,
                      timeZone: TimeZone) -> [String: Date] {
+        let window = window(period, dayHours: dayHours, timeZone: timeZone)
+        var seen: [String: Date] = [:]
+        for snapshot in snapshots where snapshot.event.babyID == babyID && snapshot.event.kind != .medicine {
+            if window.contains(snapshot.event.startedAt) { seen[snapshot.event.id] = snapshot.event.modifiedAt }
+        }
+        return seen
+    }
+
+    /// The time a card's days and nights cover: from the first moment of its first day or night to
+    /// the end of its last day, or of its last night if later. The card's medicine chips (R3) are
+    /// the medicines given in it.
+    public static func window(_ period: CardPeriod, dayHours: DayHours, timeZone: TimeZone) -> Range<Date> {
         let start = min(period.days.first, period.nights?.first ?? period.days.first).firstMoment(in: timeZone)
         var end = period.days.last.adding(days: 1).firstMoment(in: timeZone)
         if let lastNight = period.nights?.last,
            let window = InsightFacts.nightWindow(lastNight, dayHours: dayHours, timeZone: timeZone) {
             end = max(end, window.end)
         }
-        var seen: [String: Date] = [:]
-        for snapshot in snapshots where snapshot.event.babyID == babyID && snapshot.event.kind != .medicine {
-            let at = snapshot.event.startedAt
-            if at >= start && at < end { seen[snapshot.event.id] = snapshot.event.modifiedAt }
+        return start..<max(start, end)
+    }
+
+    // MARK: Showing a card (AI11)
+
+    /// What a screen shows for `kind` now, from one facts sheet. The engine's state ("Making…", or
+    /// why none was made) is the app's to add.
+    public static func onScreen(_ kind: CardKind, data: HouseholdData, babyID: String, me: MemberID?,
+                                now: Date) -> CardOnScreen {
+        // The gate first: with the AI not on (most of the time, for most households) Home doesn't
+        // build the facts sheet at all.
+        let shown = gate(data, me: me, participants: nil, now: now).show
+        if shown == .waitingForYes || shown == .turnedOff { return .nothing }
+        let settings = data.householdSettings
+        let facts = data.insightFacts(babyID: babyID, now: now)
+        guard let period = period(kind, facts: facts, now: now, dayHours: settings.dayHours,
+                                  timeZone: settings.timeZone) else { return .nothing }
+        if shown == .paused { return .paused(period, plain: plainCard(period, facts: facts, data: data)) }
+        if let stored = data.insightCard(kind), isCurrent(stored, for: period),
+           let checked = show(stored, facts: facts, data: data) {
+            return .card(checked, period: stored.period)
         }
-        return seen
+        return .noCard(period, plain: plainCard(period, facts: facts, data: data))
+    }
+
+    /// The days and nights a card of `kind` would cover now; nil when there is none yet.
+    public static func currentPeriod(_ kind: CardKind, data: HouseholdData, babyID: String, now: Date) -> CardPeriod? {
+        let settings = data.householdSettings
+        return period(kind, facts: data.insightFacts(babyID: babyID, now: now), now: now, dayHours: settings.dayHours,
+                      timeZone: settings.timeZone)
+    }
+
+    /// The morning's card with no AI (S12, "Facts only today"): fixed facts the app writes, with
+    /// the same wording as a card, and the NHS passages the chooser offers, without summaries. Nil
+    /// before the first night, or when none of its facts is on the sheet. "This week" has none: its
+    /// facts are the graphs.
+    public static func plainCard(_ data: HouseholdData, babyID: String, now: Date) -> PlainCard? {
+        let facts = data.insightFacts(babyID: babyID, now: now)
+        guard let period = morningPeriod(facts) else { return nil }
+        return plainCard(period, facts: facts, data: data)
+    }
+
+    static func plainCard(_ period: CardPeriod, facts: InsightFacts, data: HouseholdData) -> PlainCard? {
+        guard period.kind == .morning else { return nil }
+        let settings = data.householdSettings
+        var refs: [FactRef] = []
+        if let night = period.nights?.last {
+            refs += [FactRef(.night(night), .feeds), FactRef(.night(night), .longestSleep)]
+        }
+        let day = period.days.last
+        refs += [FactRef(.day(day), .feeds), FactRef(.day(day), .wees), FactRef(.day(day), .poos)]
+        var lines: [String] = []
+        var kept: [FactRef] = []
+        for ref in refs {
+            guard let line = CardWording.fact(ref, facts: facts, timeZone: settings.timeZone) else { continue }
+            lines.append(line)
+            kept.append(ref)
+        }
+        guard !lines.isEmpty else { return nil }
+        let passages = request(period, facts: facts, data: data).1.compactMap(NHSPassages.passage)
+        return PlainCard(period: period, lines: lines, refs: kept, passages: passages)
     }
 
     /// Whether `now` holds an entry `before` didn't, or a later change to one it did: an entry
@@ -372,6 +496,11 @@ public enum InsightCards {
         guard let period = period(kind, facts: facts, now: now, dayHours: settings.dayHours,
                                   timeZone: settings.timeZone) else { return nil }
         return request(period, facts: facts, data: data).0
+    }
+
+    /// Whether `stored` is the card for `period` (or a later one), so it is shown rather than made.
+    public static func isCurrent(_ stored: StoredCard, for period: CardPeriod) -> Bool {
+        stored.period == period || stored.period.isNewer(than: period)
     }
 
     /// The request for `period` from the household's facts and ticks: the one way `plan` and
@@ -595,8 +724,11 @@ public enum InsightCards {
     /// A stored card as this phone shows it: checked against this phone's log, leaving out a fact
     /// or pattern that no longer holds (R5, O3); nil when nothing is left.
     public static func show(_ card: StoredCard, data: HouseholdData, babyID: String, now: Date) -> CheckedCard? {
+        show(card, facts: data.insightFacts(babyID: babyID, now: now), data: data)
+    }
+
+    static func show(_ card: StoredCard, facts: InsightFacts, data: HouseholdData) -> CheckedCard? {
         let settings = data.householdSettings
-        let facts = data.insightFacts(babyID: babyID, now: now)
         var choices = card.choices
         choices.facts = choices.facts.filter { covers(card.period, $0.scope) }
         let verdict = AnswerCheck.accept(choices, offered: card.offered, facts: facts, checks: data.passageChecks,
