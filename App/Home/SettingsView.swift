@@ -123,6 +123,8 @@ struct SettingsView: View {
 
             moveSection
 
+            insightsSection
+
             aboutSection
         }
         .scrollContentBackground(.hidden)
@@ -180,6 +182,30 @@ struct SettingsView: View {
             header("About")
         } footer: {
             LicenceLink()
+        }
+        .listRowBackground(Theme.surface)
+    }
+
+    /// Settings › AI insights (step 2, AI9): each parent's yes, the off switch and "What the AI sees".
+    private var insightsSection: some View {
+        let status = InsightStatus(data: model.store.data, me: model.me, now: Date())
+        return Section {
+            NavigationLink {
+                InsightSettingsView()
+            } label: {
+                HStack {
+                    Text("AI insights")
+                    Spacer(minLength: 8)
+                    Text(status.short(names: model.memberNames))
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+            .accessibilityIdentifier("aiInsightsRow")
+        } header: {
+            header("Both phones")
+        } footer: {
+            Text("Nothing is sent to the AI until both of you say yes, each on your own phone.")
+                .foregroundStyle(Theme.textMuted)
         }
         .listRowBackground(Theme.surface)
     }

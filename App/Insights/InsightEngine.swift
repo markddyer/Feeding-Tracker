@@ -14,6 +14,12 @@ import Observation
 /// Answers a card's form. The app asks Claude (`ClaudeAnswerer`); a test gives a fixed answer.
 protocol CardAnswerer: Sendable {
     func answer(_ prompt: String, schema: GenerationSchema) async throws -> String
+    /// Gets this phone ready before the first card (App Attest's first run); nothing by default.
+    func prepare() async throws
+}
+
+extension CardAnswerer {
+    func prepare() async throws {}
 }
 
 /// Claude Sonnet 5.5 through Anthropic's package (D2): App Attest on a phone, with no key in the
@@ -38,6 +44,12 @@ struct ClaudeAnswerer: CardAnswerer {
         let session = LanguageModelSession(model: model)
         let response = try await session.respond(to: prompt, schema: schema)
         return response.content.jsonString
+    }
+
+    /// The package's first-run App Attest (4 to 8 seconds), safe to run again (`ClaudeLanguageModel`
+    /// 0.2.3); nothing with the simulator's development key.
+    func prepare() async throws {
+        try await model.authenticateIfNeeded()
     }
 }
 
@@ -71,9 +83,42 @@ final class InsightEngine {
     /// The last failure and when, for Settings; cleared when a card is made.
     private(set) var lastFailure: InsightFailure?
     private(set) var lastFailureAt: Date?
+    /// True while this phone gets ready after a yes (S8).
+    private(set) var preparing = false
 
     @ObservationIgnored var answerer: (any CardAnswerer)? = ClaudeAnswerer.fromInfo(Bundle.main.infoDictionary)
     @ObservationIgnored private let defaults = UserDefaults.standard
+
+    init() {
+        #if FEEDING_DEV && targetEnvironment(simulator)
+        // `-sampleInsightFailure noSignal` (or another `InsightFailure`): Settings' "why", for screenshots.
+        if let name = UserDefaults.standard.string(forKey: "sampleInsightFailure"), let failure = InsightFailure(rawValue: name) {
+            lastFailure = failure
+            lastFailureAt = Calendar.current.date(bySettingHour: 7, minute: 10, second: 0, of: Date())
+        }
+        #endif
+    }
+
+    /// Runs App Attest's first run just after this parent's yes (step 2 S8), so its few seconds and
+    /// any failure come then, not with the first card at 3am. Settings shows a failure.
+    func prepare() async {
+        guard !preparing else { return }
+        guard let answerer else {
+            fail(.noKey)
+            return
+        }
+        preparing = true
+        defer { preparing = false }
+        do {
+            try await answerer.prepare()
+            if lastFailure == .couldNotConnect || lastFailure == .noKey {
+                lastFailure = nil
+                lastFailureAt = nil
+            }
+        } catch {
+            fail(Self.failure(error))
+        }
+    }
 
     /// Looks at `kind` again (step 2 O7): when Home (the morning card) or Graphs ("This week")
     /// comes on screen, and when a sync finishes while one is on screen. Never from a widget, the

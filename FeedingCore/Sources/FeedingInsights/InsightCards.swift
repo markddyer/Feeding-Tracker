@@ -311,8 +311,14 @@ public enum InsightCards {
     }
 
     static func isPaused(_ reports: WrongReports, now: Date) -> Bool {
+        wrongCount(reports, now: now) >= pauseAfterReports
+    }
+
+    /// The "this was wrong" reports that count towards a pause now: those in the last 30 days and
+    /// since the AI was last switched back on. Settings shows this number.
+    public static func wrongCount(_ reports: WrongReports, now: Date) -> Int {
         let since = max(reports.resumedAt ?? .distantPast, now.addingTimeInterval(-reportWindow))
-        return reports.dates.filter { $0 > since && $0 <= now }.count >= pauseAfterReports
+        return reports.dates.filter { $0 > since && $0 <= now }.count
     }
 
     // MARK: The plan
@@ -349,16 +355,33 @@ public enum InsightCards {
         if calls >= maxCalls || (tries.period == period && tries.lastTry.map { now < $0.addingTimeInterval(wait) } ?? false) {
             return samePeriod.map { .show($0) } ?? .closed(.later, nil)
         }
-        let breastfeeds = facts.days.contains { $0.breastFeeds > 0 }
-        let bottleFeeds = facts.days.contains { $0.bottleFeeds > 0 }
-        let (request, offered) = self.request(period, facts: facts, checks: data.passageChecks, breastfeeds: breastfeeds,
-                                              bottleFeeds: bottleFeeds, timeZone: settings.timeZone)
+        let (request, offered) = self.request(period, facts: facts, data: data)
         let job = CardJob(request: request, form: form(for: request, facts: facts), offered: offered, seen: seenNow,
                           made: made)
         return .make(job, showing: samePeriod)
     }
 
     // MARK: The request (O8)
+
+    /// What a card of `kind` would send now, whatever the gate says: Settings' "What the AI sees"
+    /// (A8, O8) shows it, and `plan` sends the same request. Nil when there is no card to make
+    /// (no night or week yet).
+    public static func preview(_ kind: CardKind, data: HouseholdData, babyID: String, now: Date) -> CardRequest? {
+        let settings = data.householdSettings
+        let facts = data.insightFacts(babyID: babyID, now: now)
+        guard let period = period(kind, facts: facts, now: now, dayHours: settings.dayHours,
+                                  timeZone: settings.timeZone) else { return nil }
+        return request(period, facts: facts, data: data).0
+    }
+
+    /// The request for `period` from the household's facts and ticks: the one way `plan` and
+    /// `preview` build it.
+    static func request(_ period: CardPeriod, facts: InsightFacts, data: HouseholdData) -> (CardRequest, [String]) {
+        let breastfeeds = facts.days.contains { $0.breastFeeds > 0 }
+        let bottleFeeds = facts.days.contains { $0.bottleFeeds > 0 }
+        return request(period, facts: facts, checks: data.passageChecks, breastfeeds: breastfeeds,
+                       bottleFeeds: bottleFeeds, timeZone: data.householdSettings.timeZone)
+    }
 
     /// What is sent for a card, and the passages offered with it.
     public static func request(_ period: CardPeriod, facts: InsightFacts, checks: PassageChecks, breastfeeds: Bool,

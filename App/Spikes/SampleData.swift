@@ -1,6 +1,7 @@
 #if FEEDING_DEV && targetEnvironment(simulator)
 import AVFoundation
 import FeedingCore
+import FeedingInsights
 import Foundation
 import ImageIO
 import UIKit
@@ -14,6 +15,8 @@ import UIKit
 /// `-sampleNightAsk` with `fromOther`, `mine`, `declined`, `meOnDuty`, `noRota` or `takenByOther` for
 /// an ask to take tonight. `-sampleBreastfeeder other` (or `me`, `nobody`) answers "Who breastfeeds?".
 /// `-sampleWindow open` (or `closed`, `alertsOff`) moves the window bar's times.
+/// `-sampleInsightYes` (`me`, `other`, `both`, `otherOff`, `meOff`) gives AI insights' yeses, and
+/// `-sampleWrong 2` that many "this was wrong" reports.
 /// Every sample day has sleeps, nappies and Vitamin D; the baby is asleep (1h 20m) unless
 /// `-sampleSleep awake`, and the last nappy (40m ago) is a poo with no details yet.
 enum SampleData {
@@ -115,6 +118,20 @@ enum SampleData {
             case "me": data.setBreastfeeder(.member(me), now: now)
             case "nobody": data.setBreastfeeder(.nobody, now: now)
             default: break
+            }
+            // `-sampleInsightYes me` (or `other`, `both`, `otherOff`, `meOff`): AI insights' yeses (step 2 D12).
+            let yeses: [(MemberID, Bool)] = switch defaults.string(forKey: "sampleInsightYes") {
+            case "me": [(me, true)]
+            case "other": [(other, true)]
+            case "both": [(me, true), (other, true)]
+            case "otherOff": [(me, true), (other, false)]
+            case "meOff": [(me, false), (other, true)]
+            default: []
+            }
+            for (member, yes) in yeses { data.setInsightYes(yes, member: member, now: now) }
+            // `-sampleWrong 2`: that many "this was wrong" reports in the last hours (two pause it, A7).
+            for hour in 0..<defaults.integer(forKey: "sampleWrong") {
+                data.reportWrongCard(now: now.addingTimeInterval(-Double(hour + 1) * 3600))
             }
             // A poo 40 minutes ago with no details yet: the Nappy tile offers "Add details".
             let lastNappy = now.addingTimeInterval(-40 * 60)

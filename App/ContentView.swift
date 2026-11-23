@@ -320,7 +320,8 @@ struct AlarmSpikeHooks: ViewModifier {
 /// `addFirst` (with `-firstTitle "First smile"` to fill What happened) or `firstPage` (with
 /// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`),
 /// or the move's two screens, `moveOut` and `moveIn` (`08-going-live.md`), or `getHelp`, `nhsPassages` and
-/// `nhsPassage` (with `-passageID night-and-day`) from AI insights step 1.
+/// `nhsPassage` (with `-passageID night-and-day`) from AI insights step 1, or `aiInsights` and `aiSees`
+/// (Settings › AI insights and "What the AI sees") from step 2.
 struct DevScreen: View {
     let name: String
     let me: MemberID
@@ -336,6 +337,10 @@ struct DevScreen: View {
             NavigationStack { GetHelpNowView() }
         case "nhsPassages":
             NavigationStack { PassagesListView() }
+        case "aiInsights":
+            NavigationStack { InsightSettingsView() }
+        case "aiSees":
+            NavigationStack { InsightRequestView() }
         case "nhsPassage":
             // With `-passageID` (`urgent-help` by default).
             NavigationStack {

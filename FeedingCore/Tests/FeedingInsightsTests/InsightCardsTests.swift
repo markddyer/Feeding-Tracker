@@ -186,6 +186,25 @@ struct CardFormTests {
         #expect(!json.contains("ageInDays"))
         #expect(!json.contains(parentA.rawValue))
     }
+
+    @Test func whatTheAISeesIsWhatIsSent() {
+        // Settings' "What the AI sees" (A8, O8) shows the same request a card sends, before any yes too.
+        let entries = loggedDays(from: date("2026-11-09"), feeds: Array(repeating: 8, count: 13))
+        let waiting = household(entries)
+        #expect(InsightCards.preview(.morning, data: waiting, babyID: baby, now: now) != nil)
+        let data = consenting(waiting)
+        for (kind, when) in [(CardKind.morning, now), (.week, at(2026, 11, 23, 9))] {
+            guard case .make(let job, _) = InsightCards.plan(kind, data: data, babyID: baby, me: parentA,
+                                                             participants: [parentA, parentB], tries: LocalCardTries(),
+                                                             now: when) else {
+                Issue.record("no \(kind) card to make"); continue
+            }
+            #expect(InsightCards.preview(kind, data: data, babyID: baby, now: when) == job.request)
+            #expect(InsightCards.preview(kind, data: waiting, babyID: baby, now: when) == job.request)
+        }
+        // Nothing to send before the first night.
+        #expect(InsightCards.preview(.morning, data: HouseholdData(), babyID: baby, now: now) == nil)
+    }
 }
 
 @Suite("Cards: the weeks (D5)")
@@ -264,10 +283,14 @@ struct CardGateTests {
         var data = consenting(HouseholdData())
         data.reportWrongCard(now: now)
         #expect(InsightCards.gate(data, me: parentA, participants: [parentA, parentB], now: now).make == nil)
+        #expect(InsightCards.wrongCount(data.wrongReports, now: now) == 1)
         data.reportWrongCard(now: now.addingTimeInterval(.hours(1)))
         #expect(InsightCards.gate(data, me: parentA, participants: [parentA, parentB], now: now.addingTimeInterval(.hours(2))).make == .paused)
+        #expect(InsightCards.wrongCount(data.wrongReports, now: now.addingTimeInterval(.hours(2))) == 2)
         data.resumeInsights(now: now.addingTimeInterval(.hours(3)))
         #expect(InsightCards.gate(data, me: parentA, participants: [parentA, parentB], now: now.addingTimeInterval(.hours(4))).make == nil)
+        // Switching back on starts the count again.
+        #expect(InsightCards.wrongCount(data.wrongReports, now: now.addingTimeInterval(.hours(4))) == 0)
         // Reports older than 30 days don't count.
         var old = consenting(HouseholdData())
         old.reportWrongCard(now: at(2026, 9, 1, 10))
