@@ -132,6 +132,21 @@ struct CardFormTests {
         #expect(job.request.passages.map(\.id) == job.offered)
     }
 
+    @Test func aFactOutsideTheCardsDaysIsTurnedDown() {
+        guard let job = job() else { Issue.record("no card to make"); return }
+        let data = consenting(household(loggedDays(from: date("2026-11-09"), feeds: Array(repeating: 8, count: 13))))
+        let outside = CardChoices(facts: [FactRef(.day(date("2026-11-10")), .feeds)])
+        let (verdict, card) = InsightCards.accept(outside, job: job, data: data, babyID: baby, now: now)
+        if case .accepted = verdict { Issue.record("a day outside the card was accepted") }
+        #expect(card == nil)
+        // A stored card naming such a day shows its other facts only.
+        let stored = StoredCard(period: job.request.period,
+                                choices: CardChoices(facts: [FactRef(.day(date("2026-11-10")), .feeds),
+                                                             FactRef(.day(date("2026-11-21")), .feeds)]),
+                                offered: [], seen: [:], made: 1, madeAt: now)
+        #expect(InsightCards.show(stored, data: data, babyID: baby, now: now)?.lines == ["8 feeds logged yesterday."])
+    }
+
     @Test func readingAnAnswer() {
         let good = Data("""
         {"facts":[{"scope":"night:2026-11-21","measure":"longestSleep"}],

@@ -93,9 +93,17 @@ struct ContentView: View {
         // At night, coming back after more than 5 minutes away opens Home (D40).
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .background { NotificationTaps.shared.leftScreen() }
-            if phase == .active { cameBack() }
+            if phase == .active {
+                cameBack()
+                lookAtCards()
+            }
         }
-        .onChange(of: tab) { savedTab = tab.rawValue }
+        .onChange(of: tab) {
+            savedTab = tab.rawValue
+            lookAtCards()
+        }
+        // A sync that brings the other parent's yes or late entries (step 2 O7).
+        .onChange(of: model.sync.lastFetchAt) { lookAtCards() }
         .onAppear {
             #if FEEDING_DEV
             guard UserDefaults.standard.string(forKey: "startTab") == nil else { return }
@@ -168,6 +176,17 @@ struct ContentView: View {
     /// than 5 minutes away, Home's main screen, so Start feed is in front; never over a tap just
     /// made, and never with a form or panel open (nothing typed is lost); by day, as it was. A tap
     /// that comes after this still opens its own target.
+    /// The AI cards (step 2 S13, O7): only for the tab on screen, with the app in front; Home has
+    /// the morning card, Graphs "This week". `InsightCards` decides whether one is made.
+    private func lookAtCards() {
+        guard scenePhase == .active else { return }
+        switch tab {
+        case .home: Task { await InsightEngine.shared.look(.morning) }
+        case .graphs: Task { await InsightEngine.shared.look(.week) }
+        case .history, .journal: break
+        }
+    }
+
     private func cameBack() {
         let taps = NotificationTaps.shared
         var away = taps.timeAway()

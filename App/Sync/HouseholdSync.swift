@@ -123,6 +123,27 @@ final class HouseholdSync {
         }
     }
 
+    /// The household share's members as iCloud says now (AI insights, step 2 O2): the owner and
+    /// every participant who has accepted, by iCloud user record name. Read fresh each time it is
+    /// asked, so an account switch or a share change can't leave an old pair. Nil when it can't be
+    /// read (signed out, no household yet, no signal): then nothing is sent to the AI.
+    func householdParticipants() async -> Set<MemberID>? {
+        guard accountAvailable == true, let me = memberID, let target = writeTarget else { return nil }
+        let database = role == .owner ? container.privateCloudDatabase : container.sharedCloudDatabase
+        let shareID = CKRecord.ID(recordName: CKRecordNameZoneWideShare, zoneID: target.zoneID)
+        guard let share = try? await database.record(for: shareID) as? CKShare else { return nil }
+        var members: Set<MemberID> = []
+        func add(_ identity: CKUserIdentity) {
+            guard let name = identity.userRecordID?.recordName else { return }
+            members.insert(name == CKCurrentUserDefaultName ? me : MemberID(rawValue: name))
+        }
+        add(share.owner.userIdentity)
+        for participant in share.participants where participant.acceptanceStatus == .accepted {
+            add(participant.userIdentity)
+        }
+        return members
+    }
+
     // MARK: The household
 
     private var ownZoneID: CKRecordZone.ID {

@@ -553,6 +553,12 @@ public enum InsightCards {
     /// AI is asked once more), ready to store.
     public static func accept(_ choices: CardChoices, job: CardJob, data: HouseholdData, babyID: String,
                               now: Date) -> (AnswerVerdict, StoredCard?) {
+        // A fact only about this card's own days and nights, or the latest weight: the form says so,
+        // and the checker holds it even if an answer doesn't keep to the form.
+        let outside = choices.facts.filter { !covers(job.request.period, $0.scope) }
+        if !outside.isEmpty {
+            return (.rejected(outside.map { _ in Rejection(part: "fact", reason: .unknownFact) }, needsHelpNow: false), nil)
+        }
         let settings = data.householdSettings
         let facts = data.insightFacts(babyID: babyID, now: now)
         let verdict = AnswerCheck.accept(choices, offered: job.offered, facts: facts, checks: data.passageChecks,
@@ -568,10 +574,22 @@ public enum InsightCards {
     public static func show(_ card: StoredCard, data: HouseholdData, babyID: String, now: Date) -> CheckedCard? {
         let settings = data.householdSettings
         let facts = data.insightFacts(babyID: babyID, now: now)
-        let verdict = AnswerCheck.accept(card.choices, offered: card.offered, facts: facts, checks: data.passageChecks,
+        var choices = card.choices
+        choices.facts = choices.facts.filter { covers(card.period, $0.scope) }
+        let verdict = AnswerCheck.accept(choices, offered: card.offered, facts: facts, checks: data.passageChecks,
                                          timeZone: settings.timeZone, leaveOut: true)
         if case .accepted(let checked) = verdict { return checked }
         return nil
+    }
+
+    /// Whether a fact's scope is one of the period's own days or nights, or the latest weight.
+    static func covers(_ period: CardPeriod, _ scope: FactScope) -> Bool {
+        switch scope {
+        case .latest: true
+        case .day(let date): period.days.dates.contains(date)
+        case .night(let evening): period.nights?.dates.contains(evening) ?? false
+        case .yesterday, .lastNight: false
+        }
     }
 }
 

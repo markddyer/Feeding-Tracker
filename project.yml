@@ -32,6 +32,12 @@ settings:
 packages:
   FeedingCore:
     path: FeedingCore
+  # Claude for the AI insights' cards (docs/planning/12-ai-insights-gauntlet.md, D2, step 2 S7):
+  # the one outside library the project allows, pinned exactly while it is in beta; moved on only
+  # by choice, with the model tests run after a move.
+  ClaudeForFoundationModels:
+    url: https://github.com/anthropics/ClaudeForFoundationModels.git
+    exactVersion: 0.2.3
 
 targetTemplates:
   FeedingApp:
@@ -46,6 +52,7 @@ targetTemplates:
       # The AI insights' parts (docs/planning/12-ai-insights-gauntlet.md, R1): only the app uses them.
       - package: FeedingCore
         product: FeedingInsights
+      - package: ClaudeForFoundationModels
       - target: ${widgets}
         embed: true
       # The watch app, installed on the paired watch with the phone app.
@@ -58,6 +65,11 @@ targetTemplates:
         # AppIcon, or AppIcon-Dev (with a "DEV" band) for Feeding Dev. Both are made by
         # tools/make-app-icons.swift.
         ASSETCATALOG_COMPILER_APPICON_NAME: ${appIcon}
+        # The simulator's development key for Claude, from the gitignored Config/Local.xcconfig
+        # (CLAUDE_DEV_API_KEY). Only simulator builds carry it; a phone build has none and uses App
+        # Attest (step 2 S6).
+        CLAUDE_DEV_API_KEY_SIMULATOR: ""
+        "CLAUDE_DEV_API_KEY_SIMULATOR[sdk=iphonesimulator*]": $(CLAUDE_DEV_API_KEY)
     info:
       path: Generated/${target_name}/Info.plist
       properties:
@@ -92,6 +104,10 @@ targetTemplates:
         NSPhotoLibraryAddUsageDescription: Little Log keeps a copy of a photo you take in the app in your Photos.
         FeedingCloudKitContainer: iCloud.com.tracker.feeding${bundleSuffix}
         FeedingAppGroup: group.com.tracker.feeding${bundleSuffix}
+        # The Claude Console's App Attest client ID (Config/Local.xcconfig, CLAUDE_CLIENT_ID), and
+        # the simulator-only development key (empty in a phone build).
+        ClaudeClientID: $(CLAUDE_CLIENT_ID)
+        ClaudeDevAPIKey: $(CLAUDE_DEV_API_KEY_SIMULATOR)
         # "Export the journal" carries on in the background (a continued-processing task, iOS 26;
         # journal eng D4). Each export submits its own ID under this one.
         BGTaskSchedulerPermittedIdentifiers:
@@ -108,6 +124,10 @@ targetTemplates:
         com.apple.security.application-groups:
           - group.com.tracker.feeding${bundleSuffix}
         com.apple.developer.usernotifications.time-sensitive: true
+        # App Attest, for the AI insights' calls to Claude with no key in the app (D2). Production
+        # in both variants: TestFlight always uses it, and builds installed from Xcode then attest
+        # the same way (step 2 S10). A real entitlement, unlike AlarmKit's.
+        com.apple.developer.devicecheck.appattest-environment: production
     scheme: {}
 
   # The Lock Screen widget and the Control Center control (plan v1, Phase 2). They only read the
@@ -319,6 +339,9 @@ targets:
     dependencies:
       - target: FeedingDev
       - package: FeedingCore
+      - package: FeedingCore
+        product: FeedingInsights
+      - package: ClaudeForFoundationModels
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding.dev.tests

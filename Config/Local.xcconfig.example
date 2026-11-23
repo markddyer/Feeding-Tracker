@@ -1,3 +1,9 @@
 // Copy this file to Config/Local.xcconfig (not committed) and put your Apple team ID in it.
 // Find the team ID at developer.apple.com > Account > Membership details.
 DEVELOPMENT_TEAM = ABCDE12345
+
+// AI insights (docs/planning/12-ai-insights-gauntlet.md, step 2): the Claude Console's App Attest
+// client ID (platform.claude.com/settings/app-integrations), which the phones use with no key,
+CLAUDE_CLIENT_ID = clid_your_client_id
+// and, for the simulator only, an API key from the app's workspace (never in a phone build).
+CLAUDE_DEV_API_KEY =
