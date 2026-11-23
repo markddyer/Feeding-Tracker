@@ -44,9 +44,15 @@ enum AIConnectionCheck {
             return lines
         }
         started = Date()
+        // A made-up week with its own made-up yeses, never the household's log: its own gate.
         let result = await InsightEngine.make(job, data: { week.data }, babyID: week.baby, answerer: answerer,
-                                              now: { week.now }, onCall: {})
+                                              now: { week.now },
+                                              gate: { InsightCards.gate(week.data, me: week.me, participants: [week.me, week.other],
+                                                                        now: week.now).make },
+                                              onCall: {})
         switch result {
+        case .closed(let closed):
+            note("the made-up week's gate closed (\(closed))")
         case .made(let card):
             note("card made in \(seconds(since: started)): \(card.choices.facts.count) facts, "
                  + "\(card.choices.patterns.count) patterns, \(card.choices.passages.count) passages")

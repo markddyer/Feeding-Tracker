@@ -180,7 +180,11 @@ struct ModelTests {
         let measured = MeasuredAnswerer(answerer)
         let started = Date()
         let result = await InsightEngine.make(job, data: { household.data }, babyID: household.babyID, answerer: measured,
-                                              now: { household.now }, onCall: {})
+                                              now: { household.now },
+                                              gate: { InsightCards.gate(household.data, me: household.parentA,
+                                                                        participants: [household.parentA, household.parentB],
+                                                                        now: household.now).make },
+                                              onCall: {})
         let text: String
         var card = ""
         switch result {
@@ -192,6 +196,8 @@ struct ModelTests {
                 + "\(stored.choices.passages.count) passages (\(summaries) with a summary)"
         case .failed(.turnedDown):
             text = "turned down"
+        case .closed(let closed):
+            text = "error: the gate closed (\(closed))"
         case .failed(let failure):
             text = "error: \(failure)"
         }

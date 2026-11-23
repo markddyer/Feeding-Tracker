@@ -71,7 +71,7 @@ struct InsightEngineTests {
         let answerer = FixedAnswerer(.success(#"{"facts":[{"scope":"day:2026-11-21","measure":"feeds"}],"patterns":[],"passages":[]}"#))
         var calls = 0
         let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, now: { self.at(22, 10) },
-                                              onCall: { calls += 1 })
+                                              gate: { nil }, onCall: { calls += 1 })
         guard case .made(let card) = result else { Issue.record("\(result)"); return }
         #expect(calls == 1)
         #expect(InsightCards.show(card, data: data, babyID: baby, now: at(22, 10))?.lines == ["8 feeds logged yesterday."])
@@ -82,7 +82,7 @@ struct InsightEngineTests {
         let job = try #require(job(data))
         let answerer = FixedAnswerer(.success("{}"))
         var calls = 0
-        let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, onCall: { calls += 1 })
+        let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, gate: { nil }, onCall: { calls += 1 })
         #expect(result == .failed(.turnedDown))
         #expect(calls == 2)
     }
@@ -92,7 +92,7 @@ struct InsightEngineTests {
         let job = try #require(job(data))
         // A day the card doesn't cover is turned down by the checker, so the AI is asked again.
         let answerer = FixedAnswerer(.success(#"{"facts":[{"scope":"day:2026-11-10","measure":"feeds"}],"patterns":[],"passages":[]}"#))
-        let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, onCall: {})
+        let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, gate: { nil }, onCall: {})
         #expect(answerer.calls == 2)
         if case .made = result { Issue.record("a day outside the card was accepted") }
     }
@@ -108,24 +108,53 @@ struct InsightEngineTests {
                           "earlierFirst":"2026-11-12","earlierLast":"2026-11-18"}],"passages":[]}
             """#))
         let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, now: { self.at(22, 10) },
-                                              onCall: {})
+                                              gate: { nil }, onCall: {})
         guard case .made(let card) = result else { Issue.record("\(result)"); return }
         #expect(answerer.calls == 2)
         #expect(card.choices.patterns.isEmpty)
         #expect(card.choices.facts.count == 1)
     }
 
+    /// Step 3 X5 (step 1 O3): the gate is asked before every call, and again before a card is
+    /// kept. A yes withdrawn while the AI answers the first call stops the second call; one
+    /// withdrawn during the last call throws the card away.
+    @Test func aYesWithdrawnDuringACallStopsTheNextAndDropsTheAnswer() async throws {
+        let data = household()
+        let job = try #require(job(data))
+        // Turned down at the first try (a day outside the card), so a second call would follow.
+        let refused = FixedAnswerer(.success(#"{"facts":[{"scope":"day:2026-11-10","measure":"feeds"}],"patterns":[],"passages":[]}"#))
+        var asked = 0
+        let stopped = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: refused,
+                                               gate: {
+                                                   asked += 1
+                                                   return asked > 1 ? .turnedOff : nil
+                                               }, onCall: {})
+        #expect(stopped == .closed(.turnedOff))
+        #expect(refused.calls == 1, "no second call after the off")
+
+        // A good answer that arrives after the off is not kept.
+        let good = FixedAnswerer(.success(#"{"facts":[{"scope":"day:2026-11-21","measure":"feeds"}],"patterns":[],"passages":[]}"#))
+        var checks = 0
+        let dropped = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: good, now: { self.at(22, 10) },
+                                               gate: {
+                                                   checks += 1
+                                                   return checks > 1 ? .paused : nil
+                                               }, onCall: {})
+        #expect(dropped == .closed(.paused))
+        #expect(good.calls == 1)
+    }
+
     @Test func failuresLandOnTheShortList() async throws {
         let data = household()
         let job = try #require(job(data))
         let offline = await InsightEngine.make(job, data: { data }, babyID: baby,
-                                               answerer: FixedAnswerer(.failure(URLError(.notConnectedToInternet))), onCall: {})
+                                               answerer: FixedAnswerer(.failure(URLError(.notConnectedToInternet))), gate: { nil }, onCall: {})
         #expect(offline == .failed(.noSignal))
         let attest = await InsightEngine.make(job, data: { data }, babyID: baby,
-                                              answerer: FixedAnswerer(.failure(ClaudeError.attestationFailed)), onCall: {})
+                                              answerer: FixedAnswerer(.failure(ClaudeError.attestationFailed)), gate: { nil }, onCall: {})
         #expect(attest == .failed(.couldNotConnect))
         let other = await InsightEngine.make(job, data: { data }, babyID: baby,
-                                             answerer: FixedAnswerer(.failure(CocoaError(.featureUnsupported))), onCall: {})
+                                             answerer: FixedAnswerer(.failure(CocoaError(.featureUnsupported))), gate: { nil }, onCall: {})
         #expect(other == .failed(.unavailable))
     }
 }

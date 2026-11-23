@@ -814,22 +814,38 @@ extension HouseholdData {
                    key: InsightCards.yesPrefix + member.rawValue, now: now)
     }
 
+    /// Every "this was wrong" report the household holds. Each report is a Setting record of its
+    /// own ("insightWrong-<id>"), so two reports made on both phones before either syncs both
+    /// count (step 3 X9): one shared list would keep only the later phone's copy. The shared list
+    /// ("insightWrong") is still written for older builds, and read and joined here.
     public var wrongReports: WrongReports {
-        setting(WrongReports.self, InsightCards.wrongKey) ?? WrongReports()
+        var reports = setting(WrongReports.self, InsightCards.wrongKey) ?? WrongReports()
+        for record in plainRecords(of: .setting) where record.name.hasPrefix(InsightCards.wrongReportPrefix) {
+            guard let date = PayloadCoder.decode(SettingPayload<Date>.self, from: record.payload)?.value,
+                  !reports.dates.contains(date) else { continue }
+            reports.dates.append(date)
+        }
+        if let resumed = setting(Date.self, InsightCards.wrongResumedKey) {
+            reports.resumedAt = max(reports.resumedAt ?? resumed, resumed)
+        }
+        reports.dates.sort()
+        return reports
     }
 
     /// "This was wrong": kept for 30 days; two in that time pause the AI (A7).
-    public mutating func reportWrongCard(now: Date) {
-        var reports = wrongReports
-        reports.dates = reports.dates.filter { $0 > now.addingTimeInterval(-InsightCards.reportWindow) } + [now]
-        putSetting(reports, key: InsightCards.wrongKey, now: now)
+    public mutating func reportWrongCard(now: Date, id: String = UUID().uuidString) {
+        putSetting(now, key: InsightCards.wrongReportPrefix + id, now: now)
+        var shared = setting(WrongReports.self, InsightCards.wrongKey) ?? WrongReports()
+        shared.dates = shared.dates.filter { $0 > now.addingTimeInterval(-InsightCards.reportWindow) } + [now]
+        putSetting(shared, key: InsightCards.wrongKey, now: now)
     }
 
-    /// A parent switches the AI back on after a pause.
+    /// A parent switches the AI back on after a pause. The later switch wins, whichever phone.
     public mutating func resumeInsights(now: Date) {
-        var reports = wrongReports
-        reports.resumedAt = now
-        putSetting(reports, key: InsightCards.wrongKey, now: now)
+        putSetting(now, key: InsightCards.wrongResumedKey, now: now)
+        var shared = setting(WrongReports.self, InsightCards.wrongKey) ?? WrongReports()
+        shared.resumedAt = now
+        putSetting(shared, key: InsightCards.wrongKey, now: now)
     }
 
     /// The stored card of a kind, if any.
@@ -853,4 +869,7 @@ extension HouseholdData {
 extension InsightCards {
     static let yesPrefix = "insightYes-"
     static let wrongKey = "insightWrong"
+    /// One record per report (X9); the hyphen keeps it apart from `wrongKey` itself.
+    static let wrongReportPrefix = "insightWrong-"
+    static let wrongResumedKey = "insightWrongResumedAt"
 }

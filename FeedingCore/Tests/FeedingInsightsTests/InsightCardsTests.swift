@@ -335,6 +335,44 @@ struct CardGateTests {
         old.reportWrongCard(now: at(2026, 9, 2, 10))
         #expect(InsightCards.gate(old, me: parentA, participants: [parentA, parentB], now: now).make == nil)
     }
+
+    /// Step 3 X9: a report made on each phone before either syncs. The shared list keeps only the
+    /// later copy, but each report's own record arrives too, so both count and the AI pauses.
+    @Test func reportsMadeOnBothPhonesBeforeASyncBothCount() {
+        let base = consenting(HouseholdData())
+        var phoneA = base
+        var phoneB = base
+        phoneA.reportWrongCard(now: now, id: "a")
+        phoneB.reportWrongCard(now: now.addingTimeInterval(60), id: "b")
+        // A receives B's records: B's shared list is newer and replaces A's; B's own report is new.
+        for record in phoneB.plainRecords(of: .setting) where record.name.hasPrefix("insightWrong") {
+            phoneA.receivePlainRecord(record, systemFields: Data())
+        }
+        let later = now.addingTimeInterval(.hours(1))
+        #expect(phoneA.setting(WrongReports.self, "insightWrong")?.dates.count == 1, "the shared list lost A's report")
+        #expect(InsightCards.wrongCount(phoneA.wrongReports, now: later) == 2)
+        #expect(InsightCards.gate(phoneA, me: parentA, participants: [parentA, parentB], now: later).make == .paused)
+
+        // Switched back on on B; A gets the switch: the count starts again on both.
+        phoneB.resumeInsights(now: later)
+        for record in phoneB.plainRecords(of: .setting) where record.name.hasPrefix("insightWrong") {
+            phoneA.receivePlainRecord(record, systemFields: Data())
+        }
+        #expect(InsightCards.wrongCount(phoneA.wrongReports, now: later.addingTimeInterval(60)) == 0)
+        #expect(InsightCards.gate(phoneA, me: parentA, participants: [parentA, parentB],
+                                  now: later.addingTimeInterval(60)).make == nil)
+    }
+
+    /// An older build wrote only the shared list: its reports still count, once each.
+    @Test func reportsFromAnOlderBuildStillCountOnce() {
+        var data = consenting(HouseholdData())
+        data.putSetting(WrongReports(dates: [now]), key: "insightWrong", now: now)
+        data.reportWrongCard(now: now.addingTimeInterval(60), id: "new")
+        let reports = data.wrongReports
+        #expect(reports.dates == [now, now.addingTimeInterval(60)])
+        #expect(InsightCards.gate(data, me: parentA, participants: [parentA, parentB],
+                                  now: now.addingTimeInterval(120)).make == .paused)
+    }
 }
 
 @Suite("Cards: made again only for entries a card didn't see (D4, O4, D10)")

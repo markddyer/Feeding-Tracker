@@ -80,6 +80,8 @@ enum InsightFailure: String, Hashable, Sendable, Codable {
 enum CardMakeResult: Hashable, Sendable {
     case made(StoredCard)
     case failed(InsightFailure)
+    /// The gate closed between calls or while the AI answered (X5); nothing is kept.
+    case closed(CardClosed)
 }
 
 /// Why the last look at a kind of card made none, for its period: the screens then show the
@@ -199,8 +201,12 @@ final class InsightEngine {
             return
         }
         let result = await Self.make(job, data: { model.store.data }, babyID: babyID, answerer: answerer,
+                                     gate: { InsightCards.gate(model.store.data, me: model.me, participants: participants,
+                                                               now: Date()).make },
                                      onCall: { self.recordCall(kind, job.request.period) })
         switch result {
+        case .closed(let closed):
+            outcomes[kind] = CardOutcome(period: period, reason: .closed(closed))
         case .made(let card):
             _ = model.store.change { $0.storeInsightCard(card, now: Date()) }
             lastFailure = nil
@@ -219,8 +225,11 @@ final class InsightEngine {
     /// One try at a card: a call, and one more with the checker's reasons in plain words if the
     /// answer is turned down (AI3). On that last call a pick that fails the check is left out on
     /// its own rather than losing the card (AI13 D3 A). `onCall` counts each call on this phone (D10).
+    /// `gate` is asked before each call and again before a card is kept (step 1 O3, step 3 X5): a
+    /// yes withdrawn, an off or a pause that arrives while the AI is answering stops the second
+    /// call and throws the answer away.
     static func make(_ job: CardJob, data: () -> HouseholdData, babyID: String, answerer: any CardAnswerer,
-                     now: () -> Date = Date.init, onCall: () -> Void) async -> CardMakeResult {
+                     now: () -> Date = Date.init, gate: () -> CardClosed?, onCall: () -> Void) async -> CardMakeResult {
         let schema: GenerationSchema
         do {
             schema = try self.schema(job.form)
@@ -230,6 +239,7 @@ final class InsightEngine {
         let prompt = InsightCards.prompt(job.request, timeZone: data().householdSettings.timeZone)
         var note = ""
         for attempt in 0..<2 {
+            if let closed = gate() { return .closed(closed) }
             onCall()
             let text: String
             do {
@@ -243,7 +253,10 @@ final class InsightEngine {
             }
             let (verdict, card) = InsightCards.accept(choices, job: job, data: data(), babyID: babyID, now: now(),
                                                       leaveOut: attempt == 1)
-            if let card { return .made(card) }
+            if let card {
+                if let closed = gate() { return .closed(closed) }
+                return .made(card)
+            }
             if case .rejected(let problems, _) = verdict { note = InsightCards.retryNote(problems) }
         }
         return .failed(.turnedDown)
