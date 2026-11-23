@@ -2671,7 +2671,7 @@ Lane A: AI16 → AI17 → AI18 → AI19 → AI20 → AI22 (they share `FeedingIn
   - Surfaced by: D7 B, D8 A, D12 A, D9 A (measure Ask's tokens)
   - Files: `ModelTests/ModelTests.swift`, `FeedingCore/Tests/FeedingInsightsTests/Fixtures/households/` (the questions, each with its right answer; `gstack-shortcut(dec-eff63f0e)`)
   - Verify: Linux checks of the questions with no AI; then one paid run (about $3.50 with the grader, on top of the cards' $1.45 [estimated]), outside Claude's sandbox
-- [ ] **AI22 (P2, human: ~2h / CC: ~20min)** — Docs — `CLAUDE.md` (layout, commands, sample flags), `DESIGN.md`, this plan's step list and Ask's diagram in `InsightQuestions.swift`
+- [x] **AI22 (P2, human: ~2h / CC: ~20min)** — Docs (done 23 Nov 2026: `CLAUDE.md`'s status, layout, commands and sample flags; `DESIGN.md` in AI19; the step list in the review; Ask's diagram at the top of `InsightQuestions.swift`) — `CLAUDE.md` (layout, commands, sample flags), `DESIGN.md`, this plan's step list and Ask's diagram in `InsightQuestions.swift`
   - Verify: read through
 
 ### Unresolved decisions (step 3)
