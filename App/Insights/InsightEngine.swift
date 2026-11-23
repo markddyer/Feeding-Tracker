@@ -26,9 +26,13 @@ extension CardAnswerer {
 /// app; the development key only in the simulator (step 2 S6, from the gitignored
 /// `Config/Local.xcconfig`).
 struct ClaudeAnswerer: CardAnswerer {
+    /// The effort sent with every card (Section 2 of the review): the model tests (AI13) compare
+    /// low and medium and keep the cheaper one unless it is turned down more often.
+    static let effort: ClaudeModel.Effort = .medium
+
     let model: ClaudeLanguageModel
 
-    static func fromInfo(_ info: [String: Any]?) -> ClaudeAnswerer? {
+    static func fromInfo(_ info: [String: Any]?, effort: ClaudeModel.Effort = Self.effort) -> ClaudeAnswerer? {
         #if targetEnvironment(simulator)
         guard let key = info?["ClaudeDevAPIKey"] as? String, key.hasPrefix("sk-ant-") else { return nil }
         let auth = AuthMode.apiKey(key)
@@ -36,14 +40,19 @@ struct ClaudeAnswerer: CardAnswerer {
         guard let id = info?["ClaudeClientID"] as? String, id.hasPrefix("clid_") else { return nil }
         let auth = AuthMode.appAttest(clientID: id)
         #endif
-        // Medium effort to start; the model tests compare low and medium (Section 2 of the review).
-        return ClaudeAnswerer(model: ClaudeLanguageModel(name: .sonnet5_5, auth: auth, fixedEffort: .medium, timeout: 60))
+        return ClaudeAnswerer(model: ClaudeLanguageModel(name: .sonnet5_5, auth: auth, fixedEffort: effort, timeout: 60))
     }
 
     func answer(_ prompt: String, schema: GenerationSchema) async throws -> String {
+        try await answerWithUsage(prompt, schema: schema).text
+    }
+
+    /// The answer and the tokens it used; the model tests (AI13) measure the cost with it.
+    func answerWithUsage(_ prompt: String, schema: GenerationSchema) async throws
+        -> (text: String, usage: LanguageModelSession.Usage) {
         let session = LanguageModelSession(model: model)
         let response = try await session.respond(to: prompt, schema: schema)
-        return response.content.jsonString
+        return (response.content.jsonString, session.usage)
     }
 
     /// The package's first-run App Attest (4 to 8 seconds), safe to run again (`ClaudeLanguageModel`

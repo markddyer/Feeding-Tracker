@@ -340,12 +340,12 @@ struct InsightRequestView: View {
                 }
                 .pickerStyle(.segmented)
                 if let request {
-                    Text("Exactly what Little Log would send for this card now: the instructions, then the numbers from your log in JSON, a plain data format. Times are in the household’s time zone.")
+                    Text("Exactly what Little Log would send for this card now: the instructions, then the numbers from your log in JSON, a plain data format. It is sent without the spaces and line breaks added here for reading. Times are in the household’s time zone.")
                         .feedText(.subheadline)
                         .foregroundStyle(Theme.textMuted)
                         .padding(.horizontal, 4)
                     Tile {
-                        Text(InsightCards.prompt(request, timeZone: data.householdSettings.timeZone))
+                        Text(InsightCards.readablePrompt(request, timeZone: data.householdSettings.timeZone))
                             // Fixed-width, as the log is JSON. The app sets `.fontDesign(.rounded)`
                             // for all text, which swaps this font too, so it is cleared here.
                             .font(.system(.footnote, design: .monospaced))

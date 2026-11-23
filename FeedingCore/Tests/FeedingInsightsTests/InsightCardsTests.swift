@@ -225,6 +225,24 @@ struct CardFormTests {
         // Nothing to send before the first night.
         #expect(InsightCards.preview(.morning, data: HouseholdData(), babyID: baby, now: now) == nil)
     }
+
+    @Test func theScreenShowsTheSameLogSpacedOut() throws {
+        // Sent with no spaces or line breaks (D1 A of AI13); "What the AI sees" spaces it out. The
+        // instructions are the same, and the log holds the same values.
+        let data = consenting(household(loggedDays(from: date("2026-11-09"), feeds: Array(repeating: 8, count: 13))))
+        let request = try #require(InsightCards.preview(.morning, data: data, babyID: baby, now: now))
+        let sent = InsightCards.prompt(request, timeZone: london)
+        let shown = InsightCards.readablePrompt(request, timeZone: london)
+        #expect(!sent.contains("\n  "))
+        #expect(shown.contains("\n  "))
+        let marker = "THE LOG (JSON):\n"
+        let sentParts = sent.components(separatedBy: marker), shownParts = shown.components(separatedBy: marker)
+        #expect(sentParts.count == 2 && shownParts.count == 2)
+        #expect(sentParts[0] == shownParts[0])
+        let sentLog = try JSONSerialization.jsonObject(with: Data(sentParts[1].utf8)) as? NSDictionary
+        let shownLog = try JSONSerialization.jsonObject(with: Data(shownParts[1].utf8)) as? NSDictionary
+        #expect(sentLog != nil && sentLog == shownLog)
+    }
 }
 
 @Suite("Cards: the weeks (D5)")

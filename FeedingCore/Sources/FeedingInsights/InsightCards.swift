@@ -556,9 +556,17 @@ public enum InsightCards {
         instructions(for: request.period.kind) + "\n\nTHE LOG (JSON):\n" + json(request, timeZone: timeZone)
     }
 
-    public static func json(_ request: CardRequest, timeZone: TimeZone) -> String {
+    /// The same text spaced out for reading, for "What the AI sees": the same instructions and
+    /// the same log, value for value; only the spaces and line breaks between them differ.
+    public static func readablePrompt(_ request: CardRequest, timeZone: TimeZone) -> String {
+        instructions(for: request.period.kind) + "\n\nTHE LOG (JSON):\n" + json(request, timeZone: timeZone, readable: true)
+    }
+
+    /// The log as JSON. It is sent with no spaces or line breaks: 29% fewer tokens than spaced out
+    /// (AI13 measured about 26,000 tokens a card spaced out; Parent A's D1 A, 23 Nov 2026).
+    public static func json(_ request: CardRequest, timeZone: TimeZone, readable: Bool = false) -> String {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys, .prettyPrinted]
+        encoder.outputFormatting = readable ? [.sortedKeys, .prettyPrinted] : [.sortedKeys]
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)

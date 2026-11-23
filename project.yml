@@ -347,7 +347,36 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding.dev.tests
         GENERATE_INFOPLIST_FILE: YES
 
+  # AI13's model tests (docs/planning/12-ai-insights-gauntlet.md, step 2 D7 C): 30 made-up
+  # households, each made into a card by the real model with the simulator's development key. It
+  # costs money, so it is never part of another scheme's test run. Run before each TestFlight
+  # upload and after any change of model or package, with the FeedingDevModelTests scheme.
+  FeedingModelTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ModelTests
+      - path: FeedingCore/Tests/FeedingInsightsTests/Fixtures/households
+    dependencies:
+      - target: FeedingDev
+      - package: FeedingCore
+      - package: FeedingCore
+        product: FeedingInsights
+      - package: ClaudeForFoundationModels
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.tracker.feeding.dev.modeltests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
+  FeedingDevModelTests:
+    build:
+      targets:
+        FeedingDev: all
+        FeedingModelTests: [test]
+    test:
+      config: Debug
+      targets: [FeedingModelTests]
   FeedingDevAudit:
     build:
       targets:
