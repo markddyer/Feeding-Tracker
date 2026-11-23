@@ -166,7 +166,9 @@ public enum InsightQuestions {
             }
             return .medicineReply
         }
-        if let closed = InsightCards.gate(data, me: me, participants: participants, now: now).make { return .closed(closed) }
+        // No yes yet, off or paused: closed at once, without reading the household's members.
+        let gate = InsightCards.gate(data, me: me, participants: participants, now: now)
+        if let closed = gate.show ?? gate.make { return .closed(closed) }
         let (request, offered) = self.request(text, earlier: earlier?.text, data: data, babyID: babyID, now: now)
         return .ask(QuestionJob(request: request, form: form(for: request), offered: offered))
     }

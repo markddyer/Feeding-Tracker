@@ -194,6 +194,20 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// Ask (AI insights step 3): before asking, every kind of answer, a danger sign.
+    func testAsk() {
+        let card = ["-sampleInsightCard", "YES", "-openScreen", "ask"]
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(card + ["-sampleQuestions", "none"], look: look), "ask before asking \(look)")
+            audit(launch(card + ["-sampleQuestions", "all"], look: look), "ask all answers \(look)")
+            audit(launch(card + ["-sampleQuestions", "answer"], look: look), "ask an answer \(look)")
+            audit(launch(card + ["-sampleQuestions", "failed"], look: look), "ask failed \(look)")
+        }
+        audit(launch(card + ["-sampleQuestions", "none"], largeText: true), "ask before asking large text")
+        audit(launch(card + ["-sampleQuestions", "medicine"], largeText: true), "ask medicine large text")
+        report()
+    }
+
     func testLargeText() {
         audit(launch([], largeText: true), "home large text")
         audit(launch(["-homeAtBottom", "YES"], largeText: true), "home lower large text")

@@ -374,7 +374,9 @@ private struct CallLink: View {
                 Image(systemName: "phone.fill").foregroundStyle(Theme.backup).accessibilityHidden(true)
                 Text("Call \(number)").feedText(.smallButton)
             }
-            .frame(minHeight: 44)
+            .padding(.horizontal, 8)
+            .frame(minWidth: 44, minHeight: 44)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

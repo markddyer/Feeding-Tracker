@@ -79,6 +79,9 @@ struct QuestionRouteTests {
         var one = household(loggedDays(from: date("2026-11-08"), feeds: Array(repeating: 8, count: 14)))
         one.setInsightYes(true, member: parentA, now: askNow)
         #expect(route("How many feeds yesterday?", one) == .closed(.waitingForYes))
+        // Before the members are read, too: no yes means no look at iCloud.
+        #expect(InsightQuestions.route("How many feeds yesterday?", data: one, babyID: baby, me: parentA, participants: nil,
+                                       kept: [], now: askNow) == .closed(.waitingForYes))
         // But a danger sign and a medicine question still answer on the phone.
         if case .helpNow = route("she's gone blue", one) {} else { Issue.record("the card needs no yes") }
         #expect(route("Can I give Calpol?", one) == .medicineReply)
