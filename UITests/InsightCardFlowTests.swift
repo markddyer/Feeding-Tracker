@@ -189,8 +189,9 @@ final class InsightCardFlowTests: XCTestCase {
         keep(app, "Paused, facts only")
         app.buttons["Close"].tap()
         XCTAssertTrue(line.waitForExistence(timeout: 3))
+        // At once, not at Home's next 20-second tick: the screen's tick is older than the report.
         let unmarked = NSPredicate(format: "NOT (label CONTAINS 'picked by AI')")
-        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: unmarked, evaluatedWith: line)], timeout: 5), .completed,
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation(for: unmarked, evaluatedWith: line)], timeout: 2), .completed,
                        "Home's line loses the AI mark: \(line.label)")
 
         let row = openAISettings(app)
@@ -232,7 +233,8 @@ final class InsightCardFlowTests: XCTestCase {
 
     /// Graphs' "This week" opens its card; a line on it closes the card and opens its graph's page
     /// on the line's own day, and the page stays open (the 21 Nov pitfall). The line's day can be
-    /// older than the 7 days shown: the range widens to reach it.
+    /// older than the 7 days shown (on a Sunday, the week's last night is 7 days back): the range
+    /// widens to reach it. On other days it is inside the 7 days, and the range stays.
     func testThisWeekLineOpensItsGraphPage() {
         // No `-graphs.range` here: a launch argument would hide the range the app sets.
         let app = launch(["-sampleInsightCard", "YES", "-sampleWeek", "30", "-startTab", "graphs"])
@@ -248,11 +250,29 @@ final class InsightCardFlowTests: XCTestCase {
         keep(app, "This week")
         let first = app.buttons.matching(identifier: "cardGraphLine").firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 3), "the card's lines open their graphs")
-        // "4 feeds logged on the night of 15 November.": its day, as the page names it.
+        // "4 feeds logged on the night of 15 November.", or "… last night." when the week ended
+        // yesterday (a Monday): its day.
         let label = first.label
         XCTAssertTrue(label.contains("feed"), label)
-        let day = label.range(of: #"\d{1,2} [A-Z][a-z]+(?=\.$)"#, options: .regularExpression).map { String(label[$0]) }
-        XCTAssertNotNil(day, label)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Europe/London")!
+        let today = calendar.startOfDay(for: Date())
+        let day: Date?
+        if label.hasSuffix("last night.") {
+            day = calendar.date(byAdding: .day, value: -1, to: today)
+        } else if let text = label.range(of: #"\d{1,2} [A-Z][a-z]+(?=\.$)"#, options: .regularExpression).map({ String(label[$0]) }) {
+            let reader = DateFormatter()
+            reader.locale = Locale(identifier: "en_GB")
+            reader.calendar = calendar
+            reader.timeZone = calendar.timeZone
+            reader.dateFormat = "d MMMM yyyy"
+            let year = calendar.component(.year, from: today)
+            let thisYear = reader.date(from: "\(text) \(year)")
+            day = thisYear.flatMap { $0 > today ? reader.date(from: "\(text) \(year - 1)") : $0 }
+        } else {
+            day = nil
+        }
+        guard let day else { return XCTFail("no day in the line: \(label)") }
         first.tap()
 
         let page = app.navigationBars["Feeds each day"]
@@ -262,11 +282,18 @@ final class InsightCardFlowTests: XCTestCase {
         XCTAssertTrue(page.exists, "the page stays open")
         keep(app, "This week's line, its graph")
         // The page names it "Sunday 15 Nov".
-        let short = day.map { String($0.prefix(while: { $0 != " " })) + " " + String($0.split(separator: " ").last?.prefix(3) ?? "") } ?? ""
-        let named = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^[A-Z][a-z]+day \(short)$"))
-        XCTAssertTrue(named.firstMatch.exists, "the page is on the line's day, \(short): "
+        let writer = DateFormatter()
+        writer.locale = Locale(identifier: "en_GB")
+        writer.timeZone = calendar.timeZone
+        writer.dateFormat = "EEEE d MMM"
+        let short = calendar.isDate(day, inSameDayAs: calendar.date(byAdding: .day, value: -1, to: today)!)
+            ? "Yesterday" : writer.string(from: day)
+        XCTAssertTrue(app.staticTexts[short].exists, "the page is on the line's day, \(short): "
                       + app.staticTexts.allElementsBoundByIndex.prefix(4).map(\.label).joined(separator: " | "))
-        XCTAssertTrue(app.buttons["4 weeks"].isSelected, "the range widened to reach that day")
+        // 7 days shows today and the 6 before; a day older than that widens the range (`GraphRange.fitting`).
+        let back = calendar.dateComponents([.day], from: day, to: today).day ?? 0
+        let range = back < 7 ? "7 days" : "4 weeks"
+        XCTAssertTrue(app.buttons[range].isSelected, "the range reaches that day, \(back) days back: \(range)")
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(line.waitForExistence(timeout: 3), "back to the Graphs tab")

@@ -17,9 +17,13 @@ enum CardShown: Equatable {
     /// No AI card for now (S12): the app's own facts, when there are any, and why.
     case factsOnly(PlainCard?, period: CardPeriod, why: String)
 
+    /// `now` is a screen's clock tick, which can be up to 20 seconds old (Home's). A change made
+    /// since (a second "This was wrong") must show at once: a report after `now` doesn't count
+    /// (`InsightCards.wrongCount`), so this never looks earlier than the real time.
     @MainActor
-    static func now(_ kind: CardKind, at now: Date, model: AppModel = .shared,
+    static func now(_ kind: CardKind, at tick: Date, model: AppModel = .shared,
                     engine: InsightEngine = .shared) -> CardShown {
+        let now = max(tick, Date())
         guard let babyID = model.baby?.name else { return .nothing }
         switch InsightCards.onScreen(kind, data: model.store.data, babyID: babyID, me: model.me, now: now) {
         case .nothing:
@@ -173,9 +177,8 @@ struct InsightCardSheet: View {
     var openGraph: ((GraphKind, PlainDate?) -> Void)?
     @Environment(\.dismiss) private var dismiss
     private let model = AppModel.shared
-    @State private var detent: PresentationDetent = Self.atBottom ? .large : .medium
 
-    /// Feeding Dev only: `-cardAtBottom YES` opens the card full height at its end, for screenshots.
+    /// Feeding Dev only: `-cardAtBottom YES` opens the card at its end, for screenshots.
     private static var atBottom: Bool {
         #if FEEDING_DEV
         UserDefaults.standard.bool(forKey: "cardAtBottom")
@@ -236,7 +239,8 @@ struct InsightCardSheet: View {
             .toolbar(.hidden, for: .navigationBar)
         }
         .tint(Theme.text)
-        .presentationDetents([.medium, .large], selection: $detent)
+        // Full height at once (Parent A, 23 Nov 2026): a half-height card needed a drag to read.
+        .presentationDetents([.large])
         .presentationBackground(Theme.background)
     }
 
