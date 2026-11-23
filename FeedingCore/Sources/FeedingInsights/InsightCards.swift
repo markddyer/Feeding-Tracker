@@ -83,11 +83,21 @@ public struct FormField: Hashable, Sendable {
     public var name: String
     public var about: String
     public var node: FormNode
+
+    public init(name: String, about: String, node: FormNode) {
+        self.name = name
+        self.about = about
+        self.node = node
+    }
 }
 
 /// One card's form: its facts, patterns and passages, each limited to what this card may name.
 public struct CardForm: Hashable, Sendable {
     public var root: FormNode
+
+    public init(root: FormNode) {
+        self.root = root
+    }
 }
 
 // MARK: - The stored card (D8)
