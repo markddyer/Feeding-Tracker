@@ -360,6 +360,33 @@ struct CardRemakeTests {
         return data
     }
 
+    @Test func theLastTryLeavesOutOnlyAPickThatFails() {
+        // AI13 D3 A. A steady 8 feeds a day can't be read as a fall.
+        let data = consenting(household(days))
+        guard case .make(let job, _) = plan(data, now: made) else { Issue.record("no card to make"); return }
+        let fact = FactRef(.day(date("2026-11-21")), .feeds)
+        let untrue = PatternChoice(.lower, .feeds, recent: DateSpan(date("2026-11-19"), date("2026-11-21")),
+                                   earlier: DateSpan(date("2026-11-12"), date("2026-11-18")))
+        let choices = CardChoices(facts: [fact], patterns: [untrue])
+        // The first try: the whole card is turned down, so the AI chooses again...
+        let (first, none) = InsightCards.accept(choices, job: job, data: data, babyID: baby, now: made)
+        #expect(none == nil)
+        guard case .rejected(let problems, _) = first else { Issue.record("a fall over steady feeds was accepted"); return }
+        // ...and is told why in words, not by a code word.
+        let note = InsightCards.retryNote(problems)
+        #expect(note.contains("pattern 1 ("))
+        #expect(!note.contains("patternUntrue") && !note.contains("emptyStretch") && !note.contains("readsTheSame"))
+        // The last try: the card is kept, and stored with only what passed.
+        let (last, card) = InsightCards.accept(choices, job: job, data: data, babyID: baby, now: made, leaveOut: true)
+        guard case .accepted(let checked) = last, let card else { Issue.record("turned down"); return }
+        #expect(checked.patterns.isEmpty)
+        #expect(checked.lines == ["8 feeds logged yesterday."])
+        #expect(card.choices.facts == [fact] && card.choices.patterns.isEmpty)
+        // A fact outside the card's days goes too; with nothing left there is no card.
+        let nothingLeft = CardChoices(facts: [FactRef(.day(date("2026-11-10")), .feeds)], patterns: [untrue])
+        #expect(InsightCards.accept(nothingLeft, job: job, data: data, babyID: baby, now: made, leaveOut: true).1 == nil)
+    }
+
     @Test func aFirstCardIsMadeThenShown() {
         let data = withCard(days)
         guard case .show(let card) = plan(data, now: made.addingTimeInterval(.hours(1))) else {

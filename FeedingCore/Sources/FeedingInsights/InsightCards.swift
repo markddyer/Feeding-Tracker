@@ -709,24 +709,63 @@ public enum InsightCards {
 
     // MARK: Checking, storing and showing
 
-    /// A card made from `choices` for `job`, checked strictly (any problem turns it down, so the
-    /// AI is asked once more), ready to store.
+    /// A card made from `choices` for `job`, checked, ready to store.
+    /// `leaveOut` false (the first try): any pick that fails the check turns the card down, so the
+    /// AI chooses again. `leaveOut` true (the last try, AI13 D3 A): a pick that fails is left out on
+    /// its own, as when a stored card is shown again, and the card is stored with only what passed;
+    /// it is turned down only when nothing is left. Nothing that fails the check is ever shown.
     public static func accept(_ choices: CardChoices, job: CardJob, data: HouseholdData, babyID: String,
-                              now: Date) -> (AnswerVerdict, StoredCard?) {
+                              now: Date, leaveOut: Bool = false) -> (AnswerVerdict, StoredCard?) {
         // A fact only about this card's own days and nights, or the latest weight: the form says so,
         // and the checker holds it even if an answer doesn't keep to the form.
+        var choices = choices
         let outside = choices.facts.filter { !covers(job.request.period, $0.scope) }
         if !outside.isEmpty {
-            return (.rejected(outside.map { _ in Rejection(part: "fact", reason: .unknownFact) }, needsHelpNow: false), nil)
+            guard leaveOut else {
+                return (.rejected(outside.map { _ in Rejection(part: "fact", reason: .unknownFact) }, needsHelpNow: false), nil)
+            }
+            choices.facts.removeAll { !covers(job.request.period, $0.scope) }
         }
         let settings = data.householdSettings
         let facts = data.insightFacts(babyID: babyID, now: now)
         let verdict = AnswerCheck.accept(choices, offered: job.offered, facts: facts, checks: data.passageChecks,
-                                         timeZone: settings.timeZone)
-        guard case .accepted = verdict else { return (verdict, nil) }
+                                         timeZone: settings.timeZone, leaveOut: leaveOut)
+        guard case .accepted(let checked) = verdict else { return (verdict, nil) }
+        if leaveOut {
+            choices = CardChoices(facts: checked.factRefs, patterns: checked.patternChoices,
+                                  passages: checked.passages.map { PassageChoice($0.passage.id, summary: $0.summary?.id) })
+        }
         let card = StoredCard(period: job.request.period, choices: choices, offered: job.offered, seen: job.seen,
                               made: job.made, madeAt: now)
         return (verdict, card)
+    }
+
+    // MARK: Trying again (AI3)
+
+    /// Added to the second try when the first answer couldn't be read.
+    public static let unreadableNote = "\n\nYOUR LAST ANSWER COULDN'T BE READ: choose only from the form's lists."
+
+    /// Added to the second try when the first was turned down: each pick and why, in plain words
+    /// (AI13 D3 A; the first run named only code words such as "emptyStretch").
+    public static func retryNote(_ problems: [Rejection]) -> String {
+        "\n\nYOUR LAST CHOICES WERE TURNED DOWN, so choose again. Change or leave out these: "
+            + problems.map { "\($0.part) (\(why($0.reason)))" }.joined(separator: "; ")
+            + ". A pick that still doesn't pass is left out of the card."
+    }
+
+    static func why(_ reason: Rejection.Reason) -> String {
+        switch reason {
+        case .unknownFact: "the log has no value for that measure on that day or night"
+        case .patternSpan: "its days aren't all in the log, or don't fit the pattern's shape"
+        case .patternUntrue: "the log's numbers don't bear it out"
+        case .incompleteDays: "some of its days have entries with no amount or unread details, so their totals aren't known"
+        case .emptyStretch: "it is a fall across a day or night with a long stretch with nothing logged, which may be entries not made"
+        case .readsTheSame: "its numbers read the same once written, so the change can't be seen"
+        case .unknownPassage: "that passage isn't offered with this card, or can't be shown with the other one"
+        case .unknownSummary: "that summary isn't one offered for its passage"
+        case .tooMany: "too many picks, none at all, or the same pick twice"
+        case .tooLong, .number, .dateOrTime, .banned, .unknownPlaceholder: "it isn't allowed on a card"
+        }
     }
 
     /// A stored card as this phone shows it: checked against this phone's log, leaving out a fact

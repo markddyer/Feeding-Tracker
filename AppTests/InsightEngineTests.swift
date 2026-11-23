@@ -97,6 +97,24 @@ struct InsightEngineTests {
         if case .made = result { Issue.record("a day outside the card was accepted") }
     }
 
+    /// AI13 D3 A: a pick that fails twice is left out on the last try; the rest of the card stays.
+    @Test func aBadPickIsLeftOutOnTheLastTry() async throws {
+        let data = household()
+        let job = try #require(job(data))
+        // Steady feeds read as a fall: turned down at the first try, left out at the second.
+        let answerer = FixedAnswerer(.success(#"""
+            {"facts":[{"scope":"day:2026-11-21","measure":"feeds"}],
+             "patterns":[{"shape":"lower","measure":"feeds","nights":false,"recentFirst":"2026-11-19","recentLast":"2026-11-21",
+                          "earlierFirst":"2026-11-12","earlierLast":"2026-11-18"}],"passages":[]}
+            """#))
+        let result = await InsightEngine.make(job, data: { data }, babyID: baby, answerer: answerer, now: { self.at(22, 10) },
+                                              onCall: {})
+        guard case .made(let card) = result else { Issue.record("\(result)"); return }
+        #expect(answerer.calls == 2)
+        #expect(card.choices.patterns.isEmpty)
+        #expect(card.choices.facts.count == 1)
+    }
+
     @Test func failuresLandOnTheShortList() async throws {
         let data = household()
         let job = try #require(job(data))

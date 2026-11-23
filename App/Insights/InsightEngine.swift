@@ -216,8 +216,9 @@ final class InsightEngine {
         outcomes[kind] = CardOutcome(period: period, reason: .failed(failure))
     }
 
-    /// One try at a card: a call, and one more with the checker's reasons if the answer is turned
-    /// down (AI3). `onCall` counts each call on this phone (D10).
+    /// One try at a card: a call, and one more with the checker's reasons in plain words if the
+    /// answer is turned down (AI3). On that last call a pick that fails the check is left out on
+    /// its own rather than losing the card (AI13 D3 A). `onCall` counts each call on this phone (D10).
     static func make(_ job: CardJob, data: () -> HouseholdData, babyID: String, answerer: any CardAnswerer,
                      now: () -> Date = Date.init, onCall: () -> Void) async -> CardMakeResult {
         let schema: GenerationSchema
@@ -228,7 +229,7 @@ final class InsightEngine {
         }
         let prompt = InsightCards.prompt(job.request, timeZone: data().householdSettings.timeZone)
         var note = ""
-        for _ in 0..<2 {
+        for attempt in 0..<2 {
             onCall()
             let text: String
             do {
@@ -237,15 +238,13 @@ final class InsightEngine {
                 return .failed(failure(error))
             }
             guard let choices = InsightCards.read(Data(text.utf8)) else {
-                note = "\n\nYOUR LAST ANSWER COULDN'T BE READ: choose only from the form's lists."
+                note = InsightCards.unreadableNote
                 continue
             }
-            let (verdict, card) = InsightCards.accept(choices, job: job, data: data(), babyID: babyID, now: now())
+            let (verdict, card) = InsightCards.accept(choices, job: job, data: data(), babyID: babyID, now: now(),
+                                                      leaveOut: attempt == 1)
             if let card { return .made(card) }
-            if case .rejected(let problems, _) = verdict {
-                note = "\n\nYOUR LAST CHOICES WERE TURNED DOWN, so choose again: "
-                    + problems.map { "\($0.part): \(String(describing: $0.reason))" }.joined(separator: "; ") + "."
-            }
+            if case .rejected(let problems, _) = verdict { note = InsightCards.retryNote(problems) }
         }
         return .failed(.turnedDown)
     }
