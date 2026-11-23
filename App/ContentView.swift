@@ -59,7 +59,8 @@ struct ContentView: View {
 
     var body: some View {
         #if FEEDING_DEV
-        if let screen = UserDefaults.standard.string(forKey: "openScreen"), let me = model.me, let baby = model.baby {
+        if let screen = UserDefaults.standard.string(forKey: "openScreen"), screen != "ask", let me = model.me,
+           let baby = model.baby {
             DevScreen(name: screen, me: me, babyID: baby.name)
                 .tint(Theme.accent)
         } else {
@@ -258,17 +259,29 @@ struct ContentView: View {
             // buttons. "Home" is still the back button's name on the next screen.
             .navigationTitle("Home")
             .toolbar(removing: .title)
-            .modifier(TopBar(settings: true))
+            .modifier(TopBar(settings: true, ask: true))
         }
     }
 
     /// Settings (and, in Feeding Dev, the tests) in the top bar, and the screens they open.
     private struct TopBar: ViewModifier {
         let settings: Bool
+        /// Home's top bar alone has Ask (AI insights step 3, A11).
+        var ask = false
+        @State private var asking = UserDefaults.standard.string(forKey: "openScreen") == "ask"
 
         func body(content: Content) -> some View {
             content
                 .toolbar {
+                    if ask {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button { asking = true } label: {
+                                Label("Ask", systemImage: "bubble.left.and.text.bubble.right")
+                            }
+                            .tint(Theme.text)
+                            .accessibilityIdentifier("askButton")
+                        }
+                    }
                     if settings {
                         ToolbarItem(placement: .topBarTrailing) {
                             NavigationLink(value: Screen.settings) {
@@ -295,6 +308,7 @@ struct ContentView: View {
                     }
                 }
                 .navigationBarTitleDisplayMode(.inline)
+                .sheet(isPresented: $asking) { QuestionsView() }
         }
     }
 }
@@ -321,7 +335,8 @@ struct AlarmSpikeHooks: ViewModifier {
 /// `-firstID`, the sample first's ID; `sample-first-smile` by default, with `-sampleFirsts YES`),
 /// or the move's two screens, `moveOut` and `moveIn` (`08-going-live.md`), or `getHelp`, `nhsPassages` and
 /// `nhsPassage` (with `-passageID night-and-day`) from AI insights step 1, or `aiInsights` and `aiSees`
-/// (Settings › AI insights and "What the AI sees") from step 2.
+/// (Settings › AI insights and "What the AI sees") from step 2. `ask` (step 3) opens Home with Ask
+/// open over it, with `-sampleQuestions` for made-up questions.
 struct DevScreen: View {
     let name: String
     let me: MemberID

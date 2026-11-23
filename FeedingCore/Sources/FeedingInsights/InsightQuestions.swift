@@ -405,7 +405,7 @@ public enum QuestionWording {
     }
 
     /// "14:05 today", "23:40 yesterday" or "18:30 on Friday 20 November".
-    static func when(_ date: Date, _ now: Date, _ timeZone: TimeZone) -> String {
+    public static func when(_ date: Date, _ now: Date, _ timeZone: TimeZone) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_GB_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)

@@ -330,18 +330,38 @@ struct InsightSettingsView: View {
 struct InsightRequestView: View {
     private let model = AppModel.shared
     @State private var kind: CardKind = .morning
+    /// Ask (step 3): what a typed question sends.
+    @State private var question = false
+    static let sampleQuestion = "How many feeds last night?"
 
     var body: some View {
         let data = model.store.data
         let request = InsightCards.preview(kind, data: data, babyID: model.baby?.name ?? "", now: Date())
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Picker("Card", selection: $kind) {
-                    Text("Morning card").tag(CardKind.morning)
-                    Text("This week").tag(CardKind.week)
+                Picker("Card", selection: Binding(get: { question ? nil : kind },
+                                                  set: { question = $0 == nil; if let new = $0 { kind = new } })) {
+                    Text("Morning card").tag(CardKind?.some(.morning))
+                    Text("This week").tag(CardKind?.some(.week))
+                    Text("A question").tag(CardKind?.none)
                 }
                 .pickerStyle(.segmented)
-                if let request {
+                if question, let babyID = model.baby?.name {
+                    Text("Exactly what Little Log would send for a question in Ask now, here \u{201C}\(Self.sampleQuestion)\u{201D}: the instructions, then the last 7 days and nights of your log and today so far in JSON, then what you typed, word for word, and the question before it if you asked one in the last 10 minutes. It is sent without the spaces and line breaks added here for reading.")
+                        .feedText(.subheadline)
+                        .foregroundStyle(Theme.textMuted)
+                        .padding(.horizontal, 4)
+                    Tile {
+                        Text(InsightQuestions.readablePrompt(
+                            InsightQuestions.request(Self.sampleQuestion, earlier: nil, data: data, babyID: babyID, now: Date()).0,
+                            timeZone: data.householdSettings.timeZone))
+                            .font(.system(.footnote, design: .monospaced))
+                            .fontDesign(nil)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("questionRequest")
+                    }
+                } else if let request {
                     Text("Exactly what Little Log would send for this card now: the instructions, then the numbers from your log in JSON, a plain data format. It is sent without the spaces and line breaks added here for reading. Times are in the household’s time zone.")
                         .feedText(.subheadline)
                         .foregroundStyle(Theme.textMuted)
