@@ -2674,6 +2674,8 @@ Lane A: AI16 → AI17 → AI18 → AI19 → AI20 → AI22 (they share `FeedingIn
 - [x] **AI22 (P2, human: ~2h / CC: ~20min)** — Docs (done 23 Nov 2026: `CLAUDE.md`'s status, layout, commands and sample flags; `DESIGN.md` in AI19; the step list in the review; Ask's diagram at the top of `InsightQuestions.swift`) — `CLAUDE.md` (layout, commands, sample flags), `DESIGN.md`, this plan's step list and Ask's diagram in `InsightQuestions.swift`
   - Verify: read through
 
+**On the phones:** Little Log build 7 (Ask) went to TestFlight on 23 Nov 2026, after the model tests passed (cards 30 of 30, Ask 56 of 60, $2.77). Parent A tried Ask on the Duo that evening: it answered, though the answer was only partly on the point. Still to see: Parent B's phone, follow-ups (the model tests' weakest kind), and how often the help button shows in real use.
+
 ### Unresolved decisions (step 3)
 None: D1 to D12 are answered.
 
