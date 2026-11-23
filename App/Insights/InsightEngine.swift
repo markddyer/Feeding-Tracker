@@ -311,6 +311,128 @@ final class InsightEngine {
         lastFailureAt = Date()
     }
 
+    // MARK: Ask (step 3)
+
+    /// True while a typed question is with the AI.
+    private(set) var askingQuestion = false
+
+    /// A typed question, from Ask: the route first (danger signs, medicines, the gate), then the AI.
+    /// What it got is kept on this phone (`QuestionLog`), never synced. Log lines name what
+    /// happened, never words (Q12).
+    func ask(_ text: String, model: AppModel = .shared, log: QuestionLog = .shared) async {
+        let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty, !askingQuestion, let babyID = model.baby?.name else { return }
+        askingQuestion = true
+        defer { askingQuestion = false }
+        let now = Date()
+        log.removeExpired(now: now)
+        func route(_ participants: Set<MemberID>?) -> QuestionRoute {
+            InsightQuestions.route(typed, data: model.store.data, babyID: babyID, me: model.me, participants: participants,
+                                   kept: log.questions, now: now)
+        }
+        var participants: Set<MemberID>?
+        var routed = route(nil)
+        // The household's members are read from iCloud only when the AI could be asked (O2).
+        if case .closed(.notChecked) = routed {
+            participants = await model.sync.householdParticipants()
+            guard participants != nil else {
+                SyncLog.add("ask: no signal")
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: .couldNotAsk))
+                fail(.noSignal)
+                return
+            }
+            routed = route(participants)
+        }
+        switch routed {
+        case .helpNow:
+            SyncLog.add("ask: danger sign, Get help now")
+            log.add(KeptQuestion(askedAt: now, text: typed, kind: .helpNow))
+        case .lastGiven:
+            log.add(KeptQuestion(askedAt: now, text: typed, kind: .lastGiven))
+        case .medicineReply:
+            log.add(KeptQuestion(askedAt: now, text: typed, kind: .medicineReply))
+        case .closed:
+            log.add(KeptQuestion(askedAt: now, text: typed, kind: .closed))
+        case .ask(let job):
+            guard let answerer else {
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: .couldNotAsk))
+                fail(.noKey)
+                return
+            }
+            SyncLog.add("ask: sent")
+            let result = await Self.askAI(job, data: { model.store.data }, babyID: babyID, answerer: answerer,
+                                          gate: { InsightCards.gate(model.store.data, me: model.me, participants: participants,
+                                                                    now: Date()).make })
+            switch result {
+            case .answered(let answer):
+                SyncLog.add("ask: answered")
+                let people = InsightQuestions.needsPeopleLine(answer.topic, kept: log.questions, now: now)
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: .asked, answer: answer, offered: job.offered,
+                                     peopleLine: people))
+            case .helpNow:
+                SyncLog.add("ask: the AI's flag, Get help now")
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: .helpNow))
+            case .closed:
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: .closed))
+            case .failed(let failure):
+                SyncLog.add("ask: failed, \(failure.rawValue)")
+                log.add(KeptQuestion(askedAt: now, text: typed, kind: .couldNotAsk))
+                if failure != .turnedDown { fail(failure) }
+            }
+        }
+    }
+
+    enum QuestionResult: Hashable, Sendable {
+        case answered(QuestionAnswer)
+        /// The AI's "needs help now" flag (A2's second net), read before anything else (X6).
+        case helpNow
+        case closed(CardClosed)
+        case failed(InsightFailure)
+    }
+
+    /// One question to the AI: a call, and one more with the checker's reasons if the answer is
+    /// turned down or can't be read. The gate is asked before each call and before the answer is
+    /// kept (X5). The help flag is read first, on its own, so an answer that can't be read in full
+    /// still brings the card (X6). On the last try a part that fails is left out on its own; the
+    /// answer is checked again each time it is shown (X8).
+    static func askAI(_ job: QuestionJob, data: () -> HouseholdData, babyID: String, answerer: any CardAnswerer,
+                      now: () -> Date = Date.init, gate: () -> CardClosed?) async -> QuestionResult {
+        let schema: GenerationSchema
+        do {
+            schema = try self.schema(job.form)
+        } catch {
+            return .failed(.unavailable)
+        }
+        let prompt = InsightQuestions.prompt(job.request, timeZone: data().householdSettings.timeZone)
+        var note = ""
+        for attempt in 0..<2 {
+            if let closed = gate() { return .closed(closed) }
+            let text: String
+            do {
+                text = try await answerer.answer(prompt + note, schema: schema)
+            } catch {
+                return .failed(failure(error))
+            }
+            let json = Data(text.utf8)
+            if InsightQuestions.readsNeedsHelpNow(json) { return .helpNow }
+            guard let answer = InsightQuestions.read(json) else {
+                note = InsightCards.unreadableNote
+                continue
+            }
+            switch InsightQuestions.accept(answer, offered: job.offered, data: data(), babyID: babyID, now: now(),
+                                           leaveOut: attempt == 1) {
+            case .accepted:
+                if let closed = gate() { return .closed(closed) }
+                return .answered(answer)
+            case .rejected(let problems, let needsHelpNow):
+                if needsHelpNow { return .helpNow }
+                note = InsightCards.retryNote(problems)
+            }
+        }
+        // Twice unreadable or turned down: the fixed reply, with Get help now and Call 111 (X6).
+        return .failed(.turnedDown)
+    }
+
     // MARK: This phone's calls (D10)
 
     private func triesKey(_ kind: CardKind) -> String { "insights.tries.\(kind.rawValue)" }

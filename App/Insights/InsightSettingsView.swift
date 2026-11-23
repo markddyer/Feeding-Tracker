@@ -316,6 +316,8 @@ struct InsightSettingsView: View {
         guard let me = model.me else { return }
         model.store.change { $0.setInsightYes(yes, member: me, now: Date()) }
         if yes { Task { await engine.prepare() } }
+        // Off: Ask's questions on this phone go too (step 3 Q12).
+        if !yes { QuestionLog.shared.empty() }
     }
 
     private func header(_ title: String) -> some View {
