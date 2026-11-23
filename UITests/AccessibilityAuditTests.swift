@@ -163,6 +163,37 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// AI insights step 2 (`12-ai-insights-gauntlet.md`, AI12): Settings › AI insights (waiting, on
+    /// with a failure, paused), "What the AI sees", Home's lines, the morning card top and bottom,
+    /// "Facts only today", Graphs' "This week" line and its card. Made-up cards; no AI runs.
+    func testInsights() {
+        let card = ["-sampleInsightCard", "YES"]
+        let week = card + ["-sampleWeek", "30"]
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(["-openScreen", "aiInsights", "-sampleInsightYes", "other"], look: look), "ai settings waiting \(look)")
+            audit(launch(["-openScreen", "aiInsights", "-sampleInsightYes", "both", "-sampleInsightFailure", "noSignal"], look: look),
+                  "ai settings failure \(look)")
+            audit(launch(card + ["-openScreen", "aiInsights", "-sampleWrong", "2"], look: look), "ai settings paused \(look)")
+            audit(launch(week + ["-openScreen", "aiSees"], look: look), "what the ai sees \(look)")
+            audit(launch(card + ["-homeLastNight", "YES"], look: look), "home card line \(look)")
+            audit(launch(card + ["-homeCardLine", "YES"], look: look), "home afternoon line \(look)")
+            audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard"], look: look), "morning card \(look)")
+            audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard", "-cardAtBottom", "YES"], look: look),
+                  "morning card end \(look)")
+            let plain = launch(["-sampleInsightYes", "both", "-homeLastNight", "YES", "-homeSheet", "insightCard"], look: look)
+            _ = plain.descendants(matching: .any)["factsOnlyCard"].firstMatch.waitForExistence(timeout: 8)
+            audit(plain, "facts only \(look)")
+            audit(launch(week + ["-startTab", "graphs"], look: look), "graphs week line \(look)")
+            audit(launch(week + ["-startTab", "graphs", "-graphsSheet", "week"], look: look), "week card \(look)")
+        }
+        audit(launch(["-openScreen", "aiInsights", "-sampleInsightYes", "other"], largeText: true), "ai settings large text")
+        audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard"], largeText: true), "morning card large text")
+        audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard", "-cardAtBottom", "YES"], largeText: true),
+              "morning card end large text")
+        audit(launch(week + ["-startTab", "graphs", "-graphsSheet", "week"], largeText: true), "week card large text")
+        report()
+    }
+
     func testLargeText() {
         audit(launch([], largeText: true), "home large text")
         audit(launch(["-homeAtBottom", "YES"], largeText: true), "home lower large text")

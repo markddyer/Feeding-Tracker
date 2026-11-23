@@ -107,6 +107,12 @@ struct GraphsView: View {
             #endif
         }
         .sheet(isPresented: $weekCardOpen, onDismiss: {
+            // A line can name a day older than the range shows: widen it, or the page would open
+            // on another day than the line's.
+            if let day = pageAfterCard?.day {
+                let today = PlainDate(Date(), in: model.store.data.householdSettings.timeZone)
+                rangeName = (GraphRange(rawValue: rangeName) ?? .week).fitting(day, today: today).rawValue
+            }
             page = pageAfterCard
             pageAfterCard = nil
         }) {

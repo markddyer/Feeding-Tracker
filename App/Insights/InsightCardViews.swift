@@ -95,9 +95,12 @@ enum CardText {
 
 /// The small "AI" mark on everything the AI picked (the AUP's disclosure, D5).
 struct AIMark: View {
+    /// 11 pt at the standard text size; it grows with the parent's text size (AI12's audit).
+    @ScaledMetric(relativeTo: .caption2) private var size: CGFloat = 11
+
     var body: some View {
         Text("AI")
-            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .font(.system(size: size, weight: .bold, design: .rounded))
             .foregroundStyle(Theme.textMuted)
             .padding(.horizontal, 7)
             .padding(.vertical, 3)
@@ -112,12 +115,13 @@ struct AICardLine: View {
     let title: String
     let shown: CardShown
     let open: () -> Void
+    @ScaledMetric(relativeTo: .footnote) private var star: CGFloat = 12
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 8) {
                 Text("✦")
-                    .font(.system(size: 12, weight: .heavy))
+                    .font(.system(size: star, weight: .heavy))
                     .foregroundStyle(Theme.textMuted)
                     .accessibilityHidden(true)
                 if shown == .making {
@@ -147,6 +151,8 @@ struct AICardLine: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(shown == .making ? "\(title), being made by AI" : "\(title), picked by AI")
         .accessibilityHint("Opens the card")
+        // One element in place of the button: it must still say it is a button.
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("aiCardLine")
     }
 }
@@ -297,6 +303,8 @@ struct AICardTile: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+        // A container, so its buttons keep their own names.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("aiCard")
     }
 
@@ -344,6 +352,7 @@ struct AICardTile: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Opens the graph")
+            .accessibilityIdentifier("cardGraphLine")
         } else {
             Text(text).feedText(.body).monospacedDigit()
         }
@@ -368,6 +377,7 @@ struct AICardTile: View {
             Button { openGraph(graph, day) } label: { box.contentShape(Rectangle()) }
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens the graph")
+                .accessibilityIdentifier("cardGraphLine")
         } else {
             box
         }
@@ -404,6 +414,8 @@ struct PlainCardTile: View {
             }
         }
         .fixedSize(horizontal: false, vertical: true)
+        // A container, so its buttons keep their own names.
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("factsOnlyCard")
     }
 }

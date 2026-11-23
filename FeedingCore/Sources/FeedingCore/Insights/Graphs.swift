@@ -15,6 +15,18 @@ public enum GraphRange: String, CaseIterable, Sendable {
         case .all: nil
         }
     }
+
+    /// The range to show `day` in: this one if its days reach back to it, else the shortest that
+    /// does. A line on "This week" can name a day older than 7 days ago; a graph's page keeps its
+    /// day inside its range, so it would open on another day (AI12).
+    public func fitting(_ day: PlainDate, today: PlainDate) -> GraphRange {
+        let back = today.days(since: day)
+        for range in Self.allCases.drop(while: { $0 != self }) {
+            guard let days = range.days else { return range }
+            if back < days { return range }
+        }
+        return .all
+    }
 }
 
 /// One calendar day of facts, midnight to midnight in the household's time zone.

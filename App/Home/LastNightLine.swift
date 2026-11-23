@@ -55,6 +55,8 @@ struct LastNightLine: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(ShareText.spokenLastNight(night) + (card == .nothing ? "" : card.isAI ? ", with a card picked by AI" : ""))
         .accessibilityHint(card == .nothing ? "Shows last night's entries" : "Shows the card and last night's entries")
+        // One element in place of the button: it must still say it is a button.
+        .accessibilityAddTraits(.isButton)
         .accessibilityIdentifier("lastNightLine")
         .sheet(isPresented: $open) {
             if card == .nothing {

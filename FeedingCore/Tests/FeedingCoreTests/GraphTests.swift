@@ -153,4 +153,17 @@ struct GraphTests {
         #expect(days.first?.leftSeconds == 480)
         #expect(days.first?.rightSeconds == 0)
     }
+
+    /// A line on "This week" can name a day older than the 7 days shown: the page widens its range
+    /// to reach it, and never narrows a range the parent chose (AI12).
+    @Test func aRangeWidensToReachADay() {
+        let today = date("2026-11-23")
+        #expect(GraphRange.week.fitting(today, today: today) == .week)
+        #expect(GraphRange.week.fitting(date("2026-11-17"), today: today) == .week)
+        #expect(GraphRange.week.fitting(date("2026-11-16"), today: today) == .fourWeeks)
+        #expect(GraphRange.week.fitting(date("2026-10-27"), today: today) == .fourWeeks)
+        #expect(GraphRange.week.fitting(date("2026-10-26"), today: today) == .all)
+        #expect(GraphRange.fourWeeks.fitting(today, today: today) == .fourWeeks)
+        #expect(GraphRange.all.fitting(date("2026-11-22"), today: today) == .all)
+    }
 }
