@@ -33,4 +33,5 @@ Parent A found Home "visually quite overwhelming": eight boxes in six colours, b
 - The name in the top bar has no clock of its own: a `TimelineView` inside a toolbar item put SwiftUI into an endless loop (the app showed a blank screen at 100% busy). It is redrawn with the page.
 - A poo's Undo card (CH9): `CareLog.nappyFinished`, called when the details panel closes.
 - Tap tests: `StartFeedMenuFlowTests` (CH1), `UndoCardFlowTests` (CH9).
+- In Little Log build 8 on TestFlight (24 Nov 2026), with History's fix: baths in All and a Baths button.
 - Still to check on the phones: the page by day and at 3am, the folded parts opening, and the Book on the real open Duo (book pose and flat).
