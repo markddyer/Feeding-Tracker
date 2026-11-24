@@ -49,6 +49,14 @@ struct DoneByTests {
         for kind in [EventKind.growth, .milestone, "future-kind"] { #expect(!kind.countsAsWork) }
     }
 
+    /// The one list of every kind (History's "All" reads it): each kind once, all eight, and
+    /// never a kind from a newer build.
+    @Test func theListOfEveryKind() {
+        #expect(Set(EventKind.known).count == EventKind.known.count)
+        #expect(Set(EventKind.known) == [.feed, .pump, .sleep, .nappy, .growth, .medicine, .milestone, .bath])
+        #expect(!EventKind.known.contains("future-kind"))
+    }
+
     @Test func aBathHasOnlyTheSharedFieldsAndNoKindIsStampedWithWhoDidIt() {
         #expect(EventField.fields(for: .bath) == [.startedAt, .endedAt, .deletedAt, .note])
         #expect(EventField.fields(for: "future-kind").isDisjoint(with: EventField.onlyWhenSet))

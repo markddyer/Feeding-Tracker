@@ -106,30 +106,35 @@ struct HistoryView: View {
         }
     }
 
-    /// All, Feeds, Sleep, Nappies, Medicine, Growth: one kind at a time, in a row that scrolls
-    /// sideways when the text is large.
+    /// All, Feeds, Sleep, Nappies, Medicine, Baths, Growth, Firsts: one kind at a time, in a row
+    /// that scrolls sideways. Eight buttons pass a phone's edge, so the one chosen is scrolled into
+    /// sight when History opens (each phone remembers it).
     private func filterButtons(_ chosen: HistoryFilter) -> some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 6) {
-                ForEach(HistoryFilter.allCases, id: \.self) { filter in
-                    Button {
-                        filterName = filter.rawValue
-                    } label: {
-                        Text(filter.title)
-                            .feedText(.chip)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .foregroundStyle(filter == chosen ? Theme.background : Theme.text)
-                            .background(filter == chosen ? Theme.text : Theme.surface, in: Capsule())
-                            .frame(minHeight: 44)
-                            .contentShape(Rectangle())
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(spacing: 6) {
+                    ForEach(HistoryFilter.allCases, id: \.self) { filter in
+                        Button {
+                            filterName = filter.rawValue
+                        } label: {
+                            Text(filter.title)
+                                .feedText(.chip)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .foregroundStyle(filter == chosen ? Theme.background : Theme.text)
+                                .background(filter == chosen ? Theme.text : Theme.surface, in: Capsule())
+                                .frame(minHeight: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(PressStyle())
+                        .accessibilityAddTraits(filter == chosen ? .isSelected : [])
+                        .id(filter)
                     }
-                    .buttonStyle(PressStyle())
-                    .accessibilityAddTraits(filter == chosen ? .isSelected : [])
                 }
             }
+            .scrollIndicators(.hidden)
+            .onAppear { proxy.scrollTo(chosen, anchor: .center) }
         }
-        .scrollIndicators(.hidden)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Show")
     }
@@ -208,7 +213,8 @@ struct HistoryView: View {
 
 /// Which kinds History shows.
 enum HistoryFilter: String, CaseIterable {
-    case all, feeds, sleep, nappies, medicine, growth, firsts
+    /// In Home's order (Sleep, Nappy, Medicine, Bath); Baths added at the parents' ask, 24 Nov 2026.
+    case all, feeds, sleep, nappies, medicine, baths, growth, firsts
 
     var title: String {
         switch self {
@@ -217,6 +223,7 @@ enum HistoryFilter: String, CaseIterable {
         case .sleep: "Sleep"
         case .nappies: "Nappies"
         case .medicine: "Medicine"
+        case .baths: "Baths"
         case .growth: "Growth"
         case .firsts: "Firsts"
         }
@@ -224,11 +231,13 @@ enum HistoryFilter: String, CaseIterable {
 
     var kinds: Set<EventKind> {
         switch self {
-        case .all: [.feed, .pump, .sleep, .nappy, .medicine, .growth, .milestone]
+        // Every kind this build knows, from the one list in FeedingCore, so none is left out.
+        case .all: Set(EventKind.known)
         case .feeds: [.feed, .pump]
         case .sleep: [.sleep]
         case .nappies: [.nappy]
         case .medicine: [.medicine]
+        case .baths: [.bath]
         case .growth: [.growth]
         case .firsts: [.milestone]
         }

@@ -161,6 +161,8 @@ struct HistoryFilterTests {
                          timeZoneID: zone, now: t + 7_000)
         data.addNappy(id: "gone", babyID: "baby", wee: true, poo: false, at: t + 8_000, by: me, timeZoneID: zone, now: t + 8_000)
         data.delete("gone", by: me, now: t + 8_100)
+        data.add(id: "bath", kind: .bath, babyID: "baby", startedAt: t + 7_500, payload: EventPayload(), by: me,
+                 timeZoneID: zone, now: t + 7_500)
 
         var withFirsts = data
         withFirsts.addMilestone(id: "smile", babyID: "baby", title: "First smile", at: t + 2_000, by: me, timeZoneID: zone,
@@ -170,16 +172,17 @@ struct HistoryFilterTests {
         withFirsts.delete("rolled", by: me, now: t + 9_100)
 
         let expected: [HistoryFilter: [String]] = [
-            .feeds: ["pump", "feed"], .sleep: ["sleep"], .nappies: ["nappy"], .medicine: ["medicine"], .growth: ["growth"],
+            .feeds: ["pump", "feed"], .sleep: ["sleep"], .nappies: ["nappy"], .medicine: ["medicine"], .baths: ["bath"],
+            .growth: ["growth"],
         ]
         for (filter, ids) in expected {
             #expect(filter.entries(in: data, hidden: []).map(\.event.id) == ids, "\(filter) before firsts")
             #expect(filter.entries(in: withFirsts, hidden: []).map(\.event.id) == ids, "\(filter) with firsts")
         }
         #expect(HistoryFilter.all.entries(in: data, hidden: []).map(\.event.id)
-            == ["medicine", "growth", "nappy", "pump", "feed", "sleep"])
+            == ["bath", "medicine", "growth", "nappy", "pump", "feed", "sleep"])
         #expect(HistoryFilter.all.entries(in: withFirsts, hidden: []).map(\.event.id)
-            == ["medicine", "growth", "nappy", "pump", "feed", "smile", "sleep"])
+            == ["bath", "medicine", "growth", "nappy", "pump", "feed", "smile", "sleep"])
         #expect(HistoryFilter.firsts.entries(in: withFirsts, hidden: []).map(\.event.id) == ["smile"])
         #expect(HistoryFilter.firsts.entries(in: data, hidden: []).isEmpty)
         // A feed's copy logged on the other phone is left out.

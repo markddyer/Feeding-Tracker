@@ -26,7 +26,7 @@ The parents asked on 17 Nov 2026 for the app to log more than feeds, so they can
 
 - **Core:** the four kinds, `startFeed` ending a running sleep (O, also from the Lock Screen, Control Center and the watch), Stop · discard putting that sleep back (`discardFeed`), the medicine list (a Setting record, `medicines`, starting with Vitamin D), the rhythm report's facts and the widget's facts (`CareGlance`). Watch taps for Fell asleep, Woke up and a nappy, each with an ID the watch picks.
 - **Home:** Sleep and Nappy tiles above Next side and Last feed; a Medicine tile under them, with Given on each row and "+" for the list; the poo panel after Poo or Both; "Add details" on the Nappy tile for a poo with no details; Undo with Change time on every quick log. Holding Woke up or Fell asleep offers "about 10 / 20 / 30 min ago".
-- **History:** every kind in time order, with All, Feeds, Sleep, Nappies, Medicine and Growth at the top. Each kind opens its own editor (`CareEditor`).
+- **History:** every kind in time order, with All, Feeds, Sleep, Nappies, Medicine and Growth at the top (Firsts joined with the journal; on 24 Nov 2026 baths, which All had left out, were put in All and given a Baths button). Each kind opens its own editor (`CareEditor`).
 - **Graphs:** the daily rhythm report, Asleep per day (night and day stacked) and Nappies per day, above the feed graphs; the weight graph with Add, and the latest length and head under it.
 - **Lock Screen and Control Center:** the Sleep and nappy widget (F); a Sleep switch, a Nappy button set up as Wee, Poo or Both, and a Medicine button set up with one medicine.
 - **Watch:** page two, Sleep and nappy (I); the Sleep and Nappy face pieces.

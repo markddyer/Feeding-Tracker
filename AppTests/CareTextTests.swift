@@ -110,6 +110,11 @@ struct CareTextTests {
         for filter in HistoryFilter.allCases where filter != .all {
             #expect(filter.kinds.isSubset(of: all))
         }
-        #expect(all.contains(.sleep) && all.contains(.nappy) && all.contains(.medicine) && all.contains(.growth))
+        // "All" shows every kind this build knows, bath included (it was once left out).
+        #expect(all == Set(EventKind.known))
+        #expect(all.contains(.bath))
+        // And every kind has a button besides All (Baths added, 24 Nov 2026).
+        let buttons = HistoryFilter.allCases.filter { $0 != .all }.reduce(into: Set<EventKind>()) { $0.formUnion($1.kinds) }
+        #expect(buttons == all)
     }
 }

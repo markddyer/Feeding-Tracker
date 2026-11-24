@@ -34,6 +34,10 @@ public struct EventKind: RawRepresentable, Hashable, Sendable, Codable, Expressi
     /// Never in the alerts, and it never ends a running sleep.
     public static let bath: EventKind = "bath"
 
+    /// Every kind this build knows, in the order above. Add each new kind here: History's "All"
+    /// reads this list (bath was once left out of a hand-written copy, 24 Nov 2026).
+    public static let known: [EventKind] = [.feed, .pump, .sleep, .nappy, .growth, .medicine, .milestone, .bath]
+
     /// The kinds that are a parent's work in "who does what" (R2): each has a "done by", counts on
     /// the shared screen, and gets the swap on its Undo bar. Growth and firsts are not work. The
     /// one list every part reads (engineering review, A4), so they can't disagree.
