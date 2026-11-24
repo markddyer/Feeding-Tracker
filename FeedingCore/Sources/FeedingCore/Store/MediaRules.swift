@@ -182,6 +182,26 @@ public struct MediaTally: VersionedPayload, Hashable {
     }
 }
 
+// MARK: - "Only on this iPhone" (design review D10, D11)
+
+/// When a first's photo or video still waiting to go to iCloud is marked "Only on this iPhone":
+/// 10 minutes after Save, or at once when sending has stopped for a reason (the allowance full,
+/// iCloud full, the share not ready, iCloud refused it). So a new first shows no mark while it is
+/// simply on its way.
+public enum OnlyHereRule {
+    public static let after: TimeInterval = 10 * 60
+
+    public static func isOnlyHere(queuedAt: Date, stopped: Bool, now: Date) -> Bool {
+        stopped || now.timeIntervalSince(queuedAt) >= after
+    }
+
+    /// The next moment a mark appears by itself, for the screen to look again then; nil when no
+    /// item still waiting will change.
+    public static func nextChange(queuedAt: [Date], now: Date) -> Date? {
+        queuedAt.map { $0 + after }.filter { $0 > now }.min()
+    }
+}
+
 // MARK: - Space kept free for feeds (CEO review D19, outside voice OE8)
 
 public enum SpaceRule {

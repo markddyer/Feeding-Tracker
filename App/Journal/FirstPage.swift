@@ -19,6 +19,9 @@ struct FirstPage: View {
     /// while that item stays, whatever the other phone changes around it (Codex review of step 2).
     @State private var currentID: String?
     @State private var explainingFailure = false
+    @State private var explainingOnlyHere = false
+    /// Set when the next "Only on this iPhone" mark is due (D11).
+    @State private var statusNow = Date.distantPast
 
     var body: some View {
         let data = model.store.data
@@ -60,6 +63,7 @@ struct FirstPage: View {
                             .feedText(.subheadline)
                             .foregroundStyle(Theme.textMuted)
                         videoStatus
+                        onlyHereStatus(details.media)
                         if let note = first.payload?.note {
                             Text(note).feedText(.body)
                         }
@@ -93,6 +97,7 @@ struct FirstPage: View {
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { pageHeight = $0 }
+        .onlyHereRefresh($statusNow)
         .modifier(PageBar(embedded: embedded))
         .sheet(item: $editing) { mode in
             FirstEditor(mode: mode, me: me, babyID: babyID) { outcome in
@@ -123,6 +128,30 @@ struct FirstPage: View {
             }
         } else if !videos.pending(of: id).isEmpty {
             Text("Getting a video ready").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+        }
+    }
+
+    /// "Only on this iPhone" for a photo or video not in iCloud 10 minutes after Save, or at once
+    /// when sending stopped (D11); a tap says why and what to do (D10). The first item that is
+    /// stopped gives the reason, as that one won't go by itself.
+    @ViewBuilder
+    private func onlyHereStatus(_ media: [String]) -> some View {
+        let now = max(statusNow, Date())
+        let waits = media.compactMap { model.media.onlyHere($0, now: now) }
+        if let wait = waits.first(where: { $0.pause != nil }) ?? waits.first {
+            Button { explainingOnlyHere = true } label: {
+                Label(JournalText.onlyOnThisPhone, systemImage: "icloud.slash")
+                    .feedText(.subheadline)
+                    .foregroundStyle(Theme.text)
+                    .frame(minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Says why")
+            .alert(JournalText.onlyOnThisPhone, isPresented: $explainingOnlyHere) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(JournalText.onlyHereReason(wait.pause))
+            }
         }
     }
 

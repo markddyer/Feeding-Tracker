@@ -259,7 +259,10 @@ final class InsightCardFlowTests: XCTestCase {
         let today = calendar.startOfDay(for: Date())
         let day: Date?
         if label.hasSuffix("last night.") {
-            day = calendar.date(byAdding: .day, value: -1, to: today)
+            // Before 07:00 the night still running is today's yesterday's, so last night started
+            // the day before that (the household's night, 21:00 to 07:00).
+            let hour = calendar.component(.hour, from: Date())
+            day = calendar.date(byAdding: .day, value: hour < 7 ? -2 : -1, to: today)
         } else if let text = label.range(of: #"\d{1,2} [A-Z][a-z]+(?=\.$)"#, options: .regularExpression).map({ String(label[$0]) }) {
             let reader = DateFormatter()
             reader.locale = Locale(identifier: "en_GB")

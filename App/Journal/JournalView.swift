@@ -30,6 +30,8 @@ struct JournalView: View {
     @State private var settlingID: String?
     @State private var settled = true
     @State private var addedCount = 0
+    /// Set when the next "Only on this iPhone" mark is due, so the line shows it then (D11).
+    @State private var statusNow = Date.distantPast
     @Environment(\.look) private var look
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -113,6 +115,7 @@ struct JournalView: View {
         .onChange(of: model.store.data.events.count) { openTarget() }
         // Waits for the width, so it knows whether the open Duo shows two columns.
         .onChange(of: width) { openTarget() }
+        .onlyHereRefresh($statusNow)
     }
 
     /// Opens the first a notice was tapped for (design review D18): on the open Duo in the right
@@ -390,8 +393,7 @@ struct JournalView: View {
 
     /// A photo still only on this phone: 10 minutes after Save, or at once if sending stopped (D11).
     private func onlyOnThisPhone(_ id: String) -> Bool {
-        guard let upload = model.media.uploads.first(where: { $0.id == id }) else { return false }
-        return upload.pause != nil || Date().timeIntervalSince(upload.queuedAt) > 600
+        model.media.onlyHere(id, now: max(statusNow, Date())) != nil
     }
 
     private func bornMark(_ birth: PlainDate, today: PlainDate) -> some View {
@@ -451,5 +453,27 @@ struct JournalView: View {
         .padding(.top, 8)
         .padding(.bottom, 10)
         .background(Theme.background)
+    }
+}
+
+extension View {
+    /// Sets `now` when the next "Only on this iPhone" mark is due (`OnlyHereRule`, D11), so a
+    /// screen showing the marks looks again then, not only when something else changes.
+    func onlyHereRefresh(_ now: Binding<Date>) -> some View {
+        modifier(OnlyHereRefresh(now: now))
+    }
+}
+
+private struct OnlyHereRefresh: ViewModifier {
+    @Binding var now: Date
+
+    func body(content: Content) -> some View {
+        let next = AppModel.shared.media.nextOnlyHereChange(now: Date())
+        content.task(id: next) {
+            guard let next else { return }
+            try? await Task.sleep(for: .seconds(max(0, next.timeIntervalSinceNow) + 0.5))
+            guard !Task.isCancelled else { return }
+            now = Date()
+        }
     }
 }

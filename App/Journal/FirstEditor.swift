@@ -177,11 +177,6 @@ struct FirstEditor: View {
                     Button("Save") { save() }.disabled(problem != nil).tint(Theme.text)
                 }
             }
-            // A swipe down with changes asks first (D37); iOS closes the sheet itself on Discard.
-            .dismissalConfirmationDialog("Discard this first?", shouldPresent: isDirty) {
-                Button("Discard", role: .destructive) { cleanUp() }
-                Button("Keep editing", role: .cancel) {}
-            }
             .confirmationDialog("Discard this first?", isPresented: $confirmingDiscard, titleVisibility: .visible) {
                 Button("Discard", role: .destructive) {
                     cleanUp()
@@ -241,6 +236,11 @@ struct FirstEditor: View {
                 startImport(chosen.map { item in { try await makeCopy(ofPicked: item) } })
             }
         }
+        // A swipe down with changes asks first (D37): the sheet stays, and the swipe asks the
+        // same question as Cancel. iOS 27.2's `dismissalConfirmationDialog` closed it with no
+        // question (`UITests/DiscardFlowTests`), so a small bridge hears the swipe.
+        .interactiveDismissDisabled(isDirty)
+        .background { SheetCloseAttempt { if isDirty { confirmingDiscard = true } } }
     }
 
     private var screenTitle: String {
@@ -635,18 +635,13 @@ struct FirstEditor: View {
 
     /// When, from the photos picked here, while the parent hasn't set it (`MilestoneWhen`).
     private func followPhotosForWhen() {
-        guard !whenTouched else { return }
+        let now = Date()
         // Only times the first could have: one before the birth date, say, is left out
         // (Codex review of step 2).
         let taken = items.compactMap { drafts[$0]?.takenAt ?? videoDrafts[$0]?.takenAt }
-            .filter { data.milestoneDateProblem($0, babyID: babyID, now: Date()) == nil }
-        if let fromPhotos = MilestoneWhen.fromPhotos(takenAt: taken, now: Date()) {
-            when = fromPhotos
-            whenFromPhoto = true
-        } else if whenFromPhoto {
-            when = original?.event.startedAt ?? Date()
-            whenFromPhoto = false
-        }
+            .filter { data.milestoneDateProblem($0, babyID: babyID, now: now) == nil }
+        (when, whenFromPhoto) = MilestoneWhen.follow(when: when, fromPhoto: whenFromPhoto, touched: whenTouched,
+                                                     takenAt: taken, fallback: original?.event.startedAt ?? now, now: now)
     }
 
     // MARK: Saving

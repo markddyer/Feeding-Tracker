@@ -658,6 +658,26 @@ struct MilestoneWhenTests {
         #expect(MilestoneWhen.fromPhotos(takenAt: [now - 120], now: now) == nil)
         #expect(MilestoneWhen.fromPhotos(takenAt: [], now: now) == nil)
     }
+
+    /// Outside voice OV5: a photo's time arriving late never changes a When the parent set; a
+    /// When set by photos goes back once those photos are taken out.
+    @Test func thePhotosTimeFollowsOnlyWhileTheParentHasntSetWhen() {
+        let now = at(2026, 11, 18, 10, 0)
+        let photo = now - 7200
+        let parents = at(2026, 11, 17, 18, 0)
+        // Nobody set When: the photo's time, marked as from the photo.
+        var result = MilestoneWhen.follow(when: now, fromPhoto: false, touched: false, takenAt: [photo], fallback: now, now: now)
+        #expect(result.when == photo && result.fromPhoto)
+        // The parent set When, then the photo's time arrived: the parent's time stays.
+        result = MilestoneWhen.follow(when: parents, fromPhoto: false, touched: true, takenAt: [photo], fallback: now, now: now)
+        #expect(result.when == parents && !result.fromPhoto)
+        // The photo that set When was taken out: back to the first's own time.
+        result = MilestoneWhen.follow(when: photo, fromPhoto: true, touched: false, takenAt: [], fallback: parents, now: now)
+        #expect(result.when == parents && !result.fromPhoto)
+        // A photo taken just now changes nothing.
+        result = MilestoneWhen.follow(when: parents, fromPhoto: false, touched: false, takenAt: [now - 60], fallback: now, now: now)
+        #expect(result.when == parents && !result.fromPhoto)
+    }
 }
 
 @Suite("Firsts: dates refused")

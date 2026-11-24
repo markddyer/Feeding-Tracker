@@ -144,6 +144,18 @@ final class MediaSync {
     /// The tally as last read: the household's photo use.
     private(set) var tally: MediaTally?
     private(set) var uploads: [MediaUpload]
+
+    /// The item's wait, if it is marked "Only on this iPhone" now (`OnlyHereRule`).
+    func onlyHere(_ id: String, now: Date) -> MediaUpload? {
+        guard let upload = uploads.first(where: { $0.id == id }),
+              OnlyHereRule.isOnlyHere(queuedAt: upload.queuedAt, stopped: upload.pause != nil, now: now) else { return nil }
+        return upload
+    }
+
+    /// When the next "Only on this iPhone" mark appears by itself, for the screens to look again.
+    func nextOnlyHereChange(now: Date) -> Date? {
+        OnlyHereRule.nextChange(queuedAt: uploads.filter { $0.pause == nil }.map(\.queuedAt), now: now)
+    }
     /// The owner's phone is removing a parent who left from the photos share (outside voice OE7).
     private(set) var removingAccess = false
     /// The owner's phone couldn't add the other parent to the photos share yet: this phone's own

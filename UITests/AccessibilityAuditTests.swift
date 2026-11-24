@@ -229,7 +229,10 @@ final class AccessibilityAuditTests: XCTestCase {
         running.buttons["Stop and discard this feed"].tap()
         keep(running, "night stop question")
         let edit = launch(["-openScreen", "editLastFeed"], look: "alwaysNight")
-        edit.textFields.firstMatch.tap()
+        // The Note box is under "Who did it", off the screen until the form scrolls.
+        let note = edit.textFields.firstMatch
+        if !note.waitForExistence(timeout: 3) { edit.swipeUp() }
+        note.tap()
         keep(edit, "night keyboard")
     }
 

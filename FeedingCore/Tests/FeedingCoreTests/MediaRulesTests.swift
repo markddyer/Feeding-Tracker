@@ -227,6 +227,21 @@ struct PhotosShareTests {
     }
 }
 
+@Suite("Photos: the \"Only on this iPhone\" mark")
+struct OnlyHereTests {
+    @Test func tenMinutesAfterSaveOrAtOnceWhenSendingStopped() {
+        #expect(!OnlyHereRule.isOnlyHere(queuedAt: start, stopped: false, now: start + 599))
+        #expect(OnlyHereRule.isOnlyHere(queuedAt: start, stopped: false, now: start + 600))
+        #expect(OnlyHereRule.isOnlyHere(queuedAt: start, stopped: true, now: start))
+    }
+
+    @Test func theScreenLooksAgainWhenTheNextMarkIsDue() {
+        #expect(OnlyHereRule.nextChange(queuedAt: [start, start + 120], now: start + 60) == start + 600)
+        #expect(OnlyHereRule.nextChange(queuedAt: [start], now: start + 600) == nil)
+        #expect(OnlyHereRule.nextChange(queuedAt: [], now: start) == nil)
+    }
+}
+
 @Suite("Photos: telling the other phone of a new first")
 struct NewFirstNoticeTests {
     func newFirst(by: MemberID = parentB, savedAt: Date? = at(2026, 11, 18, 9, 0), deletedAt: Date? = nil,
@@ -246,6 +261,19 @@ struct NewFirstNoticeTests {
         #expect(notice(newFirst()) == .shown)
         #expect(notice(newFirst(), now: at(2026, 11, 18, 23, 0)) == .listOnly)
         #expect(notice(newFirst(), now: at(2026, 11, 19, 6, 59)) == .listOnly)
+    }
+
+    /// Design review D19: the household's night hours, read on its own clock: 21:00 and 07:00
+    /// exactly, and the night the clocks go back (25 Oct 2026, 02:00 BST becomes 01:00 GMT).
+    @Test func theNightBoundariesAndAClockChange() {
+        #expect(notice(newFirst(), now: at(2026, 11, 18, 20, 59)) == .shown)
+        #expect(notice(newFirst(), now: at(2026, 11, 18, 21, 0)) == .listOnly)
+        #expect(notice(newFirst(), now: at(2026, 11, 19, 7, 0)) == .shown)
+        let saved = at(2026, 10, 25, 0, 0, in: TimeZone(identifier: "UTC")!) // 01:00 BST
+        let first = newFirst(savedAt: saved)
+        #expect(notice(first, now: saved + 3600) == .listOnly)       // 01:00 GMT, the second 01:00
+        #expect(notice(first, now: saved + 6.5 * 3600) == .listOnly) // 06:30 GMT
+        #expect(notice(first, now: saved + 7 * 3600) == .shown)      // 07:00 GMT
     }
 
     @Test func notForEditsRestoresOrTheFirstFetch() {

@@ -13,6 +13,22 @@ enum JournalText {
     static let emptyLine = "Each first you add goes on this line, with the baby's age."
     static let onItsWay = "On its way"
     static let onlyOnThisPhone = "Only on this iPhone"
+
+    /// Why a photo or video is still only on this phone, and what to do (design review D10).
+    static func onlyHereReason(_ pause: MediaPause?) -> String {
+        switch pause {
+        case nil:
+            "It hasn't reached iCloud yet, so the other phone can't see it. It will go by itself when this iPhone is online."
+        case .allowanceFull:
+            "The household's photo allowance is full, so it stays on this iPhone. The words still go. Raise the allowance in Settings, or delete photos."
+        case .iCloudFull:
+            "The iCloud storage of the household's owner is full, so it stays on this iPhone. Feeds still go. It will go once there is space in iCloud."
+        case .notSharedYet:
+            "Photo sharing isn't ready on this iPhone yet. It will go by itself once it is."
+        case .refused:
+            "iCloud didn't take it. This iPhone will try again the next time the app opens."
+        }
+    }
     static let deleteQuestion = "Delete this first?"
     static let deleteWarning = "Its photos and videos will be removed from both phones for good once Undo ends."
 

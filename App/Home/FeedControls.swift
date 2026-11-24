@@ -15,9 +15,11 @@ struct UndoAction {
     /// Who did it, with one tap to swap it to the other parent (X1, design D5).
     var swap: UndoSwap?
 
-    init(message: String, changeTime: TimeChange? = nil, swap: UndoSwap? = nil, perform: @escaping @MainActor () -> Void) {
+    /// `expiresAt` is for tests; the app's cards last the Undo window from now.
+    init(message: String, changeTime: TimeChange? = nil, swap: UndoSwap? = nil, expiresAt: Date? = nil,
+         perform: @escaping @MainActor () -> Void) {
         self.message = message
-        expiresAt = Date().addingTimeInterval(HouseholdData.undoWindow)
+        self.expiresAt = expiresAt ?? Date().addingTimeInterval(HouseholdData.undoWindow)
         self.changeTime = changeTime
         self.swap = swap
         self.perform = perform

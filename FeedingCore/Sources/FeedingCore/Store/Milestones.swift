@@ -157,6 +157,17 @@ public enum MilestoneWhen {
         guard let earliest = takenAt.min(), now.timeIntervalSince(earliest) > justNow else { return nil }
         return earliest
     }
+
+    /// When, after the editor's picked items change (outside voice OV5): `takenAt` holds the
+    /// times of the items still picked, so a late answer for an item taken out counts for nothing.
+    /// Once the parent has set When (`touched`), no photo changes it. If the photos that set it
+    /// are all gone, When goes back to `fallback` (the first's own time, or now for a new one).
+    public static func follow(when: Date, fromPhoto: Bool, touched: Bool, takenAt: [Date], fallback: Date,
+                              now: Date) -> (when: Date, fromPhoto: Bool) {
+        guard !touched else { return (when, fromPhoto) }
+        if let time = fromPhotos(takenAt: takenAt, now: now) { return (time, true) }
+        return fromPhoto ? (fallback, false) : (when, false)
+    }
 }
 
 /// Why a first can't have a date (journal plan, "The baby's age").
