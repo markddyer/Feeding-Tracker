@@ -1,7 +1,7 @@
 import FeedingCore
 import SwiftUI
 
-// Home's Sleep, Nappy and Medicine tiles (`06-more-than-feeds.md`, the users' choices A, K and Q,
+// Home's care list: Sleep, Nappy, Medicine and Bath (`06-more-than-feeds.md`, the users' choices A, K and Q,
 // 17 Nov 2026). Each tap logs at once, with the 10-second bar: Undo, and Change time for a tap
 // made late. None of it touches the feed alarms: `reconcile` counts feeds only.
 
@@ -67,17 +67,29 @@ struct CareLog {
         })
     }
 
-    /// Logs a nappy and returns its ID (Poo and Both then ask for the details).
+    /// Logs a nappy and returns its ID. A wee shows its Undo card at once. Poo and Both ask the
+    /// details first, and their card comes when that panel closes (`nappyFinished`), so its 10
+    /// seconds start only once the nappy is fully logged (the user's ask, 24 Nov 2026).
     @discardableResult
     func nappy(wee: Bool, poo: Bool) -> String {
         let now = Date()
         let id = store.change { $0.addNappy(babyID: babyID, wee: wee, poo: poo, by: me, timeZoneID: zoneID, now: now) }
-        let title = CareText.nappyKind(wee: wee, poo: poo).capitalizedFirst
-        onUndo(UndoAction(message: CareText.nappyLogged(wee: wee, poo: poo),
-                          changeTime: TimeChange(ids: [id], field: .start, title: title, at: now), swap: UndoSwap(eventID: id)) {
+        if !poo { nappyFinished(id) }
+        return id
+    }
+
+    /// The Undo card for a nappy just logged, with the poo's details once given ("Poo logged ·
+    /// yellow, loose"). Nothing if it was undone in the details panel.
+    func nappyFinished(_ id: String) {
+        guard let snapshot = store.data.events[id]?.snapshot, snapshot.event.deletedAt == nil,
+              let nappy = snapshot.payload?.nappy else { return }
+        let title = CareText.nappyKind(wee: nappy.wee, poo: nappy.poo).capitalizedFirst
+        let details = CareText.pooDetails(nappy).map { " · \($0)" } ?? ""
+        onUndo(UndoAction(message: CareText.nappyLogged(wee: nappy.wee, poo: nappy.poo) + details,
+                          changeTime: TimeChange(ids: [id], field: .start, title: title, at: snapshot.event.startedAt),
+                          swap: UndoSwap(eventID: id)) {
             removeNew(id)
         })
-        return id
     }
 
     func medicine(_ name: String) {
@@ -128,52 +140,111 @@ struct CareLog {
     }
 }
 
-// MARK: - The tiles
+// MARK: - The care list (`13-calm-home.md`, CH2)
+
+/// Home's one plain box (the users' choice B, 24 Nov 2026): a row each for Sleep, Nappy, each
+/// medicine on the list and Bath, with its buttons on the right. Colour only on the shapes. Each
+/// tap logs at once, with the Undo card.
+struct CareList: View {
+    let facts: HomeFacts
+    let log: CareLog
+    let askDetails: (PooDetailsTarget) -> Void
+    let editMedicines: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SleepRow(facts: facts, log: log)
+            CareDivider()
+            NappyRow(facts: facts, log: log, askDetails: askDetails)
+            ForEach(facts.data.medicines, id: \.self) { name in
+                CareDivider()
+                MedicineRow(name: name, facts: facts, log: log, editList: editMedicines)
+            }
+            CareDivider()
+            BathRow(facts: facts, log: log)
+        }
+        .padding(.horizontal, 14)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
+    }
+}
+
+/// The thin line between two rows: the page's own colour, so it reads as a gap.
+struct CareDivider: View {
+    var body: some View {
+        Rectangle().fill(Theme.background).frame(height: 1.5).accessibilityHidden(true)
+    }
+}
+
+/// A row's shape and words: bold, then muted.
+private struct RowLead: View {
+    let mark: FeedMark
+    let title: String
+    var detail: String?
+    var spoken: String?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 11) {
+            FeedMarkView(mark, size: 22, relativeTo: .body)
+                .frame(width: 28)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).feedText(.body).fontWeight(.semibold)
+                if let detail {
+                    Text(detail).feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(spoken ?? [title, detail].compactMap { $0 }.joined(separator: ", "))
+        }
+    }
+}
+
+/// A row with one round button: beside the words, or under them when there isn't room.
+private struct PillRow<Action: View>: View {
+    let lead: RowLead
+    @ViewBuilder let action: Action
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                lead
+                Spacer(minLength: 8)
+                action
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                lead
+                action.padding(.leading, 39)
+            }
+        }
+        .padding(.vertical, 9)
+        .frame(minHeight: 64)
+    }
+}
 
 /// Asleep or awake, for how long, and one button: Woke up or Fell asleep. Holding the button
 /// offers "about 10 / 20 / 30 min ago", for a tap made late.
-struct SleepTile: View {
+private struct SleepRow: View {
     let facts: HomeFacts
     let log: CareLog
 
     var body: some View {
         let state = sleepState(facts.visible, babyID: facts.babyID, now: facts.now)
-        let elapsed = CareText.sleepElapsed(state, now: facts.now)
-        Tile(label: "Sleep", tint: Theme.sleepTint) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 7) {
-                    FeedMarkView(.sleep, size: 22, relativeTo: .title2)
-                    if let elapsed {
-                        Text(elapsed).feedText(.total).lineLimit(1).minimumScaleFactor(0.7)
-                    }
-                }
-                sinceLine(state)
-                Spacer(minLength: 0)
-                button(state)
-            }
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder
-    private func sinceLine(_ state: SleepState) -> some View {
-        switch state {
-        case .asleep(_, let since), .awake(let since):
-            Text("\(CareText.sleepWord(state)) since \(Text(facts.clock(since)).foregroundStyle(Theme.text))")
-                .feedText(.subheadline)
-                .foregroundStyle(Theme.textMuted)
-                .accessibilityLabel("\(CareText.sleepWord(state)) for \(HomeText.spokenElapsed(facts.now.timeIntervalSince(since))), since \(facts.clock(since))")
-        case .notLogged:
-            Text("No sleep logged yet")
-                .feedText(.subheadline)
-                .foregroundStyle(Theme.textMuted)
+        PillRow(lead: RowLead(mark: .sleep, title: CareFacts.sleepTitle(state, now: facts.now),
+                              detail: CareFacts.sleepDetail(state, facts: facts))) {
+            SleepButton(state: state, log: log)
         }
     }
+}
 
-    private func button(_ state: SleepState) -> some View {
+/// Woke up or Fell asleep, with earlier times on a long press.
+struct SleepButton: View {
+    let state: SleepState
+    let log: CareLog
+
+    var body: some View {
         let asleep: Bool = { if case .asleep = state { return true } else { return false } }()
         let title = CareText.sleepButton(state)
-        return PillButton(title) {
+        PillButton(title) {
             asleep ? log.wokeUp() : log.fellAsleep()
         }
         .contextMenu {
@@ -188,70 +259,94 @@ struct SleepTile: View {
     }
 }
 
-/// The time since the last nappy and what it was, then Wee, Poo and Both. A poo with no
-/// details yet shows "Add details".
-struct NappyTile: View {
+/// The time since the last nappy and what it was, then Wee, Poo and Both under the words. A poo
+/// with no details yet shows "Add details".
+private struct NappyRow: View {
     let facts: HomeFacts
     let log: CareLog
     let askDetails: (PooDetailsTarget) -> Void
 
     var body: some View {
         let last = lastNappy(facts.visible, babyID: facts.babyID, now: facts.now)
-        Tile(label: "Nappy", tint: Theme.nappyTint) {
-            VStack(alignment: .leading, spacing: 6) {
-                if let last {
-                    HStack(spacing: 7) {
-                        FeedMarkView(.nappy(wee: last.wee, poo: last.poo), size: 20, relativeTo: .title2)
-                        Text(HomeText.elapsed(max(0, facts.now.timeIntervalSince(last.at))))
-                            .feedText(.total).lineLimit(1).minimumScaleFactor(0.7)
-                    }
-                    line(last)
-                    if let details = last.details, details.poo, details.colour == nil, details.consistency == nil {
-                        Button("Add details") { askDetails(PooDetailsTarget(id: last.id, isNew: false)) }
-                            .feedText(.smallButton)
-                            .underline()
-                            .foregroundStyle(Theme.text)
-                            .frame(minHeight: 32)
-                            .accessibilityHint("Adds the poo's colour and consistency")
-                    }
-                } else {
-                    Text("No nappy logged yet")
-                        .feedText(.subheadline)
-                        .foregroundStyle(Theme.textMuted)
-                }
-                Spacer(minLength: 0)
-                HStack(spacing: 6) {
-                    nappyButton("Wee", .wee, wee: true, poo: false)
-                    nappyButton("Poo", .poo, wee: false, poo: true)
-                    nappyButton("Both", .weeAndPoo, wee: true, poo: true)
-                }
+        VStack(alignment: .leading, spacing: 8) {
+            RowLead(mark: last.map { .nappy(wee: $0.wee, poo: $0.poo) } ?? .nappy(wee: true, poo: true),
+                    title: CareFacts.nappyTitle(last, now: facts.now), detail: CareFacts.nappyDetail(last, facts: facts),
+                    spoken: CareFacts.nappySpoken(last, facts: facts))
+            if let last, CareFacts.needsDetails(last) {
+                AddDetailsButton { askDetails(PooDetailsTarget(id: last.id, isNew: false)) }
+                    .padding(.leading, 39)
+                    .padding(.top, -6)
             }
+            HStack(spacing: 6) {
+                NappyButton(title: "Wee", mark: .wee) { logNappy(wee: true, poo: false) }
+                    .accessibilityLabel("Log wee")
+                NappyButton(title: "Poo", mark: .poo) { logNappy(wee: false, poo: true) }
+                    .accessibilityLabel("Log poo")
+                NappyButton(title: "Both", mark: .weeAndPoo) { logNappy(wee: true, poo: true) }
+                    .accessibilityLabel("Log wee and poo")
+            }
+            .padding(.leading, 39)
         }
-        .accessibilityElement(children: .contain)
+        .padding(.vertical, 11)
     }
 
-    private func line(_ last: NappyChange) -> some View {
-        let kind = last.details.map { CareText.nappyKind(wee: $0.wee, poo: $0.poo) } ?? "nappy"
-        let details = last.details.flatMap(CareText.pooDetails).map { " · \($0)" } ?? ""
-        return Text("\(kind.capitalizedFirst), \(Text(facts.clock(last.at)).foregroundStyle(Theme.text))\(details)")
-            .feedText(.subheadline)
-            .foregroundStyle(Theme.textMuted)
-            .lineLimit(2)
-            .accessibilityLabel("Last nappy \(HomeText.spokenElapsed(facts.now.timeIntervalSince(last.at))) ago: \(kind)\(details), at \(facts.clock(last.at))")
-    }
-
-    private func nappyButton(_ title: String, _ mark: FeedMark, wee: Bool, poo: Bool) -> some View {
-        NappyButton(title: title, mark: mark) {
-            let id = log.nappy(wee: wee, poo: poo)
-            // The users' choice Q: a poo asks its colour and consistency straight after.
-            if poo { askDetails(PooDetailsTarget(id: id, isNew: true)) }
-        }
-        .accessibilityLabel("Log \(CareText.nappyKind(wee: wee, poo: poo))")
+    private func logNappy(wee: Bool, poo: Bool) {
+        let id = log.nappy(wee: wee, poo: poo)
+        // The users' choice Q: a poo asks its colour and consistency straight after.
+        if poo { askDetails(PooDetailsTarget(id: id, isNew: true)) }
     }
 }
 
-/// Wee, Poo or Both on the Nappy tile: the shape above the word, in the background colour.
-private struct NappyButton: View {
+/// "Add details" for a poo logged without them: underlined, 32 points tall.
+struct AddDetailsButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button("Add details", action: action)
+            .feedText(.smallButton)
+            .underline()
+            .foregroundStyle(Theme.text)
+            .frame(minHeight: 32)
+            .accessibilityHint("Adds the poo's colour and consistency")
+    }
+}
+
+/// One medicine on the household's list: when it was last given, and Given. Never a "next dose"
+/// time. Touch and hold changes the list.
+private struct MedicineRow: View {
+    let name: String
+    let facts: HomeFacts
+    let log: CareLog
+    let editList: () -> Void
+
+    var body: some View {
+        PillRow(lead: RowLead(mark: .medicine, title: name, detail: CareFacts.medicineDetail(name, facts: facts))) {
+            PillButton("Given") { log.medicine(name) }
+                .accessibilityLabel("\(name) given")
+                .accessibilityHint("Logs it now")
+        }
+        .contextMenu {
+            Button("Change the medicine list", systemImage: "pencil", action: editList)
+        }
+    }
+}
+
+/// When the last bath was, and Bath, which logs it at once (X5). It never ends a running sleep.
+private struct BathRow: View {
+    let facts: HomeFacts
+    let log: CareLog
+
+    var body: some View {
+        PillRow(lead: RowLead(mark: .bath, title: "Bath", detail: CareFacts.bathDetail(facts))) {
+            PillButton("Bath") { log.bath() }
+                .accessibilityLabel("Bath given")
+                .accessibilityHint("Logs it now")
+        }
+    }
+}
+
+/// Wee, Poo or Both: the shape above the word, in the background colour.
+struct NappyButton: View {
     let title: String
     let mark: FeedMark
     let action: () -> Void
@@ -281,98 +376,207 @@ private struct NappyButton: View {
     }
 }
 
-/// One row per medicine on the household's list: when it was last given, and Given. Never a
-/// "next dose" time. Left out when the list is empty.
-struct MedicineTile: View {
+// MARK: - The open Duo's facts (`13-calm-home.md`, CH7)
+
+/// The Book's left page: sleep, nappy, each medicine and bath as plain facts, two to a row, with
+/// no buttons (they are along the bottom of the right page). One to a row at the largest sizes.
+struct CareFacts: View {
     let facts: HomeFacts
-    let log: CareLog
-    let editList: () -> Void
+    let askDetails: (PooDetailsTarget) -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        let medicines = facts.data.medicines
-        if !medicines.isEmpty {
-            Tile(label: "Medicine", accessory: AnyView(editButton)) {
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(medicines, id: \.self) { name in
-                        row(name)
-                    }
+        let state = sleepState(facts.visible, babyID: facts.babyID, now: facts.now)
+        let last = lastNappy(facts.visible, babyID: facts.babyID, now: facts.now)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top),
+                            count: typeSize.isAccessibilitySize ? 1 : 2)
+        LazyVGrid(columns: columns, spacing: 8) {
+            fact(.sleep, Self.sleepTitle(state, now: facts.now), Self.sleepDetail(state, facts: facts))
+            fact(last.map { .nappy(wee: $0.wee, poo: $0.poo) } ?? .nappy(wee: true, poo: true),
+                 Self.nappyTitle(last, now: facts.now), Self.nappyDetail(last, facts: facts),
+                 spoken: Self.nappySpoken(last, facts: facts)) {
+                if let last, Self.needsDetails(last) {
+                    AddDetailsButton { askDetails(PooDetailsTarget(id: last.id, isNew: false)) }
                 }
             }
+            ForEach(facts.data.medicines, id: \.self) { name in
+                fact(.medicine, name, Self.medicineDetail(name, facts: facts))
+            }
+            fact(.bath, "Bath", Self.bathDetail(facts))
         }
     }
 
-    private var editButton: some View {
-        Button(action: editList) {
-            Image(systemName: "plus")
-                .font(.system(size: 15, weight: .bold))
-                .frame(width: 44, height: 28)
-                .contentShape(Rectangle())
-        }
-        .foregroundStyle(Theme.textMuted)
-        .accessibilityLabel("Change the medicine list")
+    private func fact(_ mark: FeedMark, _ title: String, _ detail: String?, spoken: String? = nil) -> some View {
+        fact(mark, title, detail, spoken: spoken) { EmptyView() }
     }
 
-    /// One medicine: its name, when it was last given, and Given. Side by side when they fit on
-    /// one line; otherwise (half width beside Bath, design D6, or large text) Given goes under.
-    private func row(_ name: String) -> some View {
-        let last = facts.data.lastGiven(name, babyID: facts.babyID, now: facts.now)
-        let zone = facts.settings.timeZone
-        let when = last.map { "Last \(CareText.lastGiven($0, now: facts.now, in: zone))" } ?? "Not logged yet"
-        let given = PillButton("Given") { log.medicine(name) }
-            .accessibilityLabel("\(name) given")
-            .accessibilityHint("Logs it now")
-        func words(oneLine: Bool) -> some View {
-            VStack(alignment: .leading, spacing: 1) {
-                Text(name).feedText(.body).fontWeight(.semibold).lineLimit(oneLine ? 1 : 3)
-                Text(when).feedText(.small).foregroundStyle(Theme.textMuted).lineLimit(oneLine ? 1 : 3)
-            }
-            .fixedSize(horizontal: oneLine, vertical: false)
-            .accessibilityElement(children: .combine)
+    private func fact<Extra: View>(_ mark: FeedMark, _ title: String, _ detail: String?, spoken: String? = nil,
+                                   @ViewBuilder extra: () -> Extra) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            RowLead(mark: mark, title: title, detail: detail, spoken: spoken)
+            extra().padding(.leading, 39)
         }
-        return ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                FeedMarkView(.medicine, size: 18, relativeTo: .body)
-                words(oneLine: true)
-                Spacer(minLength: 6)
-                given
-            }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .top, spacing: 10) {
-                    FeedMarkView(.medicine, size: 18, relativeTo: .body)
-                    words(oneLine: false)
-                }
-                given
-            }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    // The words, shared by the phone's rows and these facts.
+
+    /// "Asleep 1h 20m", "Awake 40m", or "No sleep logged yet".
+    static func sleepTitle(_ state: SleepState, now: Date) -> String {
+        [CareText.sleepWord(state), CareText.sleepElapsed(state, now: now)].compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// "since 12:03", or nothing before the first sleep.
+    static func sleepDetail(_ state: SleepState, facts: HomeFacts) -> String? {
+        switch state {
+        case .asleep(_, let since), .awake(let since): "since \(facts.clock(since))"
+        case .notLogged: nil
         }
     }
-}
 
-/// Baths (X5, design D6): the tub in its own water-blue on its own tile, when the last bath was,
-/// and one Bath button that logs it at once with the Undo card. Beside Medicine on Home.
-struct BathTile: View {
-    let facts: HomeFacts
-    let log: CareLog
+    /// "Nappy 40m ago", or "No nappy logged yet".
+    static func nappyTitle(_ last: NappyChange?, now: Date) -> String {
+        guard let last else { return "No nappy logged yet" }
+        return "Nappy \(HomeText.elapsed(max(0, now.timeIntervalSince(last.at)))) ago"
+    }
 
-    var body: some View {
+    /// "Wee and poo, 12:43 · yellow, loose".
+    static func nappyDetail(_ last: NappyChange?, facts: HomeFacts) -> String? {
+        guard let last else { return nil }
+        let kind = last.details.map { CareText.nappyKind(wee: $0.wee, poo: $0.poo) } ?? "nappy"
+        let details = last.details.flatMap(CareText.pooDetails).map { " · \($0)" } ?? ""
+        return "\(kind.capitalizedFirst), \(facts.clock(last.at))\(details)"
+    }
+
+    static func nappySpoken(_ last: NappyChange?, facts: HomeFacts) -> String {
+        guard let last else { return "No nappy logged yet" }
+        let kind = last.details.map { CareText.nappyKind(wee: $0.wee, poo: $0.poo) } ?? "nappy"
+        let details = last.details.flatMap(CareText.pooDetails).map { ", \($0)" } ?? ""
+        return "Last nappy \(HomeText.spokenElapsed(facts.now.timeIntervalSince(last.at))) ago: \(kind)\(details), at \(facts.clock(last.at))"
+    }
+
+    /// A poo logged with no colour and no consistency.
+    static func needsDetails(_ last: NappyChange) -> Bool {
+        guard let details = last.details else { return false }
+        return details.poo && details.colour == nil && details.consistency == nil
+    }
+
+    /// "last 10:04", "last Yesterday 20:00", or "Not logged yet".
+    static func medicineDetail(_ name: String, facts: HomeFacts) -> String {
+        guard let last = facts.data.lastGiven(name, babyID: facts.babyID, now: facts.now) else { return "Not logged yet" }
+        return "last \(CareText.lastGiven(last, now: facts.now, in: facts.settings.timeZone))"
+    }
+
+    /// When the last bath was, or "Not logged yet".
+    static func bathDetail(_ facts: HomeFacts) -> String {
         let last = facts.data.allEvents
             .filter { $0.kind == .bath && $0.deletedAt == nil && $0.babyID == facts.babyID && $0.startedAt <= facts.now }
             .map(\.startedAt).max()
-        let zone = facts.settings.timeZone
-        Tile(label: "Bath", tint: Theme.bathTint) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    FeedMarkView(.bath, size: 22, relativeTo: .body)
-                    Text(last.map { "Last \(CareText.lastGiven($0, now: facts.now, in: zone))" } ?? "Not logged yet")
-                        .feedText(.small)
-                        .foregroundStyle(Theme.textMuted)
-                        .lineLimit(2)
-                }
-                .accessibilityElement(children: .combine)
-                PillButton("Bath") { log.bath() }
-                    .accessibilityLabel("Bath given")
-                    .accessibilityHint("Logs it now")
+        return last.map { "last \(CareText.lastGiven($0, now: facts.now, in: facts.settings.timeZone))" } ?? "Not logged yet"
+    }
+}
+
+// MARK: - The open Duo's log buttons (`13-calm-home.md`, CH7)
+
+/// Along the bottom of the Book's right page, under the right thumb: Woke up (or Fell asleep),
+/// Wee, Poo, Both, the medicine (a menu when there are several) and Bath. Each logs at once, as
+/// the phone's rows do.
+struct LogDock: View {
+    let facts: HomeFacts
+    let log: CareLog
+    let askDetails: (PooDetailsTarget) -> Void
+
+    var body: some View {
+        let state = sleepState(facts.visible, babyID: facts.babyID, now: facts.now)
+        let asleep: Bool = { if case .asleep = state { return true } else { return false } }()
+        let medicines = facts.data.medicines
+        HStack(spacing: 6) {
+            DockButton(title: CareText.sleepButton(state), mark: .sleep, wide: true) {
+                asleep ? log.wokeUp() : log.fellAsleep()
             }
+            .contextMenu {
+                ForEach([10, 20, 30], id: \.self) { minutes in
+                    Button("\(CareText.sleepButton(state)) about \(minutes) min ago") {
+                        let at = Date().addingTimeInterval(-Double(minutes) * 60)
+                        asleep ? log.wokeUp(at: at) : log.fellAsleep(at: at)
+                    }
+                }
+            }
+            DockButton(title: "Wee", mark: .wee) { _ = log.nappy(wee: true, poo: false) }
+                .accessibilityLabel("Log wee")
+            DockButton(title: "Poo", mark: .poo) { pooLogged(log.nappy(wee: false, poo: true)) }
+                .accessibilityLabel("Log poo")
+            DockButton(title: "Both", mark: .weeAndPoo) { pooLogged(log.nappy(wee: true, poo: true)) }
+                .accessibilityLabel("Log wee and poo")
+            if medicines.count == 1, let name = medicines.first {
+                DockButton(title: name, mark: .medicine, wide: true) { log.medicine(name) }
+                    .accessibilityLabel("\(name) given")
+            } else if medicines.count > 1 {
+                Menu {
+                    ForEach(medicines, id: \.self) { name in
+                        Button("\(name) · \(CareFacts.medicineDetail(name, facts: facts))") { log.medicine(name) }
+                    }
+                } label: {
+                    DockLabel(title: "Medicine", mark: .medicine)
+                }
+                .buttonStyle(PressStyle())
+                .frame(maxWidth: .infinity)
+                .layoutPriority(1.25)
+                .accessibilityLabel("Medicine given")
+            }
+            DockButton(title: "Bath", mark: .bath, wide: true) { log.bath() }
+                .accessibilityLabel("Bath given")
         }
+    }
+
+    private func pooLogged(_ id: String) {
+        askDetails(PooDetailsTarget(id: id, isNew: true))
+    }
+}
+
+/// One of the dock's buttons: the shape above the word, on `surface`.
+private struct DockButton: View {
+    let title: String
+    let mark: FeedMark
+    var wide = false
+    let action: () -> Void
+    @State private var taps = 0
+
+    var body: some View {
+        Button {
+            taps += 1
+            action()
+        } label: {
+            DockLabel(title: title, mark: mark)
+        }
+        .buttonStyle(PressStyle())
+        .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+        .frame(maxWidth: wide ? .infinity : 50)
+    }
+}
+
+private struct DockLabel: View {
+    let title: String
+    let mark: FeedMark
+
+    var body: some View {
+        VStack(spacing: 3) {
+            FeedMarkView(mark, size: 18, relativeTo: .subheadline)
+                .accessibilityHidden(true)
+            Text(title)
+                .feedText(.chip)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.8)
+        }
+        .padding(.horizontal, 3)
+        .frame(maxWidth: .infinity, minHeight: 62)
+        .foregroundStyle(Theme.text)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -456,8 +660,8 @@ struct PooDetailsSheet: View {
         let at = snapshot?.event.startedAt ?? Date()
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 8) {
-                // The panel covers the Undo card, so it carries the same "done by" swap while the
-                // nappy is new (X1; outside review, Codex 8).
+                // While the nappy is new, the panel carries the "done by" swap too (X1; outside
+                // review, Codex 8). The Undo card comes once the panel closes.
                 if target.isNew {
                     UndoSwapButton(swap: UndoSwap(eventID: target.id))
                 }
@@ -499,6 +703,11 @@ struct PooDetailsSheet: View {
         .foregroundStyle(Theme.text)
         .presentationDetents([.height(390)])
         .presentationBackground(Theme.background)
+        // However it closes (Done, a swipe, or by itself), a new nappy's Undo card starts now,
+        // with its full 10 seconds. Undo in the panel removed it, so then nothing shows.
+        .onDisappear {
+            if target.isNew { log.nappyFinished(target.id) }
+        }
         // Once both are chosen, the panel closes by itself.
         .onChange(of: nappy.colour != nil && nappy.consistency != nil) { _, both in
             guard both else { return }

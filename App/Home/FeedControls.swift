@@ -64,7 +64,9 @@ struct FeedControls: View {
     /// The feed whose "add the details?" offer was answered, so it doesn't come back.
     @AppStorage("home.detailsOfferAnswered") private var detailsOfferAnswered = ""
     @AppStorage(FeedingStyle.storageKey) private var feedingStyle = ""
-    @State private var choosingStartBottle = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// Counts feeds started or logged from Start feed's list, for the haptic.
+    @State private var startTaps = 0
 
     private var store: HouseholdStore { AppModel.shared.store }
     private var bottleOnly: Bool { feedingStyle == FeedingStyle.bottleOnly.rawValue }
@@ -108,14 +110,6 @@ struct FeedControls: View {
             Button("Expressed milk") { addBottle(.expressed) }
             Button("Formula") { addBottle(.formula) }
         }
-        .confirmationDialog(breastfeedFor == nil ? "Which bottle?" : "Start a feed", isPresented: $choosingStartBottle) {
-            Button("Expressed milk") { startFeed(bottle: .expressed) }
-            Button("Formula") { startFeed(bottle: .formula) }
-            // Saved as theirs at once, so a later change to "Who breastfeeds?" never moves it (4B).
-            if let parent = breastfeedFor {
-                Button("Breastfeed (\(parent.name))") { startFeed(bottle: nil, doneBy: parent.member) }
-            }
-        }
         .confirmationDialog("Remove this feed?",
                             isPresented: Binding { stopping != nil } set: { if !$0 { stopping = nil } },
                             titleVisibility: .visible, presenting: stopping) { id in
@@ -130,48 +124,59 @@ struct FeedControls: View {
 
     // MARK: No feed running
 
+    /// Start feed, two thirds of the width, and Pumping beside it (the user's choice, 24 Nov 2026,
+    /// to save room on Home). At the accessibility text sizes they stack.
     private var idle: some View {
-        VStack(spacing: 10) {
-            BigButton(title: "Start feed", prominent: true, mark: .bottle) {
-                if bottleOnly {
-                    choosingStartBottle = true
-                } else {
-                    startFeed(bottle: nil)
-                }
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 8))
+                                                  : AnyLayout(TileRow(shares: [2, 1], spacing: 8))
+        return layout {
+            startMenu
+            BigButton(title: "Pumping", prominent: false, mark: .pump, stacked: !typeSize.isAccessibilitySize,
+                      fillsHeight: !typeSize.isAccessibilitySize) {
+                editor = .newPump
             }
-            HStack(spacing: 8) {
-                Menu {
-                    ForEach([10, 20, 30, 45], id: \.self) { minutes in
-                        Button("Started about \(minutes) min ago") { logJustFinished(minutesAgo: minutes) }
-                    }
-                } label: {
-                    smallLabel("Just finished")
-                }
-                .buttonStyle(PressStyle())
-                Button { editor = .newFeed } label: { smallLabel("Earlier") }
-                    .buttonStyle(PressStyle())
-                    .accessibilityLabel("Log an earlier feed")
-                Button { editor = .newPump } label: { smallLabel("Pumping") }
-                    .buttonStyle(PressStyle())
-                    .accessibilityLabel("Log pumping")
-            }
-            .foregroundStyle(Theme.text)
+            .accessibilityLabel("Log pumping")
         }
     }
 
-    private func smallLabel(_ title: String) -> some View {
-        Text(title)
-            .feedText(.smallButton)
-            // Two lines at the biggest text sizes, rather than cutting a word off.
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
-            .minimumScaleFactor(0.8)
-            .padding(.horizontal, 4)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: Radius.smallButton))
+    /// Start feed asks when first: Now, Just finished (started about 10 to 45 minutes ago) or
+    /// Earlier (the form). On a bottle-only phone the milks are the "Now" answers, so a bottle
+    /// still starts in two taps. The menu opens up from the button, with Now nearest the thumb.
+    private var startMenu: some View {
+        Menu {
+            Section {
+                if bottleOnly {
+                    Button("Expressed milk") { startFeed(bottle: .expressed) }
+                    Button("Formula") { startFeed(bottle: .formula) }
+                    // Saved as theirs at once, so a later change to "Who breastfeeds?" never moves it (4B).
+                    if let parent = breastfeedFor {
+                        Button("Breastfeed (\(parent.name))") { startFeed(bottle: nil, doneBy: parent.member) }
+                    }
+                } else {
+                    Button("Now") { startFeed(bottle: nil) }
+                }
+            } header: {
+                if bottleOnly { Text("Now") }
+            }
+            Section {
+                Menu("Just finished") {
+                    ForEach([10, 20, 30, 45], id: \.self) { minutes in
+                        Button("Started about \(minutes) min ago") { logJustFinished(minutesAgo: minutes) }
+                    }
+                }
+                Button("Earlier") { editor = .newFeed }
+            }
+        } label: {
+            BigButtonLabel(title: "Start feed", prominent: true, mark: .bottle, fillsHeight: !typeSize.isAccessibilitySize)
+        }
+        .buttonStyle(PressStyle())
+        .sensoryFeedback(.impact(weight: .medium), trigger: startTaps)
+        .accessibilityLabel("Start feed")
+        .accessibilityHint("Asks when: now, just finished or earlier.")
     }
 
     private func startFeed(bottle: MilkKind?, doneBy: MemberID? = nil) {
+        startTaps += 1
         // No Undo bar here: the feed has a Stop button for as long as it runs.
         store.change {
             _ = $0.startFeed(babyID: babyID, side: nil, bottle: bottle, doneBy: doneBy, by: me,
@@ -180,6 +185,7 @@ struct FeedControls: View {
     }
 
     private func logJustFinished(minutesAgo: Int) {
+        startTaps += 1
         let now = Date()
         let id = store.change {
             $0.add(kind: .feed, babyID: babyID, startedAt: now.addingTimeInterval(-Double(minutesAgo) * 60), endedAt: now,
@@ -419,47 +425,68 @@ struct BigButton: View {
     var mark: FeedMark?
     /// A number after the title ("30 ml"), in SF Pro Rounded: never a number in Fredoka.
     var amount: String?
+    /// The shape above the title, for a narrow button (Pumping beside Start feed).
+    var stacked = false
+    var fillsHeight = false
     let action: () -> Void
     @State private var taps = 0
 
     var body: some View {
-        let foreground = prominent ? Theme.onPrimary : Theme.text
         Button {
             taps += 1
             action()
         } label: {
-            VStack(spacing: 2) {
-                HStack(spacing: 10) {
-                    if let mark {
-                        FeedMarkView(mark, size: 24, relativeTo: .title3, colour: foreground)
-                            .accessibilityHidden(true)
-                    }
-                    Text(title)
-                        .feedText(.button)
-                        // Two lines at the biggest text sizes, rather than cutting a word off.
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .minimumScaleFactor(0.75)
-                    if let amount {
-                        Text(amount)
-                            .feedText(.total)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    }
-                }
-                if let hint {
-                    Text(hint).feedText(.small)
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .frame(maxWidth: .infinity, minHeight: 60)
-            .foregroundStyle(foreground)
-            .background(prominent ? Theme.primary : Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
-            .contentShape(RoundedRectangle(cornerRadius: Radius.tile))
+            BigButtonLabel(title: title, prominent: prominent, hint: hint, mark: mark, amount: amount, stacked: stacked,
+                           fillsHeight: fillsHeight)
         }
         .buttonStyle(PressStyle())
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
+    }
+}
+
+/// The look of a big button, also used as the label of Start feed's menu.
+struct BigButtonLabel: View {
+    let title: String
+    let prominent: Bool
+    var hint: String?
+    var mark: FeedMark?
+    var amount: String?
+    var stacked = false
+    /// Takes the full height offered, so buttons side by side match the tallest.
+    var fillsHeight = false
+
+    var body: some View {
+        let foreground = prominent ? Theme.onPrimary : Theme.text
+        let layout = stacked ? AnyLayout(VStackLayout(spacing: 2)) : AnyLayout(HStackLayout(spacing: 10))
+        VStack(spacing: 2) {
+            layout {
+                if let mark {
+                    FeedMarkView(mark, size: stacked ? 20 : 24, relativeTo: .title3, colour: foreground)
+                        .accessibilityHidden(true)
+                }
+                Text(title)
+                    .feedText(.button)
+                    // Two lines at the biggest text sizes, rather than cutting a word off.
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                    .minimumScaleFactor(0.75)
+                if let amount {
+                    Text(amount)
+                        .feedText(.total)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+            if let hint {
+                Text(hint).feedText(.small)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, minHeight: 60, maxHeight: fillsHeight ? .infinity : nil)
+        .foregroundStyle(foreground)
+        .background(prominent ? Theme.primary : Theme.surface, in: RoundedRectangle(cornerRadius: Radius.tile))
+        .contentShape(RoundedRectangle(cornerRadius: Radius.tile))
     }
 }
 

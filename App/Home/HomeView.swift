@@ -2,10 +2,11 @@ import FeedingCore
 import FeedingInsights
 import SwiftUI
 
-/// The home screen (`docs/planning/05-visual-redesign.md`, "Home"): a greeting and the baby's
-/// name, the time since the last feed started with the window bar under it, the next side and
-/// the last feed, the last 24 hours as a chart, and the row of nights. The feed buttons are pinned
-/// at the bottom. Facts only: no targets, no verdicts.
+/// The home screen, calmer since 24 Nov 2026 (`docs/planning/13-calm-home.md`): the top tile
+/// (the time since the last feed started, the window bar, then the last feed's chips and the next
+/// side), one plain list of Sleep, Nappy, each medicine and Bath, then Tonight, Today and Recent,
+/// folded. The baby's name is in the top bar. The feed buttons are pinned at the bottom. On the
+/// open Duo this is the Book's left page, "now". Facts only: no targets, no verdicts.
 struct HomeView: View {
     let me: MemberID
     let babyID: String
@@ -20,6 +21,9 @@ struct HomeView: View {
     @State private var timeChange: TimeChange?
     @State private var pooDetails: PooDetailsTarget?
     @State private var editingMedicines = false
+    /// An entry opened from Recent, to change it.
+    @State private var editing: EventEditor.Mode?
+    @State private var careEditing: CareEditor.Mode?
     /// The morning card, from the afternoon's slim line (with no night's entries).
     @State private var morningCard: MorningCardRequest?
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -32,7 +36,6 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     SyncProblemBanner()
-                    GreetingHeader(facts: facts)
                     // Above the top tile: it waits for an answer. It goes once answered.
                     if case .askedOfMe(let ask) = facts.askStatus {
                         AskCard(ask: ask, facts: facts, me: me, onUndo: { undo = $0 })
@@ -48,18 +51,23 @@ struct HomeView: View {
                         AICardLine(title: CardText.title(.morning), shown: card) { morningCard = MorningCardRequest() }
                     }
                     HeroTile(facts: facts)
-                    if let feed = facts.feedInProgress {
-                        ThisFeedTile(feed: feed)
+                    // A calmer Home (`13-calm-home.md`): one plain list of things to log, then
+                    // the folded parts. On the open Duo (the Book, CH7) this page is "now": the
+                    // facts without buttons, which sit along the bottom of the right page.
+                    if secondColumnShowing {
+                        CareFacts(facts: facts) { pooDetails = $0 }
+                    } else {
+                        CareList(facts: facts, log: log, askDetails: { pooDetails = $0 },
+                                 editMedicines: { editingMedicines = true })
                     }
-                    // Sleep and Nappy above Next side and Last feed (the users' choice A, 17 Nov
-                    // 2026); Medicine under them (K).
-                    sleepAndNappy(facts)
-                    sideAndLastFeed(facts)
-                    medicineAndBath(facts)
-                    // On the unfolded Duo these two are in the second column instead.
+                    // On the open Duo, the right page holds Tonight and the day's timeline, so
+                    // this page fits without scrolling.
                     if !secondColumnShowing {
-                        DayTile(facts: facts)
-                        NightsTile(facts: facts, me: me, onUndo: { undo = $0 })
+                        VStack(alignment: .leading, spacing: 4) {
+                            TonightFold(facts: facts, me: me, onUndo: { undo = $0 })
+                            TodayFold(facts: facts)
+                            RecentFold(facts: facts) { open($0) }
+                        }
                     }
                     SyncedNote()
                 }
@@ -100,6 +108,12 @@ struct HomeView: View {
         .sheet(isPresented: $editingMedicines) {
             NavigationStack { MedicineListEditor() }
         }
+        .sheet(item: $editing) { mode in
+            EventEditor(mode: mode, me: me, babyID: babyID)
+        }
+        .sheet(item: $careEditing) { mode in
+            CareEditor(mode: mode, me: me, babyID: babyID)
+        }
         .sheet(item: $morningCard) { request in
             InsightCardSheet(kind: .morning, night: request.night)
         }
@@ -121,28 +135,11 @@ struct HomeView: View {
         CareLog(me: me, babyID: babyID, onUndo: { undo = $0 })
     }
 
-    /// Sleep and Nappy side by side, or stacked at the accessibility sizes.
-    private func sleepAndNappy(_ facts: HomeFacts) -> some View {
-        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(TileRow(shares: [1, 1]))
-        return layout {
-            SleepTile(facts: facts, log: log)
-            NappyTile(facts: facts, log: log) { pooDetails = $0 }
-        }
-    }
-
-    /// Medicine and Bath side by side (design D6: Bath half-width beside Medicine), stacked at the
-    /// accessibility sizes. With no medicines listed, Bath alone.
-    @ViewBuilder
-    private func medicineAndBath(_ facts: HomeFacts) -> some View {
-        if facts.data.medicines.isEmpty {
-            BathTile(facts: facts, log: log)
-        } else {
-            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(TileRow(shares: [1, 1]))
-            layout {
-                MedicineTile(facts: facts, log: log) { editingMedicines = true }
-                BathTile(facts: facts, log: log)
-            }
-        }
+    /// Opens an entry from Recent to change it: a feed or pumping in the feed form, anything else
+    /// in the care form, as History does.
+    private func open(_ entry: EventSnapshot) {
+        let kind = entry.event.kind
+        if kind == .feed || kind == .pump { editing = .edit(id: entry.id) } else { careEditing = .edit(id: entry.id) }
     }
 
     /// Feeding Dev only: launch with `-homeSheet pooDetails` (the poo's colour and consistency,
@@ -199,22 +196,6 @@ struct HomeView: View {
         #endif
     }
 
-    /// Next side and Last feed side by side (1 to 1.35), or stacked at the accessibility sizes.
-    @ViewBuilder
-    private func sideAndLastFeed(_ facts: HomeFacts) -> some View {
-        // During a feed, the "This feed" tile takes their place.
-        let next = facts.feedInProgress == nil ? facts.nextSide : nil
-        let last = facts.feedInProgress == nil ? facts.lastFinishedFeed : nil
-        if next != nil || last != nil {
-            let layout = typeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(spacing: 10))
-                : AnyLayout(TileRow(shares: next != nil && last != nil ? [1, 1.35] : [1]))
-            layout {
-                if let next { NextSideTile(side: next) }
-                if let last { LastFeedTile(feed: last, facts: facts) }
-            }
-        }
-    }
 }
 
 /// Everything the home screen shows, worked out once per refresh.
@@ -364,34 +345,31 @@ struct HomeFacts {
 
 // MARK: - The parts, top to bottom
 
-/// "Good morning", then the baby's name and age.
-struct GreetingHeader: View {
-    let facts: HomeFacts
-
+/// The baby's name and age, in the top bar beside Ask and Settings (`13-calm-home.md`, CH4).
+/// "Good morning" went with the calmer Home. No `TimelineView` here: inside a toolbar item it put
+/// SwiftUI into an endless loop (a blank screen at 100% busy, 24 Nov 2026). It is redrawn with
+/// the page, which is enough for an age in days.
+struct HomeTitle: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Image(systemName: HomeText.greetingSymbol(facts.partOfDay))
-                    .imageScale(.small)
-                Text(HomeText.greeting(facts.partOfDay))
-            }
-            .feedText(.greeting)
-            .foregroundStyle(Theme.textMuted)
-            FlowLayout(spacing: 8) {
-                Text(facts.baby?.name ?? "Baby")
-                    .feedText(.title)
+        let model = AppModel.shared
+        let zone = model.store.data.householdSettings.timeZone
+        HStack(spacing: 8) {
+                Text(model.babyDetails?.name ?? "Baby")
+                    .feedText(.dayHeading)
+                    .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
-                if let days = facts.ageInDays {
+                if let days = model.babyDetails?.ageInDays(at: Date(), in: zone) {
                     Text(HomeText.age(days: days))
                         .feedText(.chip)
+                        .lineLimit(1)
                         .padding(.horizontal, 9)
                         .padding(.vertical, 4)
                         .background(Theme.surface, in: Capsule())
                         .accessibilityLabel(days == 0 ? "Born today" : "\(HomeText.age(days: days)) old")
                 }
             }
-        }
-        .padding(.top, 2)
+            .foregroundStyle(Theme.text)
+            .fixedSize()
     }
 }
 
@@ -422,28 +400,38 @@ struct HeroTile: View {
         if let feed = facts.feedInProgress, let running {
             let kinds = running.bottleKinds.map { "\($0) · " } ?? ""
             let by = feed.event.loggedBy == facts.me ? "" : " by \(facts.displayName(feed.event.loggedBy))"
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Feeding now").feedText(.subheadline).foregroundStyle(Theme.textMuted)
-                    Text(feed.event.startedAt, style: .timer)
-                        .feedText(.mainTime)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.6)
-                    Text("\(kinds)started \(Text(facts.clock(feed.event.startedAt)).fontWeight(strong))\(by)")
-                        .feedText(.subheadline).foregroundStyle(Theme.textMuted)
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Feeding now").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                        Text(feed.event.startedAt, style: .timer)
+                            .feedText(.mainTime)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                        Text("\(kinds)started \(Text(facts.clock(feed.event.startedAt)).fontWeight(strong))\(by)")
+                            .feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    if let mark = running.centre {
+                        FeedMarkView(mark, size: 40, relativeTo: .largeTitle)
+                            .accessibilityHidden(true)
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                if let mark = running.centre {
-                    FeedMarkView(mark, size: 40, relativeTo: .largeTitle)
-                        .accessibilityHidden(true)
-                }
+                .accessibilityElement(children: .combine)
+                feedingFoot(feed)
             }
-            .accessibilityElement(children: .combine)
         } else if let start = facts.lastFeedStart {
             let elapsed = facts.now.timeIntervalSince(start)
             let steps = facts.windowSteps
+            VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Last feed").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                // Who did the last feed sits beside its label (`13-calm-home.md`, CH3).
+                HStack(spacing: 6) {
+                    Text("Last feed").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                    if let last = facts.lastFinishedFeed {
+                        Avatar(name: facts.displayName(last.event.loggedBy), colour: facts.colour(last.event.loggedBy), size: 20)
+                    }
+                }
                 // "1h 40m ago, at 13:22" on one line, or the time over the rest when it won't fit.
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -463,6 +451,8 @@ struct HeroTile: View {
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Last feed started \(HomeText.spokenElapsed(elapsed)) ago, at \(facts.clock(start)). "
                                 + (steps?.spoken(facts.clock) ?? ""))
+            lastFeedFoot
+            }
         } else {
             VStack(alignment: .leading, spacing: 4) {
                 Text("No feeds logged yet").feedText(.title)
@@ -481,6 +471,76 @@ struct HeroTile: View {
     private func ago(_ start: Date) -> some View {
         Text("ago, at \(Text(facts.clock(start)).fontWeight(strong).foregroundStyle(Theme.text))")
             .feedText(.subheadline).foregroundStyle(Theme.textMuted)
+    }
+
+    // MARK: The foot (`13-calm-home.md`, CH3): what the Next side and Last feed tiles said
+
+    /// Under the bar: the last feed's chips, and the suggested next side. Nothing when there is
+    /// neither (a bottle-only household has no next side).
+    @ViewBuilder
+    private var lastFeedFoot: some View {
+        let last = facts.lastFinishedFeed
+        let next = facts.nextSide
+        if last != nil || next != nil {
+            foot {
+                if let last { FeedChips(snapshot: last) }
+                Spacer(minLength: 6)
+                if let next { nextSide(next) }
+            } spoken: {
+                [last.map { feed in
+                    "Last feed: \(HomeText.chips(feed).map(\.spoken).joined(separator: ", ")). Logged by \(facts.name(feed.event.loggedBy))."
+                 }, next.map { "Suggested next side: \($0 == .left ? "left" : "right")." }]
+                    .compactMap { $0 }.joined(separator: " ")
+            }
+        }
+    }
+
+    /// During a feed: the feed so far (a live clock on the side being fed), and when the last one
+    /// started.
+    @ViewBuilder
+    private func feedingFoot(_ feed: EventSnapshot) -> some View {
+        let details = feed.payload?.feed
+        let hasChips = !(details?.breast.isEmpty ?? true) || !(details?.bottles.isEmpty ?? true)
+        let last = facts.lastFinishedFeed
+        if hasChips || last != nil {
+            foot {
+                if hasChips { FeedChips(snapshot: feed) }
+                Spacer(minLength: 6)
+                if let last {
+                    Text("Last feed \(Text(facts.clock(last.event.startedAt)).fontWeight(strong).foregroundStyle(Theme.text))")
+                        .feedText(.subheadline)
+                        .foregroundStyle(Theme.textMuted)
+                        .fixedSize()
+                }
+            } spoken: {
+                [hasChips ? "This feed: \(HomeText.chips(feed).map(\.spoken).joined(separator: ", "))." : nil,
+                 last.map { "Last feed started at \(facts.clock($0.event.startedAt))." }]
+                    .compactMap { $0 }.joined(separator: " ")
+            }
+        }
+    }
+
+    /// A line under the bar, then its contents in a row (or a column when too wide).
+    private func foot<Content: View>(@ViewBuilder _ content: () -> Content, spoken: () -> String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Rectangle().fill(Theme.background).frame(height: 1.5)
+            HStack(alignment: .center, spacing: 8) {
+                content()
+            }
+        }
+        .padding(.top, 12)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(spoken())
+    }
+
+    /// "Next ◐ Left".
+    private func nextSide(_ side: BreastSide) -> some View {
+        HStack(spacing: 6) {
+            Text("Next").feedText(.subheadline).foregroundStyle(Theme.textMuted)
+            FeedMarkView(.side(side), size: 18, relativeTo: .subheadline)
+            Text(side == .left ? "Left" : "Right").feedText(.smallButton)
+        }
+        .fixedSize()
     }
 }
 
@@ -511,22 +571,6 @@ struct RunningFeed {
     }
 }
 
-/// The running feed so far: a chip for each side and bottle, with a live clock on the side
-/// being fed now ("◑ 4:02 running").
-struct ThisFeedTile: View {
-    let feed: EventSnapshot
-
-    var body: some View {
-        let segments = feed.payload?.feed?.breast ?? []
-        let bottles = feed.payload?.feed?.bottles ?? []
-        if !segments.isEmpty || !bottles.isEmpty {
-            Tile(label: "This feed") {
-                FeedChips(snapshot: feed)
-            }
-        }
-    }
-}
-
 /// A chip with a live clock, tinted by its kind: the side being fed now.
 struct LiveChip: View {
     let mark: FeedMark
@@ -550,41 +594,9 @@ struct LiveChip: View {
     }
 }
 
-/// The suggested next side: its half-moon and "Left".
-struct NextSideTile: View {
-    let side: BreastSide
-
-    var body: some View {
-        Tile(label: "Next side", tint: Theme.breastTint) {
-            HStack(spacing: 8) {
-                FeedMarkView(.side(side), size: 26, relativeTo: .title3)
-                Text(side == .left ? "Left" : "Right").feedText(.tileValue)
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Suggested next side: \(side == .left ? "left" : "right")")
-    }
-}
-
-/// The last finished feed as chips, with the avatar of who logged it.
-struct LastFeedTile: View {
-    let feed: EventSnapshot
-    let facts: HomeFacts
-
-    var body: some View {
-        let who = feed.event.loggedBy
-        let chips = HomeText.chips(feed)
-        Tile(label: "Last feed", tint: Theme.bottleTint,
-             accessory: AnyView(Avatar(name: facts.displayName(who), colour: facts.colour(who), size: 20))) {
-            FeedChips(snapshot: feed)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Last feed: \(chips.map(\.spoken).joined(separator: ", ")). Logged by \(facts.name(who)).")
-    }
-}
-
-/// The last 24 hours: the chart, then the totals.
-struct DayTile: View {
+/// The last 24 hours, inside Home's Today (`13-calm-home.md`, CH6): the key, the strip, then the
+/// totals.
+struct DaySummary: View {
     let facts: HomeFacts
     @Environment(\.dynamicTypeSize) private var typeSize
 
@@ -596,7 +608,12 @@ struct DayTile: View {
 
     var body: some View {
         let totals = facts.totals
-        Tile(label: "Last 24 hours", accessory: AnyView(key)) {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("Last 24 hours").feedText(.small).foregroundStyle(Theme.textMuted)
+                Spacer(minLength: 8)
+                key
+            }
             DayChart(feeds: facts.chart, now: facts.now, clock: facts.clock)
             totalsRow(totals)
         }
@@ -720,27 +737,27 @@ struct DayChart: View {
     }
 }
 
-/// The row of nights, who is on tonight, and "I'll take it".
-struct NightsTile: View {
+/// Who is on tonight, with "I'll take it" and the rest, any ask's line, and "waiting for the
+/// other phone": the part of Home's Tonight that always shows (`13-calm-home.md`, CH6). The week
+/// of nights folds under it (`TonightFold`).
+struct TonightLines: View {
     let facts: HomeFacts
     let me: MemberID
     let onUndo: (UndoAction) -> Void
+    /// Nothing in the week's row to show: no rota, and nobody has taken a night.
+    let noRota: Bool
 
     var body: some View {
         let state = facts.data.householdState
         let nights = facts.nights
         let onTonight = nights.first { $0.night == facts.tonight }?.onDuty
-        // Nothing in the week's row to show: no rota, and nobody has taken a night.
-        let noRota = state.rota == nil && nights.allSatisfy { $0.onDuty == nil }
         // Someone took tonight: either parent can give it back to both phones.
         let taken = state.claim(for: facts.tonight) != nil && facts.otherMember != nil
         let waiting = !facts.data.unacknowledgedChanges(by: me).isEmpty
-        Tile(label: "Nights") {
+        VStack(alignment: .leading, spacing: 7) {
             if noRota {
                 Text("No night rota yet: both phones alert at night.")
                     .feedText(.subheadline)
-            } else {
-                NightsRow(nights: nights, tonight: facts.tonight, facts: facts)
             }
             if onTonight == me {
                 if facts.askStatus == nil, let other = facts.otherMember {
@@ -874,7 +891,7 @@ struct NightsTile: View {
 
 /// "Alex asks you to take tonight", with "I'll take it" and "Not tonight". Only on the asked
 /// parent's Home, until they answer. A request, not a hand-off: Alex stays on duty until the
-/// answer is yes. After "Not tonight", "I'll take it" stays in the Nights tile.
+/// answer is yes. After "Not tonight", "I'll take it" stays in Tonight.
 struct AskCard: View {
     let ask: NightAsk
     let facts: HomeFacts
@@ -901,7 +918,7 @@ struct AskCard: View {
     @ViewBuilder
     private var answers: some View {
         PillButton("I'll take it", large: true) {
-            NightsTile.take(ask.night, me: me, onUndo: onUndo)
+            TonightLines.take(ask.night, me: me, onUndo: onUndo)
         }
         PillButton("Not tonight", large: true) {
             let night = ask.night

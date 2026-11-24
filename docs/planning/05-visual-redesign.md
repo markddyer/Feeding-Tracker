@@ -33,7 +33,7 @@ Top to bottom (see the mockup's "1. Home"):
 4. **Two tiles side by side:** Next side (the half-moon and "Left") and Last feed (chips: "◐ 12m", "◑ 8m", bottle "30 ml"). A bottle-only phone still shows Next side, so that parent can say which side is next.
 5. **Last 24 hours tile:** the chart (one block per feed on a strip, from its start to its end, coloured and keyed by shape), then three totals: feeds, at the breast, ml from bottles. Pumping shows as a fourth total only if there was any.
 6. **Nights tile:** seven days (five nights back, tonight, and tomorrow night, as in the approved mockup) with the on-duty parent's initial in their colour, tonight ringed; "Sam's on tonight" and an "I'll take it" pill; the "waiting for Sam's phone to see your change" line stays, as a small note under it.
-7. **Pinned at the bottom:** Start feed (with the bottle icon) and three small buttons: Just finished, Earlier, Pumping.
+7. **Pinned at the bottom:** Start feed (with the bottle icon) and three small buttons: Just finished, Earlier, Pumping. (Changed 24 Nov 2026: Start feed, two thirds of the row, asks Now, Just finished or Earlier; Pumping takes the last third. See `DESIGN.md`.)
 
 ### Home, a feed running
 - The hero tile turns breast-tinted (or bottle-tinted for a bottle feed). The ring shows the current side's half-moon in the middle; the main time is the running clock ("12:04", SF Pro Rounded with fixed-width digits) and "started 10:30" under it.

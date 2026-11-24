@@ -255,8 +255,8 @@ struct ContentView: View {
             }
             .arrangementViewStyle(.split.axes(.horizontal))
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { arrangementWidth = $0 }
-            // The page shows the greeting and the baby's name, so the bar shows only its
-            // buttons. "Home" is still the back button's name on the next screen.
+            // The bar shows the baby's name and its buttons, not a title. "Home" is still the
+            // back button's name on the next screen.
             .navigationTitle("Home")
             .toolbar(removing: .title)
             .modifier(TopBar(settings: true, ask: true))
@@ -298,6 +298,14 @@ struct ContentView: View {
                         .tint(Theme.text)
                     }
                     #endif
+                    // Home's top bar has the baby's name and age (`13-calm-home.md`, CH4): plain
+                    // words, not a button, so no glass behind them.
+if ask {
+                        ToolbarItem(placement: .topBarLeading) {
+                            HomeTitle()
+                        }
+                        .sharedBackgroundVisibility(.hidden)
+                    }
                 }
                 .navigationDestination(for: Screen.self) { screen in
                     switch screen {

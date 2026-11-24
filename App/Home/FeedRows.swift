@@ -68,9 +68,11 @@ struct HistoryRow: View {
     var secondRole = "finished by"
     /// A line under the chips: the time this row added to a number (X2).
     var note: String?
+    /// Inside Home's Recent box, which has its own colour: no tint of its own.
+    @Environment(\.plainHistoryRow) var plain
 
     var body: some View {
-        let tint = Self.tint(snapshot)
+        let tint = plain ? Theme.surface : Self.tint(snapshot)
         HStack(alignment: .center, spacing: 10) {
             Text(time)
                 .feedText(.smallButton)
@@ -95,7 +97,7 @@ struct HistoryRow: View {
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint, in: RoundedRectangle(cornerRadius: 18))
+        .background(plain ? Color.clear : tint, in: RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken)
@@ -228,6 +230,8 @@ struct CareRow: View {
     /// ("Thu 19 Nov"), and a line under the facts ("3h 10m of it on Tuesday").
     var timeText: String?
     var note: String?
+    /// Inside Home's Recent box, which has its own colour: no tint of its own.
+    @Environment(\.plainHistoryRow) var plain
 
     var body: some View {
         HStack(alignment: .center, spacing: 10) {
@@ -255,12 +259,12 @@ struct CareRow: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            RowAvatars(main: loggedBy, second: second, tint: mark.tint)
+            RowAvatars(main: loggedBy, second: second, tint: plain ? Theme.surface : mark.tint)
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(mark.tint, in: RoundedRectangle(cornerRadius: 18))
+        .background(plain ? Color.clear : mark.tint, in: RoundedRectangle(cornerRadius: 18))
         .contentShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(shownTime): \(spoken). \(role) \(loggedBy.spoken)\(loggedBy.workedOut ? ", probably" : "")"
@@ -275,7 +279,10 @@ struct CareRow: View {
         date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone))
     }
 
-    private var mark: FeedMark {
+    private var mark: FeedMark { Self.mark(for: snapshot) }
+
+    /// The entry's shape: the moon, the nappy's drop and swirl, the spoon, the tub, the line.
+    static func mark(for snapshot: EventSnapshot) -> FeedMark {
         switch snapshot.event.kind {
         case .sleep: .sleep
         case .nappy: .nappy(wee: snapshot.payload?.nappy?.wee ?? false, poo: snapshot.payload?.nappy?.poo ?? false)
@@ -285,8 +292,11 @@ struct CareRow: View {
         }
     }
 
+    private var line: String { Self.line(for: snapshot, zone: zone, now: now) }
+
     /// "Asleep 1h 20m, to 11:25", "Poo · yellow, loose", "Vitamin D", "3.85 kg (8 lb 8 oz)".
-    private var line: String {
+    static func line(for snapshot: EventSnapshot, zone: TimeZone, now: Date) -> String {
+        let clock = { (date: Date) in date.formatted(Date.FormatStyle(date: .omitted, time: .shortened, timeZone: zone)) }
         let event = snapshot.event
         guard let payload = snapshot.payload else { return "Details need a newer version of the app" }
         switch event.kind {

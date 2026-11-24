@@ -163,4 +163,51 @@ enum HomeText {
         case (false, false): "feed"
         }
     }
+
+    // MARK: Home's folded parts (`13-calm-home.md`, CH6)
+
+    /// Today's heading line: "7 feeds · 210 ml · 90 ml pumped". Bottles and pumping only when
+    /// there were some.
+    static func daySummary(_ totals: FeedSummary) -> String {
+        var parts = ["\(totals.feeds) \(totals.feeds == 1 ? "feed" : "feeds")"]
+        let bottles = totals.expressedML + totals.formulaML
+        if bottles > 0 { parts.append("\(bottles) ml") }
+        if totals.pumpedML > 0 {
+            parts.append("\(totals.pumpedML) ml pumped")
+        } else if totals.pumpSessions > 0 {
+            parts.append(totals.pumpSessions == 1 ? "1 pumping" : "\(totals.pumpSessions) pumpings")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Recent: the last 24 hours' entries of every kind but firsts, newest first, each shown once
+    /// when both phones logged it (as History does).
+    static func recentEntries(_ facts: HomeFacts) -> [EventSnapshot] {
+        let data = facts.data
+        let hidden = Set((data.duplicatePairs(babyID: facts.babyID) + data.careDuplicatePairs(babyID: facts.babyID)).map(\.duplicate))
+        let since = facts.now.addingTimeInterval(-24 * 3600)
+        return data.events.values
+            .filter {
+                $0.event.babyID == facts.babyID && $0.event.deletedAt == nil && $0.event.kind != .milestone
+                    && !hidden.contains($0.event.id) && $0.event.startedAt >= since && $0.event.startedAt <= facts.now
+            }
+            .sorted { ($0.event.startedAt, $0.event.id) > ($1.event.startedAt, $1.event.id) }
+            .map(\.snapshot)
+    }
+
+    /// Recent's heading line: the newest entry in a few words, "Wee and poo, 12:43".
+    static func recentSummary(_ entry: EventSnapshot, facts: HomeFacts) -> String {
+        let event = entry.event
+        let what: String = switch event.kind {
+        case .feed: event.endedAt == nil ? "Feed running" : "Feed"
+        case .pump: "Pumping"
+        case .sleep: event.endedAt == nil ? "Fell asleep" : "Sleep"
+        case .nappy: entry.payload?.nappy.map { CareText.nappyKind(wee: $0.wee, poo: $0.poo).capitalizedFirst } ?? "Nappy"
+        case .medicine: entry.payload?.medicine?.name ?? "Medicine"
+        case .bath: "Bath"
+        case .growth: "Growth"
+        default: "Entry"
+        }
+        return "\(what), \(facts.clock(event.startedAt))"
+    }
 }

@@ -250,8 +250,8 @@ final class InsightCardFlowTests: XCTestCase {
         keep(app, "This week")
         let first = app.buttons.matching(identifier: "cardGraphLine").firstMatch
         XCTAssertTrue(first.waitForExistence(timeout: 3), "the card's lines open their graphs")
-        // "4 feeds logged on the night of 15 November.", or "… last night." when the week ended
-        // yesterday (a Monday): its day.
+        // "4 feeds logged on the night of 15 November.", "… on Sunday night." within the last
+        // week, or "… last night." when the week ended yesterday (a Monday): its day.
         let label = first.label
         XCTAssertTrue(label.contains("feed"), label)
         var calendar = Calendar(identifier: .gregorian)
@@ -263,6 +263,14 @@ final class InsightCardFlowTests: XCTestCase {
             // the day before that (the household's night, 21:00 to 07:00).
             let hour = calendar.component(.hour, from: Date())
             day = calendar.date(byAdding: .day, value: hour < 7 ? -2 : -1, to: today)
+        } else if let name = label.range(of: #"[A-Z][a-z]+day(?= night\.$)"#, options: .regularExpression).map({ String(label[$0]) }) {
+            // "… on Sunday night.": a night in the last week, named by its evening's weekday.
+            let names = DateFormatter()
+            names.locale = Locale(identifier: "en_GB")
+            names.timeZone = calendar.timeZone
+            names.dateFormat = "EEEE"
+            day = (1...7).lazy.compactMap { calendar.date(byAdding: .day, value: -$0, to: today) }
+                .first { names.string(from: $0) == name }
         } else if let text = label.range(of: #"\d{1,2} [A-Z][a-z]+(?=\.$)"#, options: .regularExpression).map({ String(label[$0]) }) {
             let reader = DateFormatter()
             reader.locale = Locale(identifier: "en_GB")

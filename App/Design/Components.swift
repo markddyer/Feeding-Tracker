@@ -123,6 +123,8 @@ struct PillButton: View {
     let large: Bool
     let action: () -> Void
     @State private var taps = 0
+    /// Set where the button sits straight on the page (Home's Tonight): `surface` there.
+    @Environment(\.chipBackground) var placeBackground
 
     init(_ title: String, large: Bool = false, action: @escaping () -> Void) {
         self.title = title
@@ -141,7 +143,7 @@ struct PillButton: View {
                 .padding(.horizontal, large ? 18 : 12)
                 .padding(.vertical, large ? 14 : 8)
                 .frame(maxWidth: large ? .infinity : nil)
-                .background(Theme.background, in: Capsule())
+                .background(placeBackground ?? Theme.background, in: Capsule())
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
@@ -218,6 +220,8 @@ struct Chip: View {
     /// What VoiceOver says, when the text alone would be unclear ("Left side, 12 minutes").
     var spoken: String?
     var background: Color = Theme.background
+    /// Set where chips sit straight on the page (the open Duo's timeline): `surface` there.
+    @Environment(\.chipBackground) var placeBackground
 
     init(_ mark: FeedMark?, _ text: String, spoken: String? = nil, background: Color = Theme.background) {
         self.mark = mark
@@ -241,10 +245,16 @@ struct Chip: View {
         .foregroundStyle(Theme.text)
         .padding(.horizontal, 8)
         .padding(.vertical, 4)
-        .background(background, in: RoundedRectangle(cornerRadius: Radius.chip))
+        .background(placeBackground ?? background, in: RoundedRectangle(cornerRadius: Radius.chip))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken ?? [mark?.spoken, text].compactMap { $0 }.joined(separator: ", "))
     }
+}
+
+extension EnvironmentValues {
+    /// The colour of chips and round buttons where they sit straight on the page rather than on
+    /// a tile: `surface`, so they still read as buttons.
+    @Entry var chipBackground: Color?
 }
 
 /// A parent's colour, saved by name in their Member record so both phones show it. Sunflower and
