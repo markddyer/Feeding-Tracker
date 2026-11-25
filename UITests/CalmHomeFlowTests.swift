@@ -77,6 +77,41 @@ final class CalmHomeFlowTests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
+    /// The open Duo's left page (`-openScreen duo`): Tonight is a card, and a tap opens the week
+    /// of nights and its buttons in a window; the nappy card opens a poo's details.
+    func testDuoTonightCardOpensTheWeek() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-sampleData", "YES", "-sampleDataFresh", "YES",
+                               "-setup.disclaimerSeen", "YES", "-setup.inviteOffered", "YES",
+                               "-setup.permissionsAsked", "YES", "-setup.feedingStyle", "breastAndBottle",
+                               "-openScreen", "duo"]
+        app.launch()
+        // The page fits with no scrolling (CH10): the last card, Bath, is in sight above Start
+        // feed, with the sample's medicine making three rows.
+        let bath = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Bath, '")).firstMatch
+        XCTAssertTrue(bath.waitForExistence(timeout: 8))
+        XCTAssertTrue(bath.isHittable, "the last card shows without scrolling")
+        // The sample's last poo has no details: its card opens the panel.
+        let nappy = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Add details'")).firstMatch
+        XCTAssertTrue(nappy.waitForExistence(timeout: 8))
+        nappy.tap()
+        // The panel's colours ("Colour" itself is drawn in capitals).
+        let colour = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Yellow'")).firstMatch
+        XCTAssertTrue(colour.waitForExistence(timeout: 3), "the poo's panel opened")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(colour.waitForNonExistence(timeout: 3))
+
+        let card = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Tonight: '")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 3), "Tonight is a card")
+        let week = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH 'Tonight, '")).firstMatch
+        XCTAssertFalse(week.exists, "the week waits for a tap")
+        card.tap()
+        XCTAssertTrue(week.waitForExistence(timeout: 3), "the week shows in the window")
+        XCTAssertTrue(app.buttons["I'll take it"].exists, "with its button")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(week.waitForNonExistence(timeout: 3), "closed again")
+    }
+
     func testTonightsButtonShowsWhileTheWeekIsFolded() {
         let app = launch()
         let tonight = heading(app, "Tonight")

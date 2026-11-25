@@ -2,7 +2,7 @@ import FeedingCore
 import SwiftUI
 
 /// The open Duo's right page, "today" (the Book, `docs/planning/13-calm-home.md`, CH7 and CH8):
-/// the totals line and Tonight, then the day as a timeline, earlier at the top like a calendar, with
+/// the totals line, then the day as a timeline, earlier at the top like a calendar, with
 /// the log buttons along the bottom, under the right thumb. The home screen beside it is "now". It scrolls, so it doesn't need to avoid the
 /// fold. Closed, in laptop pose or in Split View, it doesn't show, and Home is the phone page.
 struct DayColumn: View {
@@ -15,6 +15,8 @@ struct DayColumn: View {
     @State private var editing: EventEditor.Mode?
     @State private var careEditing: CareEditor.Mode?
     @State private var pooDetails: PooDetailsTarget?
+    /// The morning card, from the AI card's slim line at the top.
+    @State private var morningCard: MorningCardRequest?
 
     private var log: CareLog { CareLog(me: me, babyID: babyID, onUndo: onUndo) }
 
@@ -23,8 +25,13 @@ struct DayColumn: View {
             let facts = HomeFacts(data: model.store.data, babyID: babyID, baby: model.babyDetails, me: me,
                                   names: model.memberNames, colours: model.memberColours, now: context.date)
             VStack(spacing: 0) {
-                // These stay put, so Tonight's line and buttons always show.
-                VStack(alignment: .leading, spacing: 8) {
+                // These stay put over the timeline: what waits above the top tile on the phone (a
+                // sync problem, an ask, "Last night" or the AI card's line), so the left page never
+                // scrolls (CH10), then the day's totals. Tonight is a card on the left page.
+                VStack(alignment: .leading, spacing: 10) {
+                    HomeTopLines(facts: facts, me: me, babyID: babyID, onUndo: onUndo) {
+                        morningCard = MorningCardRequest()
+                    }
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text("Today").feedText(.dayHeading).accessibilityAddTraits(.isHeader)
                         Spacer(minLength: 8)
@@ -34,17 +41,19 @@ struct DayColumn: View {
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                     }
-                    TonightFold(facts: facts, me: me, onUndo: onUndo)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 6)
                 .padding(.bottom, 4)
                 // Like a calendar, earlier at the top (the user's ask, 24 Nov 2026): it opens at
-                // its end, where now and the window ahead are.
+                // its end, where now and the window ahead are, with when the phones last synced.
                 ScrollView {
-                    DayTimeline(facts: facts) { open($0) }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                    VStack(spacing: 4) {
+                        DayTimeline(facts: facts) { open($0) }
+                        SyncedNote()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
                 }
                 .scrollIndicators(.hidden)
                 .defaultScrollAnchor(.bottom)
@@ -67,6 +76,9 @@ struct DayColumn: View {
         }
         .sheet(item: $pooDetails) { target in
             PooDetailsSheet(target: target, me: me, zone: model.store.data.householdSettings.timeZone, log: log)
+        }
+        .sheet(item: $morningCard) { request in
+            InsightCardSheet(kind: .morning, night: request.night)
         }
     }
 

@@ -114,6 +114,11 @@ final class WhoDidWhatFlowTests: XCTestCase {
         let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Who did what'")).firstMatch
         XCTAssertTrue(tile.waitForExistence(timeout: 8), "the tile on Graphs")
         tile.tap()
+        // The page keeps the range last chosen (an earlier test leaves it on one day, which is
+        // empty just after midnight): pick 7 days with a tap.
+        let week = app.buttons["7 days"]
+        XCTAssertTrue(week.waitForExistence(timeout: 8))
+        week.tap()
 
         // The bar: everyone's list, still there a few seconds later.
         let bar = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Feeds, '")).firstMatch

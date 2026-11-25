@@ -26,6 +26,8 @@ struct HomeView: View {
     @State private var careEditing: CareEditor.Mode?
     /// The morning card, from the afternoon's slim line (with no night's entries).
     @State private var morningCard: MorningCardRequest?
+    /// Tonight's window, from its card on the open Duo (`TonightSheet`).
+    @State private var showingTonight = false
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.secondColumnShowing) private var secondColumnShowing
 
@@ -33,55 +35,52 @@ struct HomeView: View {
         TimelineView(.periodic(from: .now, by: 20)) { context in
             let facts = HomeFacts(data: model.store.data, babyID: babyID, baby: model.babyDetails, me: me,
                                   names: model.memberNames, colours: model.memberColours, now: context.date)
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    SyncProblemBanner()
-                    // Above the top tile: it waits for an answer. It goes once answered.
-                    if case .askedOfMe(let ask) = facts.askStatus {
-                        AskCard(ask: ask, facts: facts, me: me, onUndo: { undo = $0 })
-                    }
-                    // Each morning until 12:00: last night, as a handover (X3, DD4), with the AI's
-                    // card when there is one (AI insights, the parents' pick A). From then until
-                    // the night starts, the card alone as a slim line.
-                    let night = lastNight(at: context.date)
-                    let card = night != nil || cardLineTime(context.date) ? CardShown.now(.morning, at: context.date) : .nothing
-                    if let night {
-                        LastNightLine(night: night, zone: model.store.data.householdSettings.timeZone, card: card)
-                    } else if card.isAI {
-                        AICardLine(title: CardText.title(.morning), shown: card) { morningCard = MorningCardRequest() }
-                    }
-                    HeroTile(facts: facts)
-                    // A calmer Home (`13-calm-home.md`): one plain list of things to log, then
-                    // the folded parts. On the open Duo (the Book, CH7) this page is "now": the
-                    // facts without buttons, which sit along the bottom of the right page.
-                    if secondColumnShowing {
-                        CareFacts(facts: facts) { pooDetails = $0 }
-                    } else {
-                        CareList(facts: facts, log: log, askDetails: { pooDetails = $0 },
-                                 editMedicines: { editingMedicines = true })
-                    }
-                    // On the open Duo, the right page holds Tonight and the day's timeline, so
-                    // this page fits without scrolling.
-                    if !secondColumnShowing {
-                        VStack(alignment: .leading, spacing: 4) {
-                            TonightFold(facts: facts, me: me, onUndo: { undo = $0 })
-                            TodayFold(facts: facts)
-                            RecentFold(facts: facts) { open($0) }
+            Group {
+                // The open Duo's left page, "now" (the Book, CH7 and CH10): the top tile and the
+                // even cards, which shrink together to fit, so the page doesn't scroll (the
+                // parents' ask, 24 Nov 2026). What waits above the top tile is at the top of the
+                // right page. Only when even the shortest cards can't fit (the largest text
+                // sizes) does it scroll, rather than cut words off.
+                if secondColumnShowing {
+                    ViewThatFits(in: .vertical) {
+                        duoPage(facts, fitsPage: true)
+                        ScrollView {
+                            duoPage(facts, fitsPage: false).padding(.bottom, 16)
                         }
+                        .scrollIndicators(.hidden)
                     }
-                    SyncedNote()
+                    .frame(maxHeight: .infinity, alignment: .top)
+                } else {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HomeTopLines(facts: facts, me: me, babyID: babyID, onUndo: { undo = $0 }) {
+                                morningCard = MorningCardRequest()
+                            }
+                            HeroTile(facts: facts)
+                            // A calmer Home (`13-calm-home.md`): one plain list of things to log,
+                            // then the folded parts.
+                            CareList(facts: facts, log: log, askDetails: { pooDetails = $0 },
+                                     editMedicines: { editingMedicines = true })
+                            VStack(alignment: .leading, spacing: 4) {
+                                TonightFold(facts: facts, me: me, onUndo: { undo = $0 })
+                                TodayFold(facts: facts)
+                                RecentFold(facts: facts) { open($0) }
+                            }
+                            SyncedNote()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 6)
+                        .padding(.bottom, 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .scrollIndicators(.hidden)
+                    .defaultScrollAnchor(Self.startsAtBottom ? .bottom : nil)
+                    .scrollPosition($scroll)
+                    // A tapped notification about an ask: back to the top, where its card is.
+                    .onChange(of: NotificationTaps.shared.homeRequests) {
+                        withAnimation { scroll.scrollTo(edge: .top) }
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 6)
-                .padding(.bottom, 16)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollIndicators(.hidden)
-            .defaultScrollAnchor(Self.startsAtBottom ? .bottom : nil)
-            .scrollPosition($scroll)
-            // A tapped notification about an ask: back to the top, where its card is.
-            .onChange(of: NotificationTaps.shared.homeRequests) {
-                withAnimation { scroll.scrollTo(edge: .top) }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 FeedControls(facts: facts, me: me, babyID: babyID, onUndo: { undo = $0 })
@@ -117,18 +116,24 @@ struct HomeView: View {
         .sheet(item: $morningCard) { request in
             InsightCardSheet(kind: .morning, night: request.night)
         }
+        .sheet(isPresented: $showingTonight) {
+            TonightSheet(me: me, babyID: babyID, onUndo: { undo = $0 })
+        }
     }
 
-    /// By day on the household's clock: the morning card's slim line shows then, once "Last night"
-    /// has gone at 12:00, until the night starts. Feeding Dev: `-homeCardLine YES` shows it at any
-    /// hour, without "Last night", for screenshots.
-    private func cardLineTime(_ now: Date) -> Bool {
-        #if FEEDING_DEV
-        if UserDefaults.standard.bool(forKey: "homeCardLine") { return true }
-        #endif
-        let settings = model.store.data.householdSettings
-        if case .day = settings.dayHours.period(at: now, in: settings.timeZone) { return true }
-        return false
+    /// The open Duo's left page: the top tile and the cards. With `fitsPage` the cards shrink to
+    /// the page's height, and the page asks only for the least it needs, so `ViewThatFits` takes
+    /// it whenever the shortest cards fit.
+    private func duoPage(_ facts: HomeFacts, fitsPage: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HeroTile(facts: facts)
+                .fixedSize(horizontal: false, vertical: true)
+            CareFacts(facts: facts, me: me, fitsPage: fitsPage, askDetails: { pooDetails = $0 },
+                      openTonight: { showingTonight = true })
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 6)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
     private var log: CareLog {
@@ -144,7 +149,8 @@ struct HomeView: View {
 
     /// Feeding Dev only: launch with `-homeSheet pooDetails` (the poo's colour and consistency,
     /// for the last nappy), `changeTime` (Change time, for the last nappy), `medicines` (the
-    /// medicine list) or `insightCard` (the morning's AI card), for screenshots.
+    /// medicine list), `insightCard` (the morning's AI card) or `tonight` (Tonight's window from
+    /// the open Duo's card), for screenshots.
     private func openDevSheet() {
         #if FEEDING_DEV
         let last = lastNappy(model.store.data.visibleSnapshots(babyID: babyID), babyID: babyID, now: Date())
@@ -157,7 +163,9 @@ struct HomeView: View {
             editingMedicines = true
         case "insightCard":
             // The morning card as "Last night" opens it, with the night's entries under it.
-            morningCard = MorningCardRequest(night: lastNight(at: Date()))
+            morningCard = MorningCardRequest(night: HomeTopLines.lastNight(at: Date(), babyID: babyID))
+        case "tonight":
+            showingTonight = true
         default:
             break
         }
@@ -171,21 +179,6 @@ struct HomeView: View {
         #endif
     }
 
-    /// Last night, from its end until 12:00. Feeding Dev's `-homeLastNight YES` shows the night
-    /// before at any hour, for screenshots.
-    private func lastNight(at now: Date) -> LastNight? {
-        let who = model.store.data.whoDidIt(babyID: babyID, now: now)
-        #if FEEDING_DEV
-        if UserDefaults.standard.bool(forKey: "homeCardLine") { return nil }
-        if UserDefaults.standard.bool(forKey: "homeLastNight") {
-            let today = PlainDate(now, in: model.store.data.householdSettings.timeZone)
-            let night = who.night(today.adding(days: -1))
-            if !night.items.isEmpty { return night }
-        }
-        #endif
-        return who.lastNight()
-    }
-
     /// Feeding Dev only: launch with `-homeAtBottom YES` to open the page scrolled to its end,
     /// for screenshots of the lower tiles.
     private static var startsAtBottom: Bool {
@@ -196,6 +189,65 @@ struct HomeView: View {
         #endif
     }
 
+}
+
+/// What waits above Home's top tile: a sync problem, an ask from the other parent (until it is
+/// answered), and each morning until 12:00 "Last night", or by day the AI card's slim line. On the
+/// phone it sits above the top tile; on the open Duo at the top of the right page, so the left
+/// page never needs to scroll (CH10).
+struct HomeTopLines: View {
+    let facts: HomeFacts
+    let me: MemberID
+    let babyID: String
+    let onUndo: (UndoAction) -> Void
+    /// Opens the morning card from the slim line.
+    let openCard: () -> Void
+
+    var body: some View {
+        SyncProblemBanner()
+        // It waits for an answer. It goes once answered.
+        if case .askedOfMe(let ask) = facts.askStatus {
+            AskCard(ask: ask, facts: facts, me: me, onUndo: onUndo)
+        }
+        // Each morning until 12:00: last night, as a handover (X3, DD4), with the AI's card when
+        // there is one (AI insights, the parents' pick A). From then until the night starts, the
+        // card alone as a slim line.
+        let night = Self.lastNight(at: facts.now, babyID: babyID)
+        let card = night != nil || Self.cardLineTime(facts.now) ? CardShown.now(.morning, at: facts.now) : .nothing
+        if let night {
+            LastNightLine(night: night, zone: facts.settings.timeZone, card: card)
+        } else if card.isAI {
+            AICardLine(title: CardText.title(.morning), shown: card, open: openCard)
+        }
+    }
+
+    /// Last night, from its end until 12:00. Feeding Dev's `-homeLastNight YES` shows the night
+    /// before at any hour, for screenshots.
+    static func lastNight(at now: Date, babyID: String) -> LastNight? {
+        let data = AppModel.shared.store.data
+        let who = data.whoDidIt(babyID: babyID, now: now)
+        #if FEEDING_DEV
+        if UserDefaults.standard.bool(forKey: "homeCardLine") { return nil }
+        if UserDefaults.standard.bool(forKey: "homeLastNight") {
+            let today = PlainDate(now, in: data.householdSettings.timeZone)
+            let night = who.night(today.adding(days: -1))
+            if !night.items.isEmpty { return night }
+        }
+        #endif
+        return who.lastNight()
+    }
+
+    /// By day on the household's clock: the morning card's slim line shows then, once "Last night"
+    /// has gone at 12:00, until the night starts. Feeding Dev: `-homeCardLine YES` shows it at any
+    /// hour, without "Last night", for screenshots.
+    static func cardLineTime(_ now: Date) -> Bool {
+        #if FEEDING_DEV
+        if UserDefaults.standard.bool(forKey: "homeCardLine") { return true }
+        #endif
+        let settings = AppModel.shared.store.data.householdSettings
+        if case .day = settings.dayHours.period(at: now, in: settings.timeZone) { return true }
+        return false
+    }
 }
 
 /// Everything the home screen shows, worked out once per refresh.
@@ -985,8 +1037,12 @@ struct NightsRow: View {
 
 /// A sync problem, in the `notice` colour: never red, and never about the baby.
 struct SyncProblemBanner: View {
+    /// Feeding Dev's Duo preview leaves it out: the simulator has no iCloud, and the real phones
+    /// don't show it, so the preview measures the page as the phones see it.
+    @Environment(\.previewHidesSyncProblem) private var hidden
+
     var body: some View {
-        if let problem = AppModel.shared.sync.problem ?? AppModel.shared.store.problem {
+        if !hidden, let problem = AppModel.shared.sync.problem ?? AppModel.shared.store.problem {
             Text(problem)
                 .feedText(.subheadline)
                 .padding(12)
@@ -994,6 +1050,11 @@ struct SyncProblemBanner: View {
                 .background(Theme.notice.opacity(0.22), in: RoundedRectangle(cornerRadius: Radius.smallButton))
         }
     }
+}
+
+extension EnvironmentValues {
+    /// True in Feeding Dev's Duo preview only (`DuoPreview`): no iCloud banner there.
+    @Entry var previewHidesSyncProblem = false
 }
 
 /// When the phones last synced, small, at the foot of the page.

@@ -15,6 +15,8 @@ Parent A found Home "visually quite overwhelming": eight boxes in six colours, b
 | CH7 | The open Duo | The "Book" (round 3, A): the left page is "now" (the top tile, four plain facts with no buttons, Tonight, Start feed and Pumping at the bottom left); the right page is "today", a timeline, with the log buttons along its bottom. Nothing crosses the fold. Closed, in laptop pose or in Split View, Home is the phone page. |
 | CH8 | The timeline | Earlier at the top, like a calendar (Parent A, after trying it on the Duo: the mockup had the newest at the top), opening at its end, at now. Sleeps are lilac bars, feeds pink or blue blocks as long as they lasted, each entry beside them as one pill holding its time, details and who did it (Parent A's ask after trying it); the night shaded; the feeding window and backup alarm under "now". The totals line and Tonight stay put above it. A tap opens the entry to change it, as in History. It replaces the Duo's Recent list. |
 | CH9 | A poo's Undo card | The card waits until the poo's details panel closes, so its 10 seconds start once the nappy is fully logged, and it names the details ("Poo logged · brown, loose"). Undo in the panel leaves no card. |
+| CH10 | The Book's left page, again (Parent A, after trying build 8's page on the Duo) | Every card the same size, in even rows and columns (a tall nappy card had left uneven gaps), with its shape on the title line so the words get the whole width. Tonight moves from the right page to a card on the left (who is on, any ask or wait), before the medicines and Bath. A tap opens Tonight's window: its line, its buttons and the week of nights. Parent A asked for the week to open in place if it fits without scrolling, else in a window: with the top tile (about 255 points of the page's 469) and two rows of cards, it doesn't fit. |
+| CH11 | No scrolling on the Book's left page, and even log buttons (Parent A, the same evening) | Scrolling there is a fail. The lines that wait above the top tile (a sync problem, an ask, "Last night", the AI card's line) sit at the top of the right page; "Synced" sits under the timeline. The cards shrink together to fit the page, down to a title and one line each, with a short form of their words; several medicines share one "Medicines" card; so it fits at the usual text sizes in every state tried (a feed running, the window open, alerts off, an ask, last night). At the largest text sizes, where even the shortest cards can't fit, it scrolls rather than cut words off. The right page's log buttons are one even row, each the same width and height. |
 
 ## Rules kept
 
@@ -26,12 +28,13 @@ Parent A found Home "visually quite overwhelming": eight boxes in six colours, b
 ## Built (24 Nov 2026)
 
 - Phone: `App/Home/HomeView.swift` (the page, the hero's foot, `HomeTitle` in the top bar), `App/Home/CareTiles.swift` (`CareList`, `CareFacts`, `LogDock`), `App/Home/HomeFolds.swift` (`FoldSection`, Tonight, Today, Recent). The Next side, Last feed, This feed, Sleep, Nappy, Medicine, Bath, 24-hour and Nights tiles are gone; `TonightLines` and `DaySummary` hold what the last two said.
-- Open Duo: `App/Home/DayColumn.swift` (the right page and `DayTimeline`).
+- Open Duo: `App/Home/DayColumn.swift` (the right page and `DayTimeline`); the left page's cards are `CareFacts`, `FactCard` and `EvenGrid` (`CareTiles.swift`), Tonight's card and window `TonightCard` and `TonightSheet` (`HomeFolds.swift`).
 - Two changes from the mockups, found at real sizes:
-  - Tonight sits at the top of the Duo's right page, under the totals line, not on the left page: the real top tile is taller than the mockup's, and the left page then fits without scrolling.
+  - Tonight sat at the top of the Duo's right page at first, as the real top tile is taller than the mockup's; since CH10 it is a card on the left page, and its week opens in a window.
   - The timeline stretches where entries crowd (`TimeScale`): with a fixed hour height, labels drifted away from their marks.
 - The name in the top bar has no clock of its own: a `TimelineView` inside a toolbar item put SwiftUI into an endless loop (the app showed a blank screen at 100% busy). It is redrawn with the page.
 - A poo's Undo card (CH9): `CareLog.nappyFinished`, called when the details panel closes.
-- Tap tests: `StartFeedMenuFlowTests` (CH1), `UndoCardFlowTests` (CH9).
+- Tap tests: `StartFeedMenuFlowTests` (CH1), `CalmHomeFlowTests` (CH2, CH6, and CH10 and CH11 through `-openScreen duo`: the last card in sight with no scrolling), `UndoCardFlowTests` (CH9).
+- The Duo preview (`-openScreen duo`) keeps the real Duo's 34 pt bottom strip clear and leaves out the simulator's iCloud banner, so it measures the page as the phones see it.
 - In Little Log build 8 on TestFlight (24 Nov 2026), with History's fix: baths in All and a Baths button.
 - Still to check on the phones: the page by day and at 3am, the folded parts opening, and the Book on the real open Duo (book pose and flat).

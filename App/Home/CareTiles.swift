@@ -378,48 +378,60 @@ struct NappyButton: View {
 
 // MARK: - The open Duo's facts (`13-calm-home.md`, CH7)
 
-/// The Book's left page: sleep, nappy, each medicine and bath as plain facts, two to a row, with
-/// no buttons (they are along the bottom of the right page). One to a row at the largest sizes.
+/// The Book's left page: sleep, nappy, each medicine, bath and Tonight as plain facts, two to a
+/// row, every card the same size (`EvenGrid`; the parents' ask, 24 Nov 2026), with no log buttons
+/// (they are along the bottom of the right page). One to a row at the largest sizes. A poo with no
+/// details opens its panel; Tonight opens the week and its buttons in a window (`TonightSheet`).
 struct CareFacts: View {
     let facts: HomeFacts
+    let me: MemberID
+    /// True when the page doesn't scroll: the cards shrink to its height, down to a title and one
+    /// line each (`EvenGrid.shortest`).
+    var fitsPage = false
     let askDetails: (PooDetailsTarget) -> Void
+    let openTonight: () -> Void
     @Environment(\.dynamicTypeSize) private var typeSize
+    /// A card with its title and one line under it.
+    @ScaledMetric(relativeTo: .body) private var shortest: CGFloat = 60
 
     var body: some View {
         let state = sleepState(facts.visible, babyID: facts.babyID, now: facts.now)
         let last = lastNappy(facts.visible, babyID: facts.babyID, now: facts.now)
-        let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top),
-                            count: typeSize.isAccessibilitySize ? 1 : 2)
-        LazyVGrid(columns: columns, spacing: 8) {
-            fact(.sleep, Self.sleepTitle(state, now: facts.now), Self.sleepDetail(state, facts: facts))
-            fact(last.map { .nappy(wee: $0.wee, poo: $0.poo) } ?? .nappy(wee: true, poo: true),
-                 Self.nappyTitle(last, now: facts.now), Self.nappyDetail(last, facts: facts),
-                 spoken: Self.nappySpoken(last, facts: facts)) {
-                if let last, Self.needsDetails(last) {
-                    AddDetailsButton { askDetails(PooDetailsTarget(id: last.id, isNew: false)) }
-                }
+        let medicines = facts.data.medicines
+        EvenGrid(columns: typeSize.isAccessibilitySize ? 1 : 2, spacing: 8, shortest: fitsPage ? shortest : nil) {
+            FactCard(mark: .sleep, title: Self.sleepTitle(state, now: facts.now), detail: Self.sleepDetail(state, facts: facts))
+            nappyCard(last)
+            // Before the medicines and Bath: who is on matters for the alarms, so it is never the
+            // card that has to give way.
+            TonightCard(facts: facts, me: me, open: openTonight)
+            // One card for the medicines, so there are never more than three rows.
+            if medicines.count == 1, let name = medicines.first {
+                FactCard(mark: .medicine, title: name, detail: Self.medicineDetail(name, facts: facts))
+            } else if medicines.count > 1 {
+                FactCard(mark: .medicine, title: "Medicines", detail: Self.medicinesDetail(medicines, facts: facts))
             }
-            ForEach(facts.data.medicines, id: \.self) { name in
-                fact(.medicine, name, Self.medicineDetail(name, facts: facts))
-            }
-            fact(.bath, "Bath", Self.bathDetail(facts))
+            FactCard(mark: .bath, title: "Bath", detail: Self.bathDetail(facts))
         }
     }
 
-    private func fact(_ mark: FeedMark, _ title: String, _ detail: String?, spoken: String? = nil) -> some View {
-        fact(mark, title, detail, spoken: spoken) { EmptyView() }
-    }
-
-    private func fact<Extra: View>(_ mark: FeedMark, _ title: String, _ detail: String?, spoken: String? = nil,
-                                   @ViewBuilder extra: () -> Extra) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            RowLead(mark: mark, title: title, detail: detail, spoken: spoken)
-            extra().padding(.leading, 39)
+    /// The last nappy. A poo with no colour and no consistency says "Add details" under its title
+    /// (the shapes say what it was), and a tap on the card opens its panel.
+    @ViewBuilder
+    private func nappyCard(_ last: NappyChange?) -> some View {
+        let needsDetails = last.map(Self.needsDetails) == true
+        let card = FactCard(mark: last.map { .nappy(wee: $0.wee, poo: $0.poo) } ?? .nappy(wee: true, poo: true),
+                            title: Self.nappyTitle(last, now: facts.now),
+                            detail: needsDetails ? nil : Self.nappyDetail(last, facts: facts),
+                            shortDetail: Self.nappyShortDetail(last, facts: facts),
+                            link: needsDetails ? "Add details" : nil,
+                            spoken: Self.nappySpoken(last, facts: facts))
+        if let last, Self.needsDetails(last) {
+            Button { askDetails(PooDetailsTarget(id: last.id, isNew: false)) } label: { card }
+                .buttonStyle(PressStyle())
+                .accessibilityHint("Adds the poo's colour and consistency")
+        } else {
+            card
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
     }
 
     // The words, shared by the phone's rows and these facts.
@@ -451,6 +463,16 @@ struct CareFacts: View {
         return "\(kind.capitalizedFirst), \(facts.clock(last.at))\(details)"
     }
 
+    /// One line for a short card: the poo's details first, as the shapes say what it was:
+    /// "Yellow, loose · 12:43", or "Wee and poo, 12:43".
+    static func nappyShortDetail(_ last: NappyChange?, facts: HomeFacts) -> String? {
+        guard let last else { return nil }
+        if let details = last.details.flatMap(CareText.pooDetails) {
+            return "\(details.capitalizedFirst) · \(facts.clock(last.at))"
+        }
+        return nappyDetail(last, facts: facts)
+    }
+
     static func nappySpoken(_ last: NappyChange?, facts: HomeFacts) -> String {
         guard let last else { return "No nappy logged yet" }
         let kind = last.details.map { CareText.nappyKind(wee: $0.wee, poo: $0.poo) } ?? "nappy"
@@ -470,12 +492,141 @@ struct CareFacts: View {
         return "last \(CareText.lastGiven(last, now: facts.now, in: facts.settings.timeZone))"
     }
 
+    /// Several medicines on one card: "Vitamin D 08:00 · Calpol not yet".
+    static func medicinesDetail(_ names: [String], facts: HomeFacts) -> String {
+        names.map { name in
+            guard let last = facts.data.lastGiven(name, babyID: facts.babyID, now: facts.now) else { return "\(name) not yet" }
+            return "\(name) \(CareText.lastGiven(last, now: facts.now, in: facts.settings.timeZone))"
+        }
+        .joined(separator: " · ")
+    }
+
     /// When the last bath was, or "Not logged yet".
     static func bathDetail(_ facts: HomeFacts) -> String {
         let last = facts.data.allEvents
             .filter { $0.kind == .bath && $0.deletedAt == nil && $0.babyID == facts.babyID && $0.startedAt <= facts.now }
             .map(\.startedAt).max()
         return last.map { "last \(CareText.lastGiven($0, now: facts.now, in: facts.settings.timeZone))" } ?? "Not logged yet"
+    }
+}
+
+/// One card on the Book's left page: a shape (or any small picture) beside a title on one line,
+/// and up to two lines under them, across the card's whole width, so a half-page card rarely
+/// wraps. It fills the height `EvenGrid` gives it, so every card is the same size.
+struct FactCard<Mark: View>: View {
+    let mark: Mark
+    let title: String
+    var detail: String?
+    /// One line for a short card, with what matters most: the detail when it has no room.
+    var shortDetail: String?
+    /// Underlined words under the detail, for a card that opens something.
+    var link: String?
+    var spoken: String?
+    /// A chevron at the end, for a card that opens a window.
+    var opens = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(alignment: .center, spacing: 7) {
+                mark.accessibilityHidden(true)
+                // A little smaller rather than cut off, on a half-page card at large sizes.
+                Text(title)
+                    .feedText(.body).fontWeight(.semibold)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .allowsTightening(true)
+                Spacer(minLength: 0)
+                if opens {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.textMuted)
+                        .accessibilityHidden(true)
+                }
+            }
+            // The title keeps its line; on a short card the words under it give way first.
+            .layoutPriority(1)
+            if let link {
+                Text(link).feedText(.smallButton).underline().lineLimit(1)
+            }
+            if let detail {
+                // Two lines when there is room; on a short card, the short form, or one line.
+                ViewThatFits(in: .vertical) {
+                    detailText(detail, lines: 2)
+                    detailText(shortDetail ?? detail, lines: 1)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .contentShape(RoundedRectangle(cornerRadius: 16))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel([spoken ?? [title, detail].compactMap { $0 }.joined(separator: ", "), link]
+            .compactMap { $0 }.joined(separator: ". "))
+    }
+
+    private func detailText(_ text: String, lines: Int) -> some View {
+        Text(text)
+            .feedText(.subheadline)
+            .foregroundStyle(Theme.textMuted)
+            .lineLimit(lines)
+    }
+}
+
+extension FactCard where Mark == FeedMarkView {
+    init(mark: FeedMark, title: String, detail: String? = nil, shortDetail: String? = nil, link: String? = nil,
+         spoken: String? = nil) {
+        self.init(mark: FeedMarkView(mark, size: 22, relativeTo: .body), title: title, detail: detail,
+                  shortDetail: shortDetail, link: link, spoken: spoken)
+    }
+}
+
+/// Cards (or buttons) in even columns, each as tall as the tallest, so they line up in rows and
+/// columns with the same gaps everywhere (the parents' ask, 24 Nov 2026: a tall card had left
+/// uneven gaps, and the log buttons were all different widths). With `shortest`, the cards shrink
+/// together to the height they are offered, down to that height each, so a page needn't scroll.
+struct EvenGrid: Layout {
+    var columns: Int
+    var spacing: CGFloat = 8
+    var shortest: CGFloat?
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 400
+        let rows = rowCount(subviews)
+        let cell = cellSize(width: width, height: proposal.height, subviews: subviews)
+        return CGSize(width: width, height: rows == 0 ? 0 : CGFloat(rows) * cell.height + CGFloat(rows - 1) * spacing)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let cell = cellSize(width: bounds.width, height: bounds.height, subviews: subviews)
+        for (index, subview) in subviews.enumerated() {
+            let row = index / max(1, columns)
+            let column = index % max(1, columns)
+            subview.place(at: CGPoint(x: bounds.minX + CGFloat(column) * (cell.width + spacing),
+                                      y: bounds.minY + CGFloat(row) * (cell.height + spacing)),
+                          proposal: ProposedViewSize(cell))
+        }
+    }
+
+    private func rowCount(_ subviews: Subviews) -> Int {
+        (subviews.count + columns - 1) / max(1, columns)
+    }
+
+    /// The width of a column, and the height of the tallest card at that width, or less when
+    /// `shortest` is set and the offered height is less.
+    private func cellSize(width: CGFloat, height: CGFloat?, subviews: Subviews) -> CGSize {
+        let count = CGFloat(max(1, columns))
+        let cellWidth = max(0, (width - (count - 1) * spacing) / count)
+        let natural = subviews.map { $0.sizeThatFits(ProposedViewSize(width: cellWidth, height: nil)).height }.max() ?? 0
+        let rows = CGFloat(rowCount(subviews))
+        guard let shortest, rows > 0 else { return CGSize(width: cellWidth, height: natural) }
+        // Asked for its ideal size, it gives the least it needs, so `ViewThatFits` keeps a page
+        // whose cards can shrink to fit.
+        guard let height else { return CGSize(width: cellWidth, height: min(natural, shortest)) }
+        guard height.isFinite else { return CGSize(width: cellWidth, height: natural) }
+        let fitted = (height - (rows - 1) * spacing) / rows
+        return CGSize(width: cellWidth, height: min(natural, max(shortest, fitted)))
     }
 }
 
@@ -493,8 +644,9 @@ struct LogDock: View {
         let state = sleepState(facts.visible, babyID: facts.babyID, now: facts.now)
         let asleep: Bool = { if case .asleep = state { return true } else { return false } }()
         let medicines = facts.data.medicines
-        HStack(spacing: 6) {
-            DockButton(title: CareText.sleepButton(state), mark: .sleep, wide: true) {
+        // Every button the same width and height, in one row (the parents' ask, 24 Nov 2026).
+        EvenGrid(columns: medicines.isEmpty ? 5 : 6, spacing: 6) {
+            DockButton(title: CareText.sleepButton(state), mark: .sleep) {
                 asleep ? log.wokeUp() : log.fellAsleep()
             }
             .contextMenu {
@@ -512,7 +664,7 @@ struct LogDock: View {
             DockButton(title: "Both", mark: .weeAndPoo) { pooLogged(log.nappy(wee: true, poo: true)) }
                 .accessibilityLabel("Log wee and poo")
             if medicines.count == 1, let name = medicines.first {
-                DockButton(title: name, mark: .medicine, wide: true) { log.medicine(name) }
+                DockButton(title: name, mark: .medicine) { log.medicine(name) }
                     .accessibilityLabel("\(name) given")
             } else if medicines.count > 1 {
                 Menu {
@@ -523,11 +675,9 @@ struct LogDock: View {
                     DockLabel(title: "Medicine", mark: .medicine)
                 }
                 .buttonStyle(PressStyle())
-                .frame(maxWidth: .infinity)
-                .layoutPriority(1.25)
                 .accessibilityLabel("Medicine given")
             }
-            DockButton(title: "Bath", mark: .bath, wide: true) { log.bath() }
+            DockButton(title: "Bath", mark: .bath) { log.bath() }
                 .accessibilityLabel("Bath given")
         }
     }
@@ -537,11 +687,10 @@ struct LogDock: View {
     }
 }
 
-/// One of the dock's buttons: the shape above the word, on `surface`.
+/// One of the dock's buttons: the shape above the word, on `surface`, filling its even place.
 private struct DockButton: View {
     let title: String
     let mark: FeedMark
-    var wide = false
     let action: () -> Void
     @State private var taps = 0
 
@@ -554,7 +703,6 @@ private struct DockButton: View {
         }
         .buttonStyle(PressStyle())
         .sensoryFeedback(.impact(weight: .medium), trigger: taps)
-        .frame(maxWidth: wide ? .infinity : 50)
     }
 }
 
@@ -566,14 +714,17 @@ private struct DockLabel: View {
         VStack(spacing: 3) {
             FeedMarkView(mark, size: 18, relativeTo: .subheadline)
                 .accessibilityHidden(true)
+            // Two lines, and a long medicine's name a little smaller, rather than cut off.
             Text(title)
                 .feedText(.chip)
                 .lineLimit(2)
                 .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.8)
+                .minimumScaleFactor(0.65)
+                .allowsTightening(true)
         }
         .padding(.horizontal, 3)
-        .frame(maxWidth: .infinity, minHeight: 62)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(minHeight: 62)
         .foregroundStyle(Theme.text)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
         .contentShape(RoundedRectangle(cornerRadius: 16))

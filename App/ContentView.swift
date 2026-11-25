@@ -428,9 +428,9 @@ struct DevScreen: View {
 }
 
 /// Feeding Dev only: the two columns as the unfolded Duo shows them, drawn at the size measured on
-/// a real Duo open flat (951 x 669 pt, less the 84 pt side bar and the 82 pt top inset), shrunk to
-/// fit this screen. The simulator can't unfold a Duo by command, so this is for screenshots; the
-/// real split comes from `ArrangementView`.
+/// a real Duo open flat (951 x 669 pt, less the 84 pt side bar and the 82 pt top inset, with the
+/// 34 pt bottom inset kept clear as there), shrunk to fit this screen. The simulator can't unfold a
+/// Duo by command, so this is for screenshots; the real split comes from `ArrangementView`.
 struct DuoPreview: View {
     let me: MemberID
     let babyID: String
@@ -447,6 +447,8 @@ struct DuoPreview: View {
                 DayColumn(me: me, babyID: babyID, onUndo: { undo = $0 })
                     .frame(width: size.width / 2)
             }
+            .safeAreaPadding(.bottom, 34)
+            .environment(\.previewHidesSyncProblem, true)
             .frame(width: size.width, height: size.height)
             .scaleEffect(scale, anchor: .topLeading)
             // The shrunk picture's own footprint, from the top left.

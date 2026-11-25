@@ -166,6 +166,98 @@ struct TonightFold: View {
     }
 }
 
+/// Tonight on the open Duo's left page (the Book): who is on, and any ask or wait, as one even card
+/// beside the others. A tap opens the week of nights and the buttons in a window (`TonightSheet`):
+/// the page has no room to show them in place without scrolling (the parents' ask, 24 Nov 2026).
+struct TonightCard: View {
+    let facts: HomeFacts
+    let me: MemberID
+    let open: () -> Void
+
+    var body: some View {
+        let onTonight = facts.nights.first { $0.night == facts.tonight }?.onDuty
+        let lines = Self.lines(facts: facts, me: me, onTonight: onTonight)
+        Button(action: open) {
+            // On a short card, the ask or the wait before who is on: the circle shows who is on.
+            FactCard(mark: mark(onTonight), title: "Tonight", detail: lines.joined(separator: "\n"),
+                     shortDetail: lines.last, spoken: "Tonight: " + lines.joined(separator: ". "), opens: true)
+        }
+        .buttonStyle(PressStyle())
+        .accessibilityHint("Opens the week of nights and its buttons.")
+    }
+
+    @ViewBuilder
+    private func mark(_ member: MemberID?) -> some View {
+        if let member {
+            Avatar(name: facts.displayName(member), colour: facts.colour(member), size: 24)
+        } else {
+            EmptyAvatar(size: 24)
+        }
+    }
+
+    /// Who is on ("Sam's on", "You're on", "Both phones alert", "No rota yet"), then the one line
+    /// that matters most after it: a wait for the other phone (this phone alerts as if on duty
+    /// until then), else an ask, else "Both phones alert" with no rota. The short form of what
+    /// `TonightLines` says in full.
+    static func lines(facts: HomeFacts, me: MemberID, onTonight: MemberID?) -> [String] {
+        let noRota = facts.data.householdState.rota == nil && facts.nights.allSatisfy { $0.onDuty == nil }
+        let who: String
+        var then: String?
+        if let onTonight {
+            who = onTonight == me ? "You're on" : "\(facts.name(onTonight).capitalizedFirst)'s on"
+        } else if noRota {
+            who = "No rota yet"
+            then = "Both phones alert"
+        } else {
+            who = "Both phones alert"
+        }
+        let other = facts.otherMember.map { facts.name($0).capitalizedFirst } ?? "the other parent"
+        switch facts.askStatus {
+        case .waiting: then = "You asked \(other)"
+        case .declined(_, let by): then = "\(facts.name(by).capitalizedFirst) said not tonight"
+        default: break
+        }
+        if !facts.data.unacknowledgedChanges(by: me).isEmpty {
+            then = "Waiting for \(facts.otherName.map { "\($0)'s phone" } ?? "the other phone")"
+        }
+        return [who] + [then].compactMap { $0 }
+    }
+}
+
+/// Tonight's window, from its card on the open Duo: who is on with "I'll take it" and the rest, any
+/// ask line, and the week of nights. A tap that has an Undo closes it, so the Undo card shows.
+struct TonightSheet: View {
+    let me: MemberID
+    let babyID: String
+    let onUndo: (UndoAction) -> Void
+    private let model = AppModel.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 20)) { context in
+            let facts = HomeFacts(data: model.store.data, babyID: babyID, baby: model.babyDetails, me: me,
+                                  names: model.memberNames, colours: model.memberColours, now: context.date)
+            let noRota = facts.data.householdState.rota == nil && facts.nights.allSatisfy { $0.onDuty == nil }
+            VStack(alignment: .leading, spacing: 14) {
+                Text("Tonight").feedText(.dayHeading).accessibilityAddTraits(.isHeader)
+                TonightLines(facts: facts, me: me, onUndo: { onUndo($0); dismiss() }, noRota: noRota)
+                    .environment(\.chipBackground, Theme.surface)
+                if !noRota {
+                    NightsRow(nights: facts.nights, tonight: facts.tonight, facts: facts)
+                }
+                BigButton(title: "Done", prominent: true) { dismiss() }
+                    .padding(.top, 4)
+            }
+            .padding(18)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .foregroundStyle(Theme.text)
+        .presentationDetents([.height(310)])
+        .presentationSizing(.form.fitted(horizontal: false, vertical: true))
+        .presentationBackground(Theme.background)
+    }
+}
+
 extension View {
     /// A History row without its own tint, inside a box that has one (Home's Recent).
     func untintedRow() -> some View {

@@ -42,8 +42,10 @@ enum SampleData {
                                  payload: try? PayloadCoder.encode(MemberPayload(displayName: "Sam", colour: "teal"))))
             // `-sampleNightAsk noRota`: no rota yet, so nobody is on and both phones alert.
             // `takenByOther`: no rota either, and Sam took tonight after this parent asked.
+            // Sam is on tonight: the rota starts on the night that is on now, so after midnight it is
+            // still the night that began the evening before (a calendar date made it this parent's).
             if !["noRota", "takenByOther"].contains(defaults.string(forKey: "sampleNightAsk")) {
-                data.putSetting(Rota(startDate: PlainDate(now, in: .current), firstOnDuty: other, secondOnDuty: me),
+                data.putSetting(Rota(startDate: data.householdSettings.tonight(at: now), firstOnDuty: other, secondOnDuty: me),
                                 key: SettingKey.rota, now: now)
             }
 
