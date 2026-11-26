@@ -453,6 +453,9 @@ extension ModelTests {
                            answer: forParent ? "Get help now for a parent (the AI's flag)" : "Get help now (the AI's flag)")
         case .closed(let closed):
             return outcome("error: the gate closed (\(closed))")
+        case .stopped:
+            // Step 4 Y2: never here, as the test says the app is open.
+            return outcome("error: stopped as if the app were closed; nothing sent")
         case .failed(.turnedDown):
             return outcome("turned down")
         case .failed(let failure):
