@@ -101,7 +101,42 @@ enum WatchSamples {
     static func page() -> WatchPage {
         let number = UserDefaults.standard.integer(forKey: "watchPage")
         if number == 3 { return .today }
+        if number == 4 { return .lastNight }
         return name == "asleep" || name == "awake" || number == 2 ? .care : .feeds
+    }
+
+    /// `-sampleLastNight` with `card` (the morning card current), `factsOnly` (paused), `checking`,
+    /// `away` (no answer from the phone), `nothing` (nothing logged) or `takenBack`: page 4's
+    /// states (AI insights step 4). Open it with `-watchPage 4`; `-watchScreen lastNightCard` opens
+    /// the card screen.
+    static func lastNightCard(now: Date = Date()) -> WatchCard? {
+        guard let kind = UserDefaults.standard.string(forKey: "sampleLastNight") else { return nil }
+        let facts = [
+            WatchCard.Fact(kind: .sleep, number: "3h 10m", words: "longest sleep logged", spoken: "Longest sleep logged, 3 hours 10 minutes"),
+            WatchCard.Fact(kind: .feeds, number: "4", words: "feeds logged", spoken: "4 feeds logged"),
+            WatchCard.Fact(kind: .nappies, number: "3", words: "nappies logged", spoken: "3 nappies logged"),
+        ]
+        let sections = [
+            WatchCard.Section(title: "Last night", lines: ["The longest sleep logged was 3h 10m, from 00:40.", "4 feeds were logged in the night."],
+                              patterns: ["Feeds were logged closer together after 02:00."]),
+            WatchCard.Section(title: "Yesterday", lines: ["8 feeds and 6 wet nappies were logged."], patterns: []),
+        ]
+        let ends = now.addingTimeInterval(12 * 3600)
+        switch kind {
+        case "factsOnly": return WatchCard(mode: .factsOnly, why: "Paused. iPhone says why.", facts: facts, ends: ends)
+        case "nothing": return WatchCard(mode: .card, facts: [], ends: ends)
+        default: return WatchCard(mode: .card, facts: facts, sections: sections, medicines: ["Vitamin D · 09:05"],
+                                  madeAt: now.addingTimeInterval(-30 * 60), ends: ends)
+        }
+    }
+
+    static func lastNightCheck() -> PhoneLink.CardCheck {
+        switch UserDefaults.standard.string(forKey: "sampleLastNight") {
+        case "checking": .checking
+        case "away": .unreachable
+        case "takenBack": .takenBack
+        default: .current
+        }
     }
 
     /// `-watchScreen logged` (the Logged card after Wee), `pooDetails` (after Poo), `pump`

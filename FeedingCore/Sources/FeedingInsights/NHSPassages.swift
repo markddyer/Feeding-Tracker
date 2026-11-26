@@ -101,6 +101,15 @@ public struct Passage: Hashable, Sendable, Identifiable {
         self.summaries = summaries
     }
 
+    /// The passage's first heading ("## "), its name in lists and when read aloud; the page's title
+    /// when it has none.
+    public var title: String {
+        for line in words.split(separator: "\n", omittingEmptySubsequences: true) where line.hasPrefix("## ") {
+            return String(line.dropFirst(3))
+        }
+        return page
+    }
+
     /// The credit the NHS's terms ask for (3.6(a)): "Information from the NHS website", as at the
     /// date copied (DD/MM/YY).
     public var attribution: String {
@@ -173,10 +182,44 @@ public enum NHSPassages {
         notWith.contains([first, second])
     }
 
+    /// The passages an "About … ›" link on a form opens (AI insights step 4, D5 A, D6 A, F12, Y7): every
+    /// passage the card chooser could offer for that kind (the ways the baby feeds, the age,
+    /// Parent A's ticks within 90 days), all of them, in the library's order, never turned by the day
+    /// and never by a value logged. The sheet lists them by title and opens one at a time, so the
+    /// pairs a card never shows together are never side by side, and none is left out.
+    public static func forLink(_ kind: InsightKind, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,
+                               checks: PassageChecks, today: PlainDate) -> [Passage] {
+        let eligible = Set(candidates(topics: Set(InsightTopic.topics(for: kind)), ageInDays: ageInDays,
+                                      breastfeeds: breastfeeds, bottleFeeds: bottleFeeds, checks: checks,
+                                      today: today).map(\.id))
+        return library.filter { eligible.contains($0.id) }
+    }
+
     /// The chooser by topic. Not public: a card's topics come from the kinds logged (finding 3, A3).
     static func choose(topics: Set<InsightTopic>, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,
                        checks: PassageChecks, today day: PlainDate, limit: Int) -> [Passage] {
-        let candidates = library.filter { passage in
+        let candidates = candidates(topics: topics, ageInDays: ageInDays, breastfeeds: breastfeeds,
+                                    bottleFeeds: bottleFeeds, checks: checks, today: day)
+        guard !candidates.isEmpty, limit > 0 else { return [] }
+        let start = ((day.days(since: copied) % candidates.count) + candidates.count) % candidates.count
+        let picks = (0..<min(limit, candidates.count)).map { candidates[(start + $0) % candidates.count] }
+        var shown: [Passage] = []
+        for passage in picks where !shown.contains(passage) && !shown.contains(where: { notTogether($0.id, passage.id) }) {
+            shown.append(passage)
+            if let id = shownWith[passage.id], let partner = NHSPassages.passage(id) {
+                shown.removeAll { $0 == partner }
+                shown.append(partner)
+            }
+        }
+        return shown
+    }
+
+    /// Every passage that may be offered for `topics`: never the urgent list, only for the baby's
+    /// age and the ways the baby feeds (A8), only once checked within 90 days, and a passage that
+    /// needs its partner only with that partner checked too. Sorted by ID.
+    static func candidates(topics: Set<InsightTopic>, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,
+                           checks: PassageChecks, today day: PlainDate) -> [Passage] {
+        library.filter { passage in
             if let id = shownWith[passage.id] {
                 guard let partner = NHSPassages.passage(id),
                       isChecked(partner.id, copied: partner.copied, checks: checks, today: day) else { return false }
@@ -193,18 +236,6 @@ public enum NHSPassages {
             return isChecked(passage.id, copied: passage.copied, checks: checks, today: day)
         }
         .sorted { $0.id < $1.id }
-        guard !candidates.isEmpty, limit > 0 else { return [] }
-        let start = ((day.days(since: copied) % candidates.count) + candidates.count) % candidates.count
-        let picks = (0..<min(limit, candidates.count)).map { candidates[(start + $0) % candidates.count] }
-        var shown: [Passage] = []
-        for passage in picks where !shown.contains(passage) && !shown.contains(where: { notTogether($0.id, passage.id) }) {
-            shown.append(passage)
-            if let id = shownWith[passage.id], let partner = NHSPassages.passage(id) {
-                shown.removeAll { $0 == partner }
-                shown.append(partner)
-            }
-        }
-        return shown
     }
 
     /// The passages for a card made from `facts`: the kinds logged yesterday and last night, and
@@ -853,9 +884,13 @@ extension InsightFacts {
 /// the tick was taken off. Older builds skip these records and keep them.
 public struct PassageCheck: Hashable, Sendable, Codable {
     public var checkedOn: PlainDate?
+    /// Who ticked it (AI insights step 4, design D11 A: the link's sheet says so on both phones).
+    /// Nil for a tick made before 25 Nov 2026, or by an older build.
+    public var by: MemberID?
 
-    public init(checkedOn: PlainDate?) {
+    public init(checkedOn: PlainDate?, by: MemberID? = nil) {
         self.checkedOn = checkedOn
+        self.by = by
     }
 }
 
@@ -877,9 +912,23 @@ extension HouseholdData {
         return checks
     }
 
-    /// Records that `id` was checked against its NHS page on `day`, or, with nil, takes the tick off.
-    public mutating func setPassageCheck(_ id: String, checkedOn day: PlainDate?, now: Date) {
+    /// Records that `id` was checked against its NHS page on `day` by `by`, or, with nil, takes the
+    /// tick off.
+    public mutating func setPassageCheck(_ id: String, checkedOn day: PlainDate?, by: MemberID? = nil, now: Date) {
         guard passageChecks[id] != day else { return }
-        putSetting(PassageCheck(checkedOn: day), key: SettingKey.passageCheck(id), now: now)
+        putSetting(PassageCheck(checkedOn: day, by: day == nil ? nil : by), key: SettingKey.passageCheck(id), now: now)
+    }
+
+    /// Who last ticked these passages and when (the link's sheet, design D11 A): the latest tick,
+    /// and its parent only when every one of them names the same parent.
+    public func passageChecker(of ids: [String]) -> (day: PlainDate, by: MemberID?)? {
+        let checks = plainRecords(of: .setting).compactMap { record -> PassageCheck? in
+            guard record.name.hasPrefix(SettingKey.passageCheckPrefix),
+                  ids.contains(String(record.name.dropFirst(SettingKey.passageCheckPrefix.count))) else { return nil }
+            return PayloadCoder.decode(SettingPayload<PassageCheck>.self, from: record.payload)?.value
+        }
+        guard let latest = checks.compactMap(\.checkedOn).max() else { return nil }
+        let people = Set(checks.map(\.by))
+        return (latest, people.count == 1 ? people.first ?? nil : nil)
     }
 }

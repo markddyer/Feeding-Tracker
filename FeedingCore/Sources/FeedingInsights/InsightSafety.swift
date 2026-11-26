@@ -189,8 +189,13 @@ public enum DangerSigns {
             .noWee: p("no wee", "no wees", "no pee", "no pees", "no wet", "not weed", "not peed", "hasnt weed",
                       "hasnt peed", "not had a wet", "hasnt had a wet", "not had any wet", "dry nappy", "dry nappies",
                       "nappy dry", "nappies dry", "nappy is dry", "nappies are dry", "not wet", "isnt wet", "arent wet", "no urine", "not urinated",
-                      "no wet nappy", "no wet nappies", "stopped weeing", "not weeing", "not peeing", "wont wee"),
+                      "no wet nappy", "no wet nappies", "stopped weeing", "not weeing", "not peeing", "wont wee",
+                      "not had a pee", "hasnt had a pee", "not had a wee", "hasnt had a wee", "had no pee", "had no wee",
+                      "not had any pee", "not had any wee", "no pee in", "no wee in", "not done a wee", "not done a pee"),
+            // The passive forms too: the NHS's own list says "cannot be woken" (Codex step 4 review, 1).
             .hardToWake: p("hard to wake", "wont wake", "cant wake", "cannot wake", "difficult to wake", "wont wake up",
+                           "be woken", "cant be woken", "cannot be woken", "wont be woken", "unable to wake", "not able to wake",
+                           "couldnt wake", "could not wake", "can not wake",
                            "not waking", "very sleepy", "really sleepy", "so sleepy", "too sleepy", "unusually sleepy",
                            "floppy", "limp", "unresponsive", "not responding", "doesnt respond", "drowsy", "lethargic",
                            "listless", "keeps falling asleep", "barely awake", "out of it", "not reacting", "no interest",
@@ -212,7 +217,8 @@ public enum DangerSigns {
             .cry: p("high pitched", "highpitched", "weak cry", "constant crying", "crying constantly", "crying non stop",
                     "non stop crying", "wont stop crying", "cant stop crying", "screaming non stop", "inconsolable",
                     "screaming for hours", "crying for hours", "moaning", "whimpering", "unusual cry", "strange cry",
-                    "different cry", "shrieking", "wailing"),
+                    "different cry", "shrieking", "wailing", "normal cry", "cry sounds different", "cry sounds strange",
+                    "cry sounds odd", "cry does not sound", "cry doesnt sound", "continuous cry"),
             .fit: p("fit", "fits", "fitting", "seizure", "seizures", "convulsion", "convulsions", "convulsing",
                     "jerking", "twitching", "shaking", "stiffening", "went stiff", "gone stiff", "eyes rolling",
                     "rolling eyes", "eyes rolled", "spasm", "spasms", "fitted"),
@@ -240,7 +246,7 @@ public enum DangerSigns {
                        "hit his head", "banged head", "head injury", "swallowed", "poison", "poisoned", "choked",
                        "burn", "burnt", "burned", "scalded", "scald", "allergic reaction", "swelling", "swollen lips",
                        "swollen face", "swollen tongue", "swollen throat", "difficulty swallowing", "cant swallow",
-                       "hot swollen joint"),
+                       "hot swollen joint", "seriously injured"),
             .seriouslyUnwell: p("seriously ill", "very ill", "really ill", "very unwell", "really unwell", "seriously unwell",
                                 "something is wrong", "something wrong", "something not right", "not herself", "not himself",
                                 "emergency", "ambulance", "999", "111", "a and e", "a e", "dying", "collapsed",
@@ -249,6 +255,26 @@ public enum DangerSigns {
                                 "not had a drink"),
         ]
     }()
+}
+
+/// A parent's own danger, in their words (Codex step 4 review, 1): from the NHS's urgent help for
+/// mental health ("someone's life is at risk", "you do not feel you can keep yourself or someone
+/// else safe"). Checked on the phone before any AI, like the baby's signs; it opens the parent's
+/// urgent help (step 3 D13 A's page), never an answer. Negation is ignored, as for the baby's.
+public enum ParentDanger {
+    public static func check(_ text: String) -> Bool {
+        let words = WordReader.words(text)
+        return phrases.contains { WordReader.contains(words, phrase: $0, fuzzy: false) }
+    }
+
+    static let phrases: [[String]] = [
+        "suicide", "suicidal", "kill myself", "killing myself", "end my life", "end it all", "take my own life",
+        "want to die", "wish i was dead", "dont want to be here", "dont want to live", "better off without me",
+        "hurt myself", "hurting myself", "harm myself", "harming myself", "self harm", "selfharm", "cut myself",
+        "cutting myself", "overdose", "overdosed", "taken an overdose", "life is at risk", "life at risk",
+        "keep myself safe", "keep myself or", "keep yourself safe", "keep yourself or",
+        "hurt the baby", "harm the baby", "hurt my baby", "harm my baby", "shake the baby", "injured myself",
+    ].map { $0.split(separator: " ").map(String.init) }
 }
 
 // MARK: Medicine questions
@@ -793,6 +819,9 @@ public enum AnswerCheck {
             // Verdicts and targets.
             "normal", "abnormal", "fine", "ok", "okay", "healthy", "unhealthy", "unwell", "ill", "sick", "poorly",
             "going well", "feeding well", "doing well", "sleeping well", "well fed", "enough", "plenty", "too few",
+            // How a baby is, the calm way (Codex step 4 review, 6).
+            "appears well", "appear well", "looks well", "look well", "seems well", "seem well", "is well", "are well",
+            "thriving", "thrive", "all is well",
             "too many", "too much", "too little", "low", "high", "below", "above", "average", "typical", "expected",
             "usual", "usually", "good", "bad", "poor", "great", "excellent", "perfect", "reassuring", "worrying",
             "worry", "worried", "concern", "concerning", "should have", "needs more", "needs to", "recommended",
@@ -1260,5 +1289,8 @@ extension AnswerCheck {
     static let aboutTheBaby: [[String]] = [
         "she", "he", "her", "him", "his", "hers", "shes", "hes", "herself", "himself", "your baby", "your babys",
         "the baby", "the babys", "your little one", "your son", "your daughter", "your newborn",
+        // "This child appears well." (Codex step 4 review, 6.)
+        "this baby", "this babys", "this child", "this childs", "the child", "the childs", "your child", "your childs",
+        "this newborn", "this little one",
     ].map { $0.split(separator: " ").map(String.init) }
 }

@@ -41,6 +41,13 @@ final class QuestionLog {
         save()
     }
 
+    /// A Siri question's reply was read aloud, or won't be (a stop, Ask closed): never by itself again.
+    func markRead(_ id: String, at now: Date = Date()) {
+        guard let index = questions.firstIndex(where: { $0.id == id }), questions[index].readAt == nil else { return }
+        questions[index].readAt = now
+        save()
+    }
+
     /// Takes out one question (a failed one sent again).
     func remove(_ id: String) {
         questions.removeAll { $0.id == id }

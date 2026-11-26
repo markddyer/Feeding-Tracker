@@ -16,5 +16,12 @@ struct FeedingShortcuts: AppShortcutsProvider {
         AppShortcut(intent: FinishFeedIntent(),
                     phrases: ["Finish the feed in \(.applicationName)", "Finish feed in \(.applicationName)"],
                     shortTitle: "Finish feed", systemImageName: "stopwatch")
+        // AI insights step 4 (D3 A): Siri then asks "What's your question?", and Little Log opens
+        // after an unlock. Three phrases, as "Ask Little Log" alone may meet Siri's own "Ask …" (F18);
+        // the one that works on the Duo is noted in CLAUDE.md.
+        AppShortcut(intent: AskLittleLogIntent(),
+                    phrases: ["Ask \(.applicationName)", "Ask \(.applicationName) a question",
+                              "Question for \(.applicationName)"],
+                    shortTitle: "Ask", systemImageName: "bubble.left.and.text.bubble.right")
     }
 }

@@ -405,7 +405,7 @@ extension InsightFacts {
 
     /// From the start to the end of the night named `evening`, on the household's wall clock, clock
     /// changes included. Nil with no night hours.
-    static func nightWindow(_ evening: PlainDate, dayHours: DayHours, timeZone: TimeZone) -> (start: Date, end: Date)? {
+    public static func nightWindow(_ evening: PlainDate, dayHours: DayHours, timeZone: TimeZone) -> (start: Date, end: Date)? {
         var from = evening.firstMoment(in: timeZone)
         if dayHours.period(at: from, in: timeZone) == .night(evening) {
             return dayHours.nextLookChange(after: from, in: timeZone).map { (from, $0) }

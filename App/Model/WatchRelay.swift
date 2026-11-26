@@ -12,6 +12,25 @@ final class WatchRelay: NSObject {
     private var sent: WatchState?
     /// What the watch face was last sent: it has a small daily allowance of instant updates.
     private var faceSent: FaceFacts?
+    /// The "Last night" card last sent (AI insights step 4).
+    private var sentCard: WatchCard?
+    /// The card `cardRevision` names, once one has been given in this run.
+    private var revisionCard: WatchCard??
+    private static let revisionKey = "watch.lastNightRevision"
+
+    /// The number for `card`: the same while the card is the same, higher for each change, and
+    /// never lower than one given before (kept across launches; the clock in milliseconds when
+    /// that is higher).
+    private func revision(for card: WatchCard?) -> Int64 {
+        let defaults = UserDefaults.standard
+        var revision = (defaults.object(forKey: Self.revisionKey) as? NSNumber)?.int64Value ?? 0
+        if revisionCard != .some(card) {
+            revision = max(revision + 1, Int64(Date().timeIntervalSince1970 * 1000))
+            defaults.set(NSNumber(value: revision), forKey: Self.revisionKey)
+            revisionCard = .some(card)
+        }
+        return revision
+    }
     /// Answers given again in this run, newest last: to a tap that arrived twice after its answer
     /// left the latest 30, and `waiting` for one that depends on a tap not handled yet (outside
     /// review of step 1, P2). Not kept: the watch sends such a tap again.
@@ -89,14 +108,19 @@ final class WatchRelay: NSObject {
                                            handled: told.handled, results: told.results, now: now)
     }
 
-    /// Sends the watch its state, when something it shows has changed.
+    /// Sends the watch its state, when something it shows has changed, and the "Last night" card
+    /// beside it under its own key (AI insights step 4, Y6).
     func update(_ model: AppModel) {
         guard let session, session.activationState == .activated, session.isPaired, session.isWatchAppInstalled else { return }
         let state = state(of: model)
-        guard sent != state.content, let data = try? WatchCoding.encode(state) else { return }
+        let card = WatchCardMaker.card(model: model)
+        guard sent != state.content || sentCard != card, let data = try? WatchCoding.encode(state) else { return }
+        var context: [String: Any] = [WatchKey.state: data, WatchKey.cardRevision: NSNumber(value: revision(for: card))]
+        if let card, let cardData = try? WatchCoding.encode(card) { context[WatchKey.card] = cardData }
         do {
-            try session.updateApplicationContext([WatchKey.state: data])
+            try session.updateApplicationContext(context)
             sent = state.content
+            sentCard = card
         } catch {
             return
         }
@@ -169,7 +193,18 @@ final class WatchRelay: NSObject {
     fileprivate func sessionChanged() {
         sent = nil
         faceSent = nil
+        sentCard = nil
         update(AppModel.shared)
+    }
+
+    /// The watch's check as page 4 opens (step 4 D11 A): the card as Home shows it now, or none.
+    fileprivate func cardNow() -> [String: Any] {
+        let card = WatchCardMaker.card(model: AppModel.shared)
+        let revision = NSNumber(value: revision(for: card))
+        guard let card, let data = try? WatchCoding.encode(card) else {
+            return [WatchKey.cardCheck: "none", WatchKey.cardRevision: revision]
+        }
+        return [WatchKey.card: data, WatchKey.cardRevision: revision]
     }
 }
 
@@ -203,6 +238,17 @@ extension WatchRelay: WCSessionDelegate {
         }
     }
 
+    /// The watch asking whether the "Last night" card is still current (AI insights step 4, D11 A).
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any],
+                             replyHandler: @escaping ([String: Any]) -> Void) {
+        let reply = DictionaryReply(send: replyHandler)
+        guard message[WatchKey.cardCheck] != nil else {
+            reply.send([:])
+            return
+        }
+        Task { @MainActor in reply.send(self.cardNow()) }
+    }
+
     /// A tap kept while this phone was out of reach.
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
         if let data = userInfo[WatchKey.action] as? Data, let action = WatchCoding.decode(WatchActionRequest.self, from: data) {
@@ -218,4 +264,8 @@ extension WatchRelay: WCSessionDelegate {
 /// WatchConnectivity's reply handler, carried to the main actor. It may be called from any thread.
 private struct Reply: @unchecked Sendable {
     let send: (Data) -> Void
+}
+
+private struct DictionaryReply: @unchecked Sendable {
+    let send: ([String: Any]) -> Void
 }

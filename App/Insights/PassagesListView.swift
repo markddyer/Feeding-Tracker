@@ -114,7 +114,7 @@ struct PassageCheckView: View {
             Toggle(label, isOn: Binding {
                 checked
             } set: { on in
-                model.store.change { $0.setPassageCheck(id, checkedOn: on ? today : nil, now: Date()) }
+                model.store.change { $0.setPassageCheck(id, checkedOn: on ? today : nil, by: model.me, now: Date()) }
             })
             .tint(Theme.primary)
             Text(Self.state(checks[id], checked: checked))

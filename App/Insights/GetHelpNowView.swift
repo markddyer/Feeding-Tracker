@@ -8,7 +8,12 @@ import SwiftUI
 /// now; Ask opens the same card on a danger sign (step 3). The urgent list shows whether or not it
 /// has been checked: the call buttons matter most.
 struct GetHelpNowView: View {
+    /// Opened from a Siri danger sign: VoiceOver starts on the heading (step 4 design D20 A).
+    var focusHeading = false
+    /// The baby's urgent list, or a parent's own urgent help (a parent's danger words to Siri).
+    var passage: Passage = NHSPassages.urgent
     @Environment(\.openURL) private var openURL
+    @AccessibilityFocusState private var headingFocused: Bool
 
     var body: some View {
         ScrollView {
@@ -16,7 +21,9 @@ struct GetHelpNowView: View {
                 Text("Get help now")
                     .feedText(.title)
                     .accessibilityAddTraits(.isHeader)
-                NHSPassageTile(passage: NHSPassages.urgent)
+                    .accessibilityFocused($headingFocused)
+                    .onAppear { if focusHeading { headingFocused = true } }
+                NHSPassageTile(passage: passage)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
@@ -152,11 +159,8 @@ enum PassageBlock: Hashable {
         }
     }
 
-    /// The passage's first heading, as its name in lists.
+    /// The passage's first heading, as its name in lists (`Passage.title`, also read aloud).
     static func title(of passage: Passage) -> String {
-        for block in blocks(passage.words) {
-            if case .heading(let text) = block { return text }
-        }
-        return passage.page
+        passage.title
     }
 }

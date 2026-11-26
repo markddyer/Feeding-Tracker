@@ -54,6 +54,8 @@ struct WatchPageMargins {
 /// A page: fills the screen it has, with its rows from the top and spare room spread between them.
 struct WatchPageFrame<Content: View>: View {
     let label: String
+    /// The watch's AI mark beside the label (AI insights step 4, design D15 A).
+    var aiMark = false
     @ViewBuilder let content: (WatchMetrics) -> Content
     @Environment(\.watchLook) private var look
     @Environment(\.dynamicTypeSize) private var typeSize
@@ -93,11 +95,14 @@ struct WatchPageFrame<Content: View>: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Text(label)
-                    .watchText(.label)
-                    .foregroundStyle(WatchPalette.of(look).textMuted)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                HStack(spacing: 4) {
+                    Text(label)
+                        .watchText(.label)
+                        .foregroundStyle(WatchPalette.of(look).textMuted)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                    if aiMark { WatchAIMark().layoutPriority(1) }
+                }
             }
         }
     }

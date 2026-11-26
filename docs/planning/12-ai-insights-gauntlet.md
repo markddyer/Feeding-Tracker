@@ -397,7 +397,7 @@ Because the app code is the same for all four, the choice could have been made b
 
 - **D8. Scope of support:** the baby and both parents. For the parents, the AI gives general NHS information (for example the NHS page on postnatal depression, which covers either parent) and points to the GP, the health visitor or 111. It never judges anyone's mental health: the AUP lists "assessing, diagnosing, or treating a mental health condition" as High-risk.
 - **D9. Who does what:** insights stay out of it. The "Who did what" page keeps that job.
-- **D10. Checking:** Parent A checks the passages about once a month, and the app flags any not checked for 90 days. A health visitor, midwife or GP checks the wording and the danger-sign list before any other family uses the app.
+- **D10. Checking:** Parent A checks the passages about once a month (either parent's tick counts: Parent A's answer of 26 Nov 2026 to the step 4 build's Codex finding 16), and the app flags any not checked for 90 days. A health visitor, midwife or GP checks the wording and the danger-sign list before any other family uses the app.
 
 - **D11. Spending:** a £10 monthly spend limit on the app's Claude workspace. Heavy use of Sonnet 5.5 is about £8.50 a month. If the limit is reached, the AI pauses until the next month and the app shows its plain fact cards.
 
@@ -2698,19 +2698,1004 @@ None: D1 to D12 are answered.
 
 **Cross-model:** Codex and this review agreed that the danger-sign route and the AI's own sentences carry the risk. Codex alone found the yes's words (X1), the danger sign split over two questions (X2), the parent's crisis words (X3), "When can I give" (X4), the retry that skips the gate (X5), the unreadable answer (X6), the answer to the wrong question (X7), deleted facts in kept answers (X8) and the lost wrong-report (X9).
 
+## Engineering review: step 4, Siri, the watch's card and NHS links (25 Nov 2026)
+
+**Target:** step 4 of "Smallest first version" above, with A11. The plan's own words, unchanged:
+- Line 358: "**Later:** Siri, the watch showing the last card, and small links in context."
+- A11, line 227: "**In context:** small links, for example "About baby poo ›" on the poo panel."
+- A11, line 228: "**Later:** Siri ("Ask Little Log", running in the app like `FeedIntents`, with the danger-sign check first). The watch shows only the last card, kept on the phone; it never calls a model."
+
+Steps 1 to 3 are built (AI1 to AI22) and on TestFlight (Little Log builds 4 to 9). D1 to D15, the look, R1 to R9, step 2's D1 to D10 and step 3's D1 to D13 are settled and not reopened. This review's questions are numbered D1, D2, … again ("step 4 D1" where that could be unclear). Findings are numbered F1, F2, …
+
+### Scope Challenge (step 4)
+
+**What already exists:**
+- Siri: `FeedingShortcuts` (`App/Model/FeedingShortcuts.swift:6-19`), the app's Siri phrases ("Start a feed in Little Log", "Finish the feed in Little Log"). The feed and care actions run in the app's process, in the background, on a locked phone (`supportedModes = .background`, `authenticationPolicy = .alwaysAllowed`, `allowedExecutionTargets [.main]`: `Shared/FeedIntents.swift:73-76`, `Shared/CareIntents.swift:62-64`).
+- Ask: `InsightEngine.ask(_:)` (`App/Insights/InsightEngine.swift:322`) runs the whole route (danger signs, medicines, the gate, then the AI) and keeps the result in `QuestionLog`, which is locked while the phone is locked (complete file protection, `App/Insights/QuestionLog.swift:5-6`). Ask opens from Home's top bar, and with `-openScreen ask` (`App/ContentView.swift:271`).
+- The cards: `CardShown.now` (`App/Insights/InsightCardViews.swift:24`) says what a screen shows: nothing with no yes or with the AI off, the facts only when paused, or the checked card, whose every sentence the app writes (`CardWording`).
+- The watch: the phone sends one `WatchState` (`FeedingCore/Sources/FeedingCore/Watch/WatchState.swift:127`, version 3) with `updateApplicationContext` (`App/Model/WatchRelay.swift:98`). `WatchState` is in `FeedingCore`, which can never use `FeedingInsights` (R1). The watch has three pages that fit with no scrolling (`11-watch-parity.md`, W-D7 at line 27; page 3's "three rows that always fit", line 162).
+- The NHS passages: 41 in `NHSPassages`, each offered only once Parent A ticked it within 90 days. `InsightTopic.topics(for:)` (`NHSPassages.swift:38`) maps a kind to its topics (a nappy: nappies, jaundice; sleep: sleep needs, night and day, sleep changes, disturbed nights, safe sleep; weight; bath; pumping; feeds), and `choose` (`:153`) never picks by a value. `NHSPassageTile` and `PassageWords` (`App/Insights/GetHelpNowView.swift:67`, `:105`) show a passage word for word with its credit.
+
+**Minimum change:** a Siri action that takes the spoken question and hands it to Ask; the phone writing the card's lines into `WatchState`, and the watch drawing them; one link view on the panels and editors that opens the passages for that kind. No new rules file.
+
+**Complexity:** about 20 files [estimated]: new `App/Insights/AskIntent.swift` (the Siri action), a `WatchCard` in `WatchState.swift`, and a link view; changed `FeedingShortcuts.swift`, `ContentView.swift`, `QuestionsView.swift`, `WatchRelay.swift`, `WatchPages.swift` (or a new card screen), `WatchSamples.swift`, `CareTiles.swift`, `CareEditor.swift`, `NHSPassages.swift`, `SampleData.swift`, `DESIGN.md`, `CLAUDE.md` and this plan; tests in `FeedingCoreTests`, `FeedingInsightsTests`, `AppTests` and `UITests`. 3 new types. The gate trips (8 files or more).
+
+**Search** (25 Nov 2026; Aside needed a new sign-in, so the host's web search was used):
+- [Layer 1] A Siri phrase can't hold free spoken text. An App Shortcut phrase takes only set values, so Siri asks for the text in a second step ("What's your question?") ([journal issue 1106](https://github.com/2002Bishwajeet/journal/issues/1106), [Instil](https://instil.co/blog/siri-with-app-intents)). Apple's own page was not found: check it when building.
+- [Layer 1] Siri gives up on a slow action: about 5 to 10 seconds by one developer's tests, 30 seconds for an action by another ([Emrld Labs](https://emrldlabs.com/blog/implementing-app-intents-shortcuts-siri-ready-2026/), [DEV](https://dev.to/muhittin_camdali/app-intents-on-ios-27-longrunningintent-and-siri-4ogb)). Both are secondary sources.
+- [Layer 1] App actions run on a locked phone by default; an action that reads personal data should ask for an unlock ([Companion-Memory PR 3668](https://github.com/companionintelligence/Companion-Memory/pull/3668), [AkoyaSoft](https://akoyasoft.com/insights/ios-app-intents-siri-spotlight-actions)).
+
+**TODOS:** nothing in `TODOS.md` blocks step 4; the journal's one-tap "Moment" (X3) is separate. **Distribution:** no new target or download. Step 4 ships in the next Little Log build; the watch part reaches a watch with its phone's build.
+
+**Premises:**
+
+| Premise | Claim | Receipt | Verdict |
+|---|---|---|---|
+| P1 | Siri can run Ask "in the app like `FeedIntents`" | the feed actions run in the background on a locked phone (`FeedIntents.swift:73-76`); D13 (line 405): "The AI never runs in the background, and nothing goes on the Lock Screen"; `QuestionLog` is locked while the phone is (`QuestionLog.swift:5-6`) | false (F1) |
+| P2 | Siri hears the question in the phrase | the search above; `FeedingShortcuts.swift:12-14` uses only a set value (`\.$milk`) | false (F2) |
+| P3 | An Ask answer comes back within Siri's wait | median 4 s, 90% within 7 s, slowest 10 s over 60 questions [measured: build 7 model tests, simulator, `model-test-build7-ask.md`]; Siri's wait about 5 to 10 s [web, secondary] | unverified on a phone (F1) |
+| P4 | The watch can show the card without calling a model | `WatchState` carries what the phone sends (`WatchRelay.swift:98`) | true |
+| P5 | The watch has room for the card | three no-scroll pages; page 3's "three rows that always fit" (`11-watch-parity.md:27`, `:162`) | false (F3) |
+| P6 | The links can be chosen by kind, never by a value | `InsightTopic.topics(for:)` (`NHSPassages.swift:38`), `choose` (`:153`) | true |
+| P7 | `WatchState` can hold the card's own type | `WatchState` is in `FeedingCore` (`WatchState.swift:127`), which can never use `FeedingInsights` (R1) | false (F4) |
+
+- REALITY: premise-table finding 7 premises, 4 false (P1, P2, P5, P7), unverified=1 (P3) docs/planning/12-ai-insights-gauntlet.md:228
+- REALITY: already-done pass no step 4 code or commits on origin since 22 Nov 2026 (FeedingShortcuts, WatchState, WatchRelay) App/Model/FeedingShortcuts.swift:6
+- REALITY: surface-check finding App Shortcut phrases can't carry free text (P2), by web search, not Apple's own page App/Model/FeedingShortcuts.swift:12
+- REALITY: binding-decisions finding D13 (never in the background, nothing on the Lock Screen) binds Siri's shape (F1); R1 binds where the watch card lives (F4) docs/planning/12-ai-insights-gauntlet.md:405
+- REALITY: numbers finding Ask answer times come from the model tests' Seconds column ModelTests/ModelTests.swift:274 (build 7 run: median 4 s, slowest 10 s); Siri's wait is from secondary web sources and the file counts are estimates docs/planning/12-ai-insights-gauntlet.md:2716
+- REALITY: deferred-asks pass no linked issue docs/planning/12-ai-insights-gauntlet.md:358
+- REALITY: pr-count pass no ship policy; one wave of commits on the branch, no pull requests used here docs/planning/12-ai-insights-gauntlet.md:358
+
+**Scope record (step 4):** feature answers: no cut or deferral proposed; structure: B, the smaller arrangement (step 4 D1, Parent A, 25 Nov 2026); accepted scope: Siri hands the spoken question to the existing Ask route (`InsightEngine.ask`) with its danger-sign, medicine and yes checks; the phone writes the watch card's lines into `WatchState`, and the watch only draws them; the NHS links reuse the cards' passage boxes and the topic chooser; 3 new parts (the Siri action, the watch card, the link view); pending remedies: F1, F3, F5.
+
+**Findings (Scope Challenge):**
+1. **F1** [CRITICAL] (confidence: 9/10) this plan, line 228 ("Siri ("Ask Little Log", running in the app like `FeedIntents` …)") against `Shared/FeedIntents.swift:73-76` (`static let supportedModes: IntentModes = .background`, `static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed`) and D13, line 405 ("The AI never runs in the background, and nothing goes on the Lock Screen") — a Siri action shaped like the feed actions would call the AI with the app closed and answer on a locked phone, where `QuestionLog` can't be read (`QuestionLog.swift:5-6`, "locked whenever the phone is locked (complete file protection)"). An answer also takes a median 4 s and up to 10 s (P3), about Siri's whole wait. Reviewer: Claude. Decision: step 4 D2.
+2. **F2** [INFORMATIONAL] (confidence: 7/10) `App/Model/FeedingShortcuts.swift:12` (`"Start a \(\.$milk) feed in \(.applicationName)"`) — a phrase holds only set values, so "Ask Little Log" can't carry the question; Siri asks "What's your question?" next (P2, web sources, Apple's page not found). Every shape in D2 has this second step; no question.
+3. **F3** [CRITICAL] (confidence: 9/10) `11-watch-parity.md:27` (W-D7: "Every main screen fits with no scrolling on 42 mm … with no unused space") and `:162` (page 3: "three rows that always fit") — the watch has no free place for the card. Reviewer: Claude. Decision: step 4 D3.
+4. **F4** [INFORMATIONAL] (confidence: 9/10) `WatchState.swift:127` (`public struct WatchState: Codable, Hashable, Sendable {`) is in `FeedingCore`, which can never use `FeedingInsights` (R1): the card goes to the watch as plain lines the phone writes from `CardShown`, never as `CheckedCard`. Accepted under step 4 D1 B; no question.
+5. **F5** [INFORMATIONAL] (confidence: 8/10) this plan, A11 line 227 puts the links under "where the AI lives", but a link shows only the NHS's words, which Parent A ticked, and sends nothing anywhere (`GetHelpNowView.swift:67`, `NHSPassageTile`). Whether the links show with AI insights off is open. Reviewer: Claude. Decision: step 4 D4.
+6. **F6** [INFORMATIONAL] (confidence: 8/10) `InsightCardViews.swift:9` ("With no yes, or the AI off, nothing here shows") and D13, line 405 — the watch's card must follow its phone's `CardShown` (nothing with no yes, the AI off, or before a card; the facts only while paused) and never go on the watch face or a complication. Accepted under D13 and step 2's contracts; no question.
+7. **F7** [INFORMATIONAL] (confidence: 7/10) D4, line 371 ("Typed questions: private to the phone that asked") — a spoken question passes Apple's speech service before it reaches the app. The keyboard's microphone in Ask does the same today, and the words then go to Anthropic under step 3's D10 B. Accepted under D4 and D10 B; noted for the "What the AI sees" words; no question.
+
+### Decision ledger (step 4)
+
+### F1: how does "Ask Little Log" work with Siri?
+Finding: F1, CRITICAL, confidence 9/10, this plan line 228 against `Shared/FeedIntents.swift:73-76`, `QuestionLog.swift:5-6` and D13 (line 405); reviewer Claude.
+Plan baseline: A11, line 228 (22 Nov 2026): "Siri ("Ask Little Log", running in the app like `FeedIntents`, with the danger-sign check first)". The answer's form and where it shows were never set. D13 (Parent A, 22 Nov 2026): the AI never runs in the background; nothing goes on the Lock Screen.
+Runtime evidence: no Siri action for Ask exists (`FeedingShortcuts.swift` has Start feed and Finish feed only). The feed actions run in the background with no unlock (`FeedIntents.swift:73-76`). Ask's answer times: median 4 s, slowest 10 s [measured: build 7 model tests, simulator]; on a phone, unknown. Siri's wait: about 5 to 10 s [web, secondary].
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| F1 how Siri answers | D2's answer "B and A" (both), unresolved | Siri takes the spoken question, asks for Touch ID, opens Little Log on Ask and sends the question there; the answer shows on screen, then Little Log reads it aloud | Siri reads a short answer aloud in Siri on an unlocked phone, with "Open in Little Log" for the full answer in Ask | two phrases: "Ask Little Log" does A's open-and-show; "Ask Little Log out loud" does B's answer in Siri |
+| D13 the AI never runs with the app closed; nothing on the Lock Screen | approved (D13, 22 Nov 2026) | kept: the AI runs with Little Log open on an unlocked phone | relaxed for Siri: the AI may run with the app closed, only after an unlock; still nothing on the Lock Screen | relaxed as in B, for the "out loud" phrase only |
+| What is read aloud | none, pending | the log facts, the AI's sentences, "This is AI, not medical advice", the NHS passage's name with "its words are on the screen"; for a danger sign, the Get help now card's heading with "Call 999 and Call 111 are on the screen"; read aloud only when the question came through Siri | the same words, spoken by Siri | the same words: A's by Little Log, B's by Siri |
+| A slow answer | none, pending | no limit: the app waits, as Ask does today | past Siri's wait, Siri says "Open Little Log for the answer" | as B, for the "out loud" phrase |
+| The route: danger signs, medicines, the yes, then the AI | approved (A2, A11, step 3 D1) | Ask's route, unchanged (`InsightEngine.ask`) | Ask's route, unchanged | Ask's route, unchanged |
+| F3 the watch card's place | pending | pending | pending | pending |
+| F5 links with AI insights off | pending | pending | pending | pending |
+| Structure | approved (step 4 D1 B) | kept | kept | kept |
+
+Question D3:
+D3 — You picked "B and A" for Siri: which of these did you mean?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, the Siri part (asked again: D2's answer chose both).
+ELI10: B and A clash on one rule. B has the AI run while the app is closed, and your rule D13 (22 Nov) says it never does. Siri also gives up after about 5 to 10 seconds, and an answer can take 10. But you can still hear the answer: in A, once Siri has opened Ask, Little Log itself can read the answer out loud. The app is open, so D13 holds and nothing times out. Each way below speaks the same words: the logged facts, the AI's lines, "This is AI, not medical advice", and the name of the NHS page, whose words stay on screen. A danger sign is read as "Get help now", with Call 999 and Call 111 on screen.
+Stakes if we pick wrong: with B or C, D13 changes for Siri, and a slow answer ends with "Open Little Log for the answer" instead of the answer.
+Recommendation: A because you hear the answer and see every part of it, and D13 stays as you set it.
+Completeness: A=9/10, B=8/10, C=8/10
+Pros / cons:
+A) Opens Ask, then reads aloud (recommended)
+  ✅ You hear the answer and see all its parts, the NHS words and call buttons included
+  ✅ Nothing times out, and D13 (no AI with the app closed) stays exactly as you set it
+  ❌ You still need one touch on Touch ID before the answer comes, so not across the room
+B) Siri answers in Siri
+  ✅ The answer comes in Siri itself, without Little Log opening on the screen first
+  ✅ A short card in Siri has "Open in Little Log" for the full answer with its NHS words
+  ❌ D13 changes for Siri, and an answer slower than Siri's wait ends without the answer
+C) Two phrases, both ways
+  ✅ "Ask Little Log" opens and shows; "Ask Little Log out loud" answers in Siri
+  ✅ You choose each time: on screen with every part, or spoken in Siri
+  ❌ The most to build and test, D13 changes for one phrase, two phrases to remember
+Net: A gives you a spoken answer with every safety part kept, for one touch to unlock; B and C answer inside Siri but change D13 and can time out.
+Header: Siri, again
+Options:
+A) Opens Ask, then reads aloud (recommended)
+Say "Ask Little Log", then your question. Touch ID unlocks, Little Log opens on Ask, the answer shows on screen and Little Log reads it out loud: the facts, the AI's lines, "This is AI, not medical advice" and the NHS page's name. A danger sign shows Get help now and reads its heading. It reads aloud only for a Siri question, never for a typed one. D13 stays. Effort: human ~1.5 days / Claude ~1 hour.
+B) Siri answers in Siri
+Say "Ask Little Log", then your question. After Touch ID, Siri reads the answer in Siri with a short card and "Open in Little Log" for the full answer. The AI then runs with the app closed (D13 relaxed for Siri, never on the Lock Screen). A slow answer ends with "Open Little Log for the answer". Effort: human ~3 days / Claude ~2.5 hours.
+C) Two phrases, both ways
+"Ask Little Log" does A's open, show and read aloud; "Ask Little Log out loud" does B's answer in Siri. D13 relaxed for the second phrase only. Effort: human ~4 days / Claude ~3 hours.
+
+State: approved
+Actual answer: A) Opens Ask, then reads aloud (step 4 D3, Parent A, 25 Nov 2026)
+Accepted scope: a Siri action, "Ask Little Log", whose phrase names only the app; Siri then asks "What's your question?" and takes the spoken words. The action needs an unlock (Touch ID) and opens Little Log on Ask, where the words go through Ask's unchanged route (`InsightEngine.ask`: danger signs, medicines, the yes, then the AI), so the AI runs only with the app open and D13 is kept; nothing shows on the Lock Screen. The answer shows on screen as Ask shows it, and then, for a question that came through Siri only (never a typed one), Little Log reads it aloud: the log facts, the AI's sentences, "This is AI, not medical advice", and the NHS passage's name with "its words are on the screen"; for a danger sign, the Get help now card's heading with "Call 999 and Call 111 are on the screen". No time limit: the app waits as Ask does. Effort: human ~1.5 days / Claude ~1 hour.
+History: D2 was asked on 25 Nov 2026 with the comparison of three ways below; Parent A answered "B and A", which chooses both and clashes on D13, so it was asked again as D3 above.
+> D2 — How should "Ask Little Log" work with Siri? (Project: Little Log, AI insights step 4, the Siri part.) ELI10: the plan said Siri would answer the way "Start a feed" works, with the app closed, even on a locked phone; that can't work for questions: D13 says the AI never runs while the app is closed and nothing from the AI shows on the Lock Screen; Ask's saved questions are locked while the phone is locked; an answer takes 4 seconds on average and up to 10, while Siri gives up after about 5 to 10; Siri asks "What's your question?" as a second step. Stakes: with B, Siri could give up on a slow answer, and a spoken answer would leave out the NHS words, the AI mark and the call buttons. Recommendation: A. Completeness: A=8/10, B=9/10, C=3/10.
+> A) Siri opens Ask (recommended): you say "Ask Little Log", Siri asks "What's your question?", you say it; the phone asks for Touch ID, then Little Log opens on Ask and sends the question; the answer shows on screen with the log facts, the NHS words, the AI mark and the people to call; a danger sign shows the Get help now card; Siri only says Little Log is opening. Effort: human ~1 day / Claude ~45 min.
+> B) Siri answers aloud: Siri reads a short answer and shows a small card in Siri; a danger sign gets a spoken "Call 999 or 111" with call buttons; the AI runs with the app closed, so D13 would change for Siri; slow answers can fail. Effort: human ~3 days / Claude ~2.5 hours.
+> C) No Siri for now: parents keep using Ask from Home's top bar, with the keyboard's microphone. Effort: none.
+> Its grid: F1 A open Ask and show / B answer aloud with the app closed / C no Siri; D13 kept / reopened / kept; the route unchanged in each.
+> Actual answer to D2: "B and A" (Parent A, 25 Nov 2026).
+
+### F3: where does the card go on the watch?
+Finding: F3, CRITICAL, confidence 9/10, `11-watch-parity.md:27` (W-D7, no scrolling, no unused space) and `:162` (page 3's three rows that always fit), `Watch/App/WatchPages.swift:579-644` (`WatchTodayPage`: Bath, then one medicine or "Medicine ›", then "Tonight ›"); reviewer Claude.
+Plan baseline: A11, line 228: "The watch shows only the last card, kept on the phone; it never calls a model." Where and how it shows was never set. The watch's three no-scroll pages were approved on 21 Nov 2026 (`11-watch-parity.md`).
+Runtime evidence: the watch has no card code (`Watch/App` holds no card or insight view). Page 3 holds up to three rows; with no medicine it holds two.
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| F3 where the card shows | not set, pending | a fourth page, "Last night", after Today, only while the phone shows a card or the paused facts; the three pages stay as they are | a fourth row on page 3 (Today), "Last night ›", with the AI mark | no card on the watch |
+| Which card | "the last card" (A11), not set | the morning card, as Home's line shows it | the same | none |
+| The card screen | none | the card's short line large, with the AI mark; a tap opens its sentences (the only part that scrolls), "Made at" its time, and "Picked by AI from your log. Every sentence and number is written by Little Log."; no NHS words (too long), "NHS information is on your iPhone"; no "This was wrong" (on the phone) | the same screen, from the row | none |
+| What the watch never does | F6, accepted (D13, step 2) | no model call, nothing on the watch face or a complication; nothing with no yes or the AI off; the paused facts only when paused | the same | the same |
+| W-D7 (no scrolling, rows about square) | approved (21 Nov 2026) | kept on pages 1 to 3 | page 3's rows get smaller, and with a medicine it has four rows | kept |
+| F1 Siri | approved (step 4 D3 A) | kept | kept | kept |
+| F5 links with AI insights off | pending | pending | pending | pending |
+| Structure | approved (step 4 D1 B) | kept | kept | kept |
+
+Question D4:
+D4 — Where should the AI card go on the watch?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, the watch part.
+ELI10: The plan says the watch shows the last AI card, which the phone sends; the watch never calls the AI itself. But on 21 Nov you approved three watch pages that fit with no scrolling, and page 3 (Today) already holds Bath, Medicine and Tonight. So the card needs a place. Whichever place: it is the morning card, the same as Home's "Last night" line; a tap shows its sentences (that screen scrolls), with "Picked by AI from your log"; the NHS words and "This was wrong" stay on the phone; and it never goes on the watch face.
+Stakes if we pick wrong: with B, page 3's buttons shrink on the small 42 mm watch, which you chose against on 21 Nov.
+Recommendation: A because it leaves your three pages exactly as they are and adds a page only when there is a card.
+Completeness: A=9/10, B=7/10, C=3/10
+Pros / cons:
+A) A fourth page (recommended)
+  ✅ The three pages you approved stay exactly the same, with nothing made smaller
+  ✅ The page shows only on days with a card, so it is never an empty page
+  ❌ One more swipe to reach it, and the page dots change from three to four that day
+B) A row on page 3
+  ✅ The card's line sits beside Bath, Medicine and Tonight, with no extra swipe
+  ✅ Same card screen as A, opened from the row with one tap
+  ❌ Page 3's rows get smaller, and with a medicine there are four rows on a 42 mm watch
+C) No card on the watch
+  ✅ Nothing new on the watch to build, test or fit on three sizes of watch
+  ✅ The card stays on the phone, where its NHS words and "This was wrong" already are
+  ❌ The watch part of step 4 is dropped, so the card is only ever on the phone
+Net: A adds a page on days with a card and keeps your approved pages; B saves a swipe but squeezes page 3.
+Header: Watch card
+Options:
+A) A fourth page (recommended)
+A "Last night" page after Today, only while the phone shows a card (or the paused facts). It shows the card's short line with the AI mark; a tap opens its sentences, its time and "Picked by AI from your log". No NHS words or "This was wrong" on the watch; never on the watch face. Pages 1 to 3 unchanged. Effort: human ~1.5 days / Claude ~1 hour.
+B) A row on page 3
+A "Last night ›" row with the AI mark on page 3 (Today), under Bath, Medicine and Tonight, opening the same card screen as A. Page 3's rows get smaller to fit four on a 42 mm watch. Effort: human ~1.5 days / Claude ~1 hour, plus refitting page 3 on three watch sizes.
+C) No card on the watch
+Leave the watch part out of step 4; the card stays on the phone. Effort: none.
+
+State: approved
+Actual answer: A) A fourth page (step 4 D4, Parent A, 25 Nov 2026)
+Accepted scope: a fourth watch page, "Last night", after Today, shown only while the phone shows the morning card (as Home's line) or its paused facts; pages 1 to 3 and W-D7 unchanged. The page shows the card's short line large with the AI mark; a tap opens a screen (the only part that scrolls) with the card's sentences, "Made at" its time, and "Picked by AI from your log. Every sentence and number is written by Little Log."; no NHS words ("NHS information is on your iPhone") and no "This was wrong" on the watch. The phone writes every line (F4, step 4 D1 B); the watch never calls a model, shows nothing with no yes or with the AI off, and never puts the card on the watch face or a complication (F6). Effort: human ~1.5 days / Claude ~1 hour.
+History: none
+
+### F5: do the NHS links show with AI insights off?
+Finding: F5, INFORMATIONAL, confidence 8/10, this plan A11 line 227 (the links listed under where the AI lives) against `App/Insights/GetHelpNowView.swift:67` (`struct NHSPassageTile: View {`, the NHS's words with no AI) and `NHSPassages.swift:134` (`isChecked`, Parent A's tick within 90 days); reviewer Claude.
+Plan baseline: A11, line 227: "**In context:** small links, for example "About baby poo ›" on the poo panel." Whether they need the AI's yes was never set. D3 (line 370): the NHS page shows next to the number without saying it applies to the baby. The chooser never picks by a value (`NHSPassages.swift:150-153`).
+Runtime evidence: Get help now and Settings › NHS information already show passages with no AI and no yes (`GetHelpNowView`, `PassagesListView`). No link exists on the panels or editors.
+Comparison grid:
+
+| Choice | Current | A | B |
+|---|---|---|---|
+| F5 when the links show | not set, pending | always, whether AI insights is on or off | only while AI insights is on (both parents' yes, not paused) |
+| What a link opens | none | the NHS passages for that kind's topics, word for word with "Information from the NHS website, as at" their date (`NHSPassageTile`); only passages Parent A ticked within 90 days; no AI mark, as no AI chose them | the same |
+| How a link is chosen | the chooser's rule (never by a value) | by the kind of panel only, never by a number or a logged value | the same |
+| Where the links go | not set, pending | pending (step 4 D6) | pending (step 4 D6) |
+| F1 Siri | approved (step 4 D3 A) | kept | kept |
+| F3 the watch card | approved (step 4 D4 A) | kept | kept |
+| Structure | approved (step 4 D1 B) | kept | kept |
+
+Question D5:
+D5 — Should the small NHS links show when AI insights is off?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, the NHS links.
+ELI10: A link like "About baby poo ›" opens the NHS's own words on that subject, the same passages you ticked in Settings › NHS information. No AI picks them and nothing leaves the phone: each link is chosen only by the panel it sits on, never by a number in the log. The plan listed the links under AI insights, so the question is whether a parent who has AI insights off still sees them. Where the links go comes in the next question.
+Stakes if we pick wrong: with B, a parent with AI insights off, or while it is paused, loses NHS information that has nothing to do with the AI.
+Recommendation: A because the links carry only the NHS's words, which you already checked, and send nothing to anyone.
+Note: options differ in kind, not coverage — no completeness score.
+Pros / cons:
+A) Always (recommended)
+  ✅ Both parents get the NHS's words beside the panel, whatever their AI setting
+  ✅ Nothing is sent anywhere: the passages are in the app and you ticked each one
+  ❌ The links show even for a parent who chose to keep AI insights out of their app
+B) Only with AI insights on
+  ✅ Everything new in step 4 sits behind the same yes, so AI off means all of it is off
+  ✅ A parent who said no to AI insights sees no change at all on their panels
+  ❌ The NHS's words, which involve no AI, vanish while AI insights is off or paused
+Net: A treats the links as plain NHS information for everyone; B keeps them inside the AI insights switch.
+Header: NHS links
+Options:
+A) Always (recommended)
+The links show whether AI insights is on or off. Each opens the NHS's words for that panel's subject, only passages you ticked within 90 days, with no AI mark. Chosen by the panel, never by a number. Effort: the same either way (human ~1 day / Claude ~45 min for the links).
+B) Only with AI insights on
+The links show only while AI insights is on with both yeses and not paused; otherwise the panels look as they do today. Same passages and rules as A. Effort: the same, plus a check of the AI setting on each panel.
+
+State: approved
+Actual answer: A) Always (step 4 D5, Parent A, 25 Nov 2026)
+Accepted scope: the NHS links show whether AI insights is on or off, paused or not. A link opens the NHS passages for its panel's topics, word for word with "Information from the NHS website, as at" their date (`NHSPassageTile`), only passages Parent A ticked within 90 days, with no AI mark; it is chosen by the panel's kind only, never by a number or a logged value, and sends nothing anywhere. A link with no ticked passage doesn't show. Where the links go: step 4 D6. Effort: human ~1 day / Claude ~45 min.
+History: none
+
+### F8: where do the NHS links go?
+Finding: F8, INFORMATIONAL, confidence 8/10, this plan A11 line 227 (one example, "About baby poo ›" on the poo panel) against the forms that exist: `PooDetailsSheet` (`App/Home/CareTiles.swift:799`), `CareEditor` (`App/Home/CareEditor.swift:7`: sleep, nappy, growth, medicine, bath), `EventEditor` (`App/Home/EventEditor.swift:8`: feeds and pumping), `FeedDetailsPanel` (`App/Home/FeedControls.swift:293`); and the kinds' topics (`NHSPassages.swift:38-50`); reviewer Claude.
+Plan baseline: A11, line 227, the one example. Home was made calm on 24 Nov 2026 (`13-calm-home.md`).
+Runtime evidence: passages exist for nappies and jaundice, sleep (with safe sleep), weight, bathing, feeding and expressing; none for medicines (D6 keeps medicine questions to a fixed reply). No links exist today.
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| F8 where the links go | one example, pending | one link on each kind's form: the poo panel and a nappy's editor ("About baby poo ›"), the sleep editor ("About baby sleep ›"), the growth editor ("About weight ›"), the bath editor ("About bathing ›"), the feed editor ("About feeding ›") and pumping's ("About expressing ›") | the poo panel only, more later after use | the poo panel, the sleep editor and the growth editor |
+| Where links never go | not set | Home's calm list, the panel at the end of a feed, the medicine editor, the watch | the same | the same |
+| F5 when the links show | approved (step 4 D5 A: always) | kept | kept | kept |
+| F1 Siri, F3 the watch card | approved (step 4 D3 A, D4 A) | kept | kept | kept |
+| Structure | approved (step 4 D1 B) | kept | kept | kept |
+
+Question D6:
+D6 — Which screens should get an NHS link?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, the NHS links.
+ELI10: The plan gave one example, "About baby poo ›" on the poo panel. The NHS passages you ticked also cover sleep (with safe sleep), weight, bathing, feeding and expressing. Each link is one small line at the bottom of a form, showing the NHS's words for that subject. In every choice, links stay off Home's calm list, off the panel that opens as a feed ends (a busy moment), off the medicine editor (there is no NHS medicine passage; medicine questions get a fixed reply) and off the watch.
+Stakes if we pick wrong: with B, the NHS's safe-sleep and weight words stay two screens away in Settings, where nobody looks at 3am.
+Recommendation: A because each kind gets the same small link in the same place, so the app works one way everywhere.
+Completeness: A=9/10, B=4/10, C=7/10
+Pros / cons:
+A) Every kind's form (recommended)
+  ✅ The same small link at the bottom of every form, so it is always where you expect it
+  ✅ Safe sleep, weight and bathing words sit right where those are logged or changed
+  ❌ Six places to build and check in the day and night looks, and on the open Duo
+B) The poo panel only
+  ✅ The smallest change: one link where the plan's own example put it
+  ✅ You can see how you use it before it spreads to the other forms
+  ❌ Sleep, weight and feeding words stay in Settings, two screens away from the log
+C) Poo, sleep and weight
+  ✅ Links where the NHS asks parents to watch closely: poo colour, safe sleep, weight
+  ✅ Three places instead of six, so less to check
+  ❌ Bathing, feeding and expressing forms have no link, so the app works two ways
+Net: A puts one link on every form for one consistent rule; B and C start smaller but leave some subjects in Settings only.
+Header: Link places
+Options:
+A) Every kind's form (recommended)
+One small link at the bottom of each form: the poo panel and a nappy's editor ("About baby poo ›"), sleep ("About baby sleep ›"), growth ("About weight ›"), bath ("About bathing ›"), feed ("About feeding ›") and pumping ("About expressing ›"). Never on Home, the end-of-feed panel, medicines or the watch. Effort: human ~1 day / Claude ~45 min.
+B) The poo panel only
+One link, "About baby poo ›", on the poo panel, as in the plan's example. The other forms stay as they are; more can follow after use. Effort: human ~2 hours / Claude ~20 min.
+C) Poo, sleep and weight
+Links on the poo panel and a nappy's editor, the sleep editor and the growth editor only. Effort: human ~half a day / Claude ~30 min.
+
+State: approved
+Actual answer: A) Every kind's form (step 4 D6, Parent A, 25 Nov 2026)
+Accepted scope: one small link at the bottom of each kind's form: the poo panel (`PooDetailsSheet`) and a nappy's editor ("About baby poo ›", nappies and jaundice), the sleep editor ("About baby sleep ›"), the growth editor ("About weight ›"), the bath editor ("About bathing ›"), the feed editor ("About feeding ›") and pumping's ("About expressing ›"). Never on Home's calm list, the panel at the end of a feed (`FeedDetailsPanel`), the medicine editor or the watch. Each follows step 4 D5 A. Effort: human ~1 day / Claude ~45 min.
+History: none
+
+**Dispositions (Scope Challenge):** F1 approved, A (step 4 D3, after D2's answer "B and A" was asked again); F3 approved, A (D4); F5 approved, A (D5); F8 approved, A (D6); F2, F4, F6 and F7 accepted under step 4 D1 B, D4, D10 B, D13 and step 2's contracts. **Scope Challenge result:** scope accepted as-is (the smaller arrangement keeps every part).
+
+### Section 1: Architecture (step 4)
+
+```
+SIRI (step 4 D3 A)                                   WATCH (D4 A)                         LINKS (D5 A, D6 A)
+"Ask Little Log"                                     phone: CardShown.now(.morning)       a form for a kind
+  -> Siri: "What's your question?"                     -> nothing / paused facts / card      -> InsightTopic.topics(for: kind)
+  -> unlock (Touch ID), app opens on top               -> WatchCard: plain lines the        -> NHSPassages.choose(topics:, feeding
+  -> InsightEngine.ask(words, fromSiri)                   phone writes, its period's end        way, age, ticks), no day turn, no limit
+       route: danger signs -> medicines                -> WatchState (version 4)            -> none ticked: no link
+              -> the yes -> the AI                     -> watch: page 4 "Last night"        -> sheet: NHSPassageTile, word for word
+       busy with another question: waits its turn         only while a card is in its day
+  -> QuestionLog (this phone, 24 h)                    -> tap: sentences, "Made at",
+  -> Ask shows it (through NotificationTaps,              "Picked by AI from your log"
+     an open form stays in front)                      never: a model call, the face,
+  -> read aloud once: InsightQuestions                    a complication, NHS words
+     .spoken(kept) (Stop button; alarms win)
+```
+
+**Two shapes.** Siri: shape 1, the Siri action stores the words and Ask's screen sends them when it opens; shape 2 (picked, as step 4 D1 B says: "Siri hands the spoken question to the existing Ask route (`InsightEngine.ask`)"), the action calls the engine with the app open, and the screen only shows what `QuestionLog` holds. Shape 2 hides more behind less: one owner asks (the engine), so a question is asked once whatever the screen does, and the screen keeps its one job. The watch: shape 1, the watch builds the card from `CheckedCard` (impossible: `FeedingCore` can't use `FeedingInsights`, R1); shape 2 (picked), the phone writes plain lines.
+
+**Red flags:** information leakage (the spoken words built in a view could drift from the screen's: one function, `InsightQuestions.spoken`, beside the answer's parts, F15); two ways to do one task (a second passage list for links: F12 uses the one chooser); hand-synced list (each link's words and topics: one table keyed by kind, derived from `InsightTopic.topics(for:)`). No shallow module, pass-through, split ownership or importable internals found.
+
+**Findings:**
+- **F9** [CRITICAL] (confidence: 9/10) `App/Insights/InsightEngine.swift:324` — `guard !typed.isEmpty, !askingQuestion, let babyID = model.baby?.name else { return }`: a Siri question that arrives while another is with the AI, or before set-up, is dropped with nothing shown. A typed question can't hit this (Send waits), a Siri one can. Remedy, as necessary proof of step 4 D3 A ("sends the question there"): the Siri question waits its turn and then goes; before set-up, Ask shows and reads "Set up Little Log first". Accepted under D3 A; no question.
+- **F10** [INFORMATIONAL] (confidence: 8/10) `App/Journal/VideoItem.swift:113` (`try? AVAudioSession.sharedInstance().setCategory(.ambient)`) — the app's only sound so far follows the silent switch, and the journal's videos play muted at night. Whether the read-aloud speaks on silent and at night is open. Decision: step 4 D7.
+- **F11** [INFORMATIONAL] (confidence: 8/10) `Watch/App/WatchPages.swift:627` (`let stale = night.night != state.currentNight(at: now)`) — the watch hides a rota that is out of date; the card needs the same, or yesterday's card shows until the phone next sends. Remedy, as necessary proof of D4 A ("only while the phone shows the morning card"): `WatchCard` carries the end of its day, and the watch drops the page after it. Accepted under D4 A.
+- **F12** [INFORMATIONAL] (confidence: 8/10) `FeedingCore/Sources/FeedingInsights/NHSPassages.swift:153` (`public static func choose(kinds: Set<InsightKind>, ageInDays: Int?, breastfeeds: Bool, bottleFeeds: Bool,`) — the chooser filters by the ways the baby feeds (A8: a bottle-only household is never nudged towards breastfeeding) and by age. A link list of its own would skip that. Remedy: links call the same chooser, with no limit and no turning by day. Accepted under A8 and D5 A.
+- **F13** [INFORMATIONAL] (confidence: 8/10) `App/Alerts/NotificationTaps.swift:119-128` (`func showFirst(_ id: String)`, `takePendingFirst()`) and `:160-166` (`FormOnScreen`) — the app already opens a screen from outside through one routing place, and an open form stays in front (the journal's re-review, E13 to E17). Siri's opening of Ask goes the same way (`showAsk`, a waiting flag). Accepted under that rule.
+- **F14** [INFORMATIONAL] (confidence: 8/10) `App/Insights/InsightEngine.swift:346-381` — Ask keeps seven kinds of reply (`.helpNow`, `.parentHelp`, `.lastGiven`, `.medicineReply`, `.closed`, `.couldNotAsk`, `.asked`). D3 A set what is read aloud for an answer and a danger sign only. Decision: step 4 D8.
+- **F15** [INFORMATIONAL] (confidence: 7/10) the read-aloud words: built by one function beside the answer's parts in `FeedingInsights` (`InsightQuestions.spoken`), tested on Linux, so the voice and the screen can't drift apart. Accepted under D1 B.
+
+**A realistic failure per new path:** Siri: the unlock is refused, so nothing opens and nothing is sent (Siri's own message). Read-aloud: an alarm rings while it speaks; the speech stops and the alarm wins (part of D7's choices). The watch: the phone is out of reach in the morning, so the watch keeps no card past its day (F11). Links: Parent A's ticks lapse after 90 days, so the link disappears until they are ticked again (as the cards' passages do).
+
+**Distribution:** no new target, extension or entitlement; the Siri phrase joins `FeedingShortcuts`; the watch part ships inside the phone's build.
+
+### F10: does the read-aloud speak on silent, and at night?
+Finding: F10, INFORMATIONAL, confidence 8/10, `App/Journal/VideoItem.swift:113` (`.ambient`: follows the silent switch) and the journal's rule that videos play muted at night; reviewer Claude.
+Plan baseline: step 4 D3 A (25 Nov 2026): "for a question that came through Siri only … Little Log reads it aloud". How loud, on silent, and at night were not set.
+Runtime evidence: the app has no speech today. Siri's own voice follows Siri's settings, not the silent switch.
+Comparison grid:
+
+| Choice | Current | A | B | C |
+|---|---|---|---|---|
+| F10 when the read-aloud speaks | not set, pending | always for a Siri question, even on silent, like Siri's own voice; more quietly at night (21:00 to the rota's morning) | only when the silent switch is off; on silent, the answer shows with a "Read aloud" button | never by itself: every Siri answer shows with a "Read aloud" button |
+| Stopping | not set | a Stop button while it speaks; it stops when you touch the screen and when an alarm rings | the same | the same |
+| What is read | approved (step 4 D3 A) and pending for other replies (step 4 D8) | kept | kept | kept |
+| F1, F3, F5, F8 | approved (D3 A, D4 A, D5 A, D6 A) | kept | kept | kept |
+
+Question D7:
+D7 — Should Little Log read the answer aloud when the phone is on silent, and at night?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, the Siri read-aloud.
+ELI10: You chose that a question asked through Siri gets its answer read out loud. Siri's own voice speaks even when the phone's silent switch is on. The app's only other sound, the journal's videos, follows the silent switch and is muted at night, so the baby isn't woken. In every choice, a Stop button shows while it speaks, and it stops when you touch the screen or an alarm rings.
+Stakes if we pick wrong: with A, a voice at 3am could wake the baby; with B or C, the answer you asked for out loud may come silently, at the moment you asked hands-free.
+Recommendation: A because you asked Siri out loud, so a spoken answer is what you expect, and a quieter voice at night keeps the room calm.
+Note: options differ in kind, not coverage — no completeness score.
+Pros / cons:
+A) Always, quieter at night (recommended)
+  ✅ Works like Siri: you asked out loud, so you hear the answer, on silent or not
+  ✅ At night it speaks more quietly, and Stop or a touch ends it at once
+  ❌ A voice comes from the phone at 3am even with the silent switch on
+B) Follow the silent switch
+  ✅ On silent the phone stays silent, as the journal's videos do
+  ✅ A "Read aloud" button under the answer lets you hear it when you want
+  ❌ At night, with the switch on silent, a Siri question gets a silent answer
+C) Only with a button
+  ✅ Nothing ever speaks by itself, by day or night
+  ✅ The same button works for typed questions too, if you want it later
+  ❌ Asking through Siri gives no spoken answer unless you press the button
+Net: A speaks because you asked out loud, softer at night; B and C keep the phone quiet but may answer silently.
+Header: Read aloud
+Options:
+A) Always, quieter at night (recommended)
+For a Siri question, Little Log reads the answer aloud even with the silent switch on, as Siri does, and more quietly from 21:00 until the rota's morning. A Stop button shows while it speaks; a touch or an alarm stops it. Effort: human ~2 hours / Claude ~20 min.
+B) Follow the silent switch
+It reads aloud only when the silent switch is off. On silent, the answer shows with a "Read aloud" button. Stop, touch and alarms stop it, as in A. Effort: human ~3 hours / Claude ~25 min.
+C) Only with a button
+It never reads by itself: each Siri answer shows a "Read aloud" button. Stop, touch and alarms stop it, as in A. Effort: human ~2 hours / Claude ~20 min.
+
+State: approved
+Actual answer: A) Always, quieter at night (step 4 D7, Parent A, 25 Nov 2026)
+Accepted scope: for a question that came through Siri, Little Log reads the reply aloud even with the silent switch on, as Siri's own voice does, and more quietly from 21:00 until the rota's morning (the household's night hours). A Stop button shows while it speaks; a touch on the screen and any alarm stop it at once. Typed questions are never read aloud. Effort: human ~2 hours / Claude ~20 min.
+History: none
+
+### F14: what is read aloud for Ask's other replies?
+Finding: F14, INFORMATIONAL, confidence 8/10, `App/Insights/InsightEngine.swift:346-381` (the seven kinds of reply Ask keeps); reviewer Claude.
+Plan baseline: step 4 D3 A: an answer is read as its log facts, the AI's sentences, "This is AI, not medical advice" and the NHS passage's name; a danger sign as the Get help now card's heading with "Call 999 and Call 111 are on the screen". The other five replies were not set. Step 4 D7 A: when and how loud.
+Runtime evidence: Ask shows each reply on screen today (`QuestionsView`): the medicine reply (D6), the last time a medicine was logged (look-backs only, X4), the parent's urgent help (step 3 D13 A), "AI insights is off" (no yes), "Couldn't reach the AI" with Call 111 and Send again.
+Comparison grid:
+
+| Choice | Current | A | B |
+|---|---|---|---|
+| F14 what the other replies say aloud | not set, pending | each reads its own on-screen words, short: the medicine reply's first sentence; "Vitamin D was last logged at 08:00" as on screen; the parent's urgent help page's heading with "Call 999 and Call 111 are on the screen"; "AI insights is off, so Little Log can't answer that"; "Couldn't reach the AI. Call 111 is on the screen"; before set-up, "Set up Little Log first" | each says only "Your reply is on the screen" |
+| An answer and a danger sign | approved (step 4 D3 A) | kept | kept |
+| When and how loud | approved (step 4 D7 A) | kept | kept |
+| The words' one source | accepted (F15: `InsightQuestions.spoken`) | kept | kept |
+
+Question D8:
+D8 — What should Little Log say aloud for its other replies?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, the Siri read-aloud.
+ELI10: You set what is read for an answer and for a danger sign. Ask has five other replies: the medicine reply (check the leaflet, ask a pharmacist, your GP or 111), the last time a medicine was logged, a parent's own urgent help (the NHS mental health page), "AI insights is off", and "Couldn't reach the AI". The question is whether each of these is read aloud in its own words, or only told to look at the screen.
+Stakes if we pick wrong: with B, a parent who asked hands-free hears "Your reply is on the screen" even when the reply is "Couldn't reach the AI, call 111".
+Recommendation: A because each reply then says what it means, in the words already on screen, so a hands-free question gets a hands-free reply.
+Completeness: A=9/10, B=6/10
+Pros / cons:
+A) Each reply in its own words (recommended)
+  ✅ You hear what the reply means: the medicine advice, the time logged, or "call 111"
+  ✅ The words are the screen's own, so the voice never says more than the screen
+  ❌ More short readings to write and test, one for each of the five replies
+B) "Your reply is on the screen"
+  ✅ The voice says one short line for all five replies, so there is little to test
+  ✅ Nothing about medicines is ever spoken out loud in the room
+  ❌ You must look at the screen to learn even "Couldn't reach the AI, call 111"
+Net: A gives each reply its own short spoken line from the screen's words; B is simpler but sends you back to the screen.
+Header: Other replies
+Options:
+A) Each reply in its own words (recommended)
+Each reply reads its own on-screen words, short: the medicine reply's first sentence; "Vitamin D was last logged at 08:00"; the urgent mental health page's heading with "Call 999 and Call 111 are on the screen"; "AI insights is off, so Little Log can't answer that"; "Couldn't reach the AI. Call 111 is on the screen"; "Set up Little Log first". Effort: human ~2 hours / Claude ~20 min.
+B) "Your reply is on the screen"
+For these five replies the voice says only "Your reply is on the screen"; answers and danger signs are read as you chose. Effort: human ~30 min / Claude ~5 min.
+
+State: approved
+Actual answer: A) Each reply in its own words (step 4 D8, Parent A, 25 Nov 2026)
+Accepted scope: each of Ask's other replies, for a Siri question, reads its own on-screen words, short: the medicine reply's first sentence; the last time a medicine was logged as on screen (look-backs only, X4); the parent's urgent help page's heading with "Call 999 and Call 111 are on the screen"; "AI insights is off, so Little Log can't answer that"; "Couldn't reach the AI. Call 111 is on the screen"; before set-up, "Set up Little Log first". All spoken words come from `InsightQuestions.spoken` (F15) and never say more than the screen. Effort: human ~2 hours / Claude ~20 min.
+History: none
+
+**Dispositions (Section 1):** F10 approved, A (step 4 D7); F14 approved, A (D8); F9, F11, F12, F13 and F15 accepted as necessary proof of D3 A, D4 A, A8, D5 A, D1 B and the journal's routing rule (E13 to E17).
+
+### Section 2: Code quality (step 4)
+
+- **F16** [INFORMATIONAL] (confidence: 8/10) `App/Journal/VideoItem.swift:113` (`try? AVAudioSession.sharedInstance().setCategory(.ambient)`) — the phone has one sound mode for the app. The video player sets it to follow the silent switch; the read-aloud must set it to speak on silent (D7 A). Two writers of one setting (split ownership): if the read-aloud leaves "speak on silent" in place, a journal video then plays aloud at night, against the journal's rule (T13: sound by day, muted at night). Remedy: one small owner, `AppSound`, sets the mode for each use and puts it back, with a regression test. Accepted under D7 A and T13.
+- **F17** [INFORMATIONAL] (confidence: 8/10) `FeedingCore/Sources/FeedingInsights/InsightQuestions.swift:97-108` (`public struct KeptQuestion: … public var kind: Kind`) — a reply must be read once, not each time Ask opens, and only for a Siri question. `KeptQuestion` gains two optional fields, "asked through Siri" and "read aloud"; an older entry in the file reads as typed. Accepted under D3 A and D7 A.
+- **F18** [INFORMATIONAL] (confidence: 6/10) `App/Model/FeedingShortcuts.swift:11` (`"Start a feed in \(.applicationName)"`) — medium confidence, check on the phone: "Ask \(.applicationName)" alone may meet Siri's own handling of "Ask …". The phrases are "Ask \(.applicationName)", "Ask \(.applicationName) a question" and "Question for \(.applicationName)"; the one that works on the Duo is written in `CLAUDE.md`. Accepted under D3 A.
+- **F19** [INFORMATIONAL] (confidence: 8/10) `WatchState.swift:131-132` ("All are optional, so a state from any of these versions still reads." `currentVersion = 3`) — the card is one more optional field, and `currentVersion` goes to 4; an older watch ignores it, a newer watch with an older phone shows no page. Accepted under D4 A.
+- Error handling: Siri with no set-up (F9), no signal (Ask's "Couldn't reach the AI"), an unlock refused (Siri's own message), no British voice on the phone (the phone's default voice; the reply is on screen either way). Diagrams: the step's diagram is in Section 1; `InsightQuestions.swift`'s diagram at its top gains the Siri entry and `spoken` when built.
+
+**Dispositions (Section 2):** F16 to F19 accepted under D3 A, D4 A, D7 A and the journal's T13; no new question.
+
+### Section 3: Tests (step 4)
+
+Framework (from `CLAUDE.md`): Swift Testing in `FeedingCore` (`FeedingCoreTests`, `FeedingInsightsTests`, also on Linux) and in `AppTests`; XCTest tap tests in `UITests` (the `FeedingDevAudit` scheme); the paid model tests (`FeedingDevModelTests`).
+
+```
+CODE PATHS                                                      USER FLOWS
+[+] InsightQuestions.spoken (new, FeedingInsights)              [+] Siri: "Ask Little Log", the question, Touch ID
+  ├── [GAP] an answer: facts, AI sentences, AI notice, NHS name   ├── [GAP] [→E2E] the answer shows, then is read (-siriQuestion)
+  ├── [GAP] help now / a parent's help: heading + call line       ├── [GAP] [→E2E] a danger sign: Get help now, its heading read
+  ├── [GAP] last given / medicine / closed / couldn't / set-up    ├── [GAP] busy: a second question waits its turn
+  └── [GAP] never the NHS words, never more than the screen       ├── [GAP] an open form stays in front; Ask after it
+[+] AskIntent (new, App)                                          └── [GAP] [manual] on the Duo: phrase, unlock, voice
+  ├── [GAP] needs an unlock and opens the app (D13)             [+] Read aloud
+  └── [GAP] hands the words to InsightEngine.ask (from Siri)      ├── [GAP] Stop stops it; a touch stops it
+[+] InsightEngine.ask (changed)                                   ├── [GAP] quieter from 21:00 to the rota's morning
+  ├── [★★ TESTED] the typed route — InsightQuestionsTests,         ├── [GAP] a typed question is never read
+  │               QuestionsFlowTests                              └── [GAP] [manual] an alarm stops it (the Duo)
+  ├── [GAP] a Siri question while busy: waits, then goes        [+] The watch's page 4
+  └── [GAP] before set-up: "Set up Little Log first"              ├── [GAP] [→E2E] shows with a card (-sampleWatch card)
+[+] AppSound (new owner of the sound mode)                        ├── [GAP] no page with no yes, the AI off, or no card
+  └── [GAP] after speaking, the video's mode is back (T13)        ├── [GAP] past its day: gone
+[+] WatchCard in WatchState version 4 (FeedingCore)               └── [GAP] [manual] fits 42, 46 and 49 mm (screenshots)
+  ├── [★★★ TESTED] older states still read — WatchStateTests:602 [+] NHS links
+  ├── [GAP] a card round trip                                     ├── [GAP] [→E2E] "About baby poo ›" opens the words
+  └── [GAP] past its day's end: not shown                         ├── [GAP] shows with AI insights off (D5 A)
+[+] WatchRelay.state: the card from CardShown                     ├── [GAP] none ticked: no link
+  ├── [GAP] a card → its lines; paused → the facts                └── [GAP] [audit] the link sheet, day and night looks
+  └── [GAP] nothing, the AI off, no yes → no card
+[+] NHSPassages for a link (the chooser, no limit, no day turn)
+  ├── [GAP] bottle-only: no breastfeeding passage (A8)
+  ├── [GAP] not ticked, or past 90 days: left out
+  └── [GAP] the same list whatever the logged values
+
+LLM integration: no prompt or form change; a Siri question goes through Ask's unchanged route.
+`App/Insights/` changes, so the model tests run before the TestFlight upload (the CLAUDE.md rule).
+
+COVERAGE: 2/35 paths tested (6%)  |  Code paths: 2/18  |  User flows: 0/17
+QUALITY: ★★★:1 ★★:1 ★:0  |  GAPS: 33 (5 E2E, 0 eval, 4 manual on devices)
+```
+
+**Tests to add** (each with its value card):
+1. `FeedingInsightsTests/InsightQuestionsTests`: `spokenAnswerSaysOnlyTheScreensParts` (an answer reads its facts, the AI's sentences, "This is AI, not medical advice" and the passage's name, never the passage's words) and `eachReplySaysItsOwnWords` (a table of the seven kinds and set-up). Value: protects=the voice says only what the screen shows; fails_when=spoken adds NHS words or drops the AI notice; why_new=no speech exists; seam=none; no_claim=the sound itself (unit only).
+2. `FeedingInsightsTests/NHSPassagesTests`: `aLinkFollowsTheFeedingWayAgeAndTicks` (a table: bottle-only, age, unticked, past 90 days, any logged value). Value: protects=A8 and D3 on links; fails_when=a link lists its own passages; why_new=the chooser is tested only with a limit and the day turn; seam=none; no_claim=none beyond protects.
+3. `FeedingCoreTests/WatchStateTests`: `aCardRoundTrips` and `aCardPastItsDayIsNotShown` (next to `anOlderStateStillReads`, `:602`). Value: protects=the watch never shows yesterday's card; fails_when=the day's end is dropped; why_new=no card exists; seam=none; no_claim=the drawing on the watch.
+4. `AppTests/QuestionEngineTests`: `aSiriQuestionWhileBusyWaitsItsTurn` and `beforeSetUpASiriQuestionSaysSo`. Value: protects=no spoken question is lost (F9); fails_when=the busy guard drops it again; why_new=only the AI call is tested today; seam=none; no_claim=Siri itself (no Siri in tests).
+5. `AppTests/AskIntentTests` (new): `theSiriActionNeedsAnUnlockAndOpensTheApp`. Value: protects=D13 (the AI never runs with the app closed); fails_when=the feed actions' background settings are copied; why_new=nothing checks an action's modes; seam=none; no_claim=Siri's own behaviour.
+6. `AppTests/WatchRelayTests` (new): `theWatchCardFollowsWhatHomeShows` (each `CardShown` case). Value: protects=F6 (nothing with no yes or the AI off); fails_when=the relay sends a card past the gate; why_new=WatchRelay has no tests; seam=none; no_claim=the watch's drawing.
+7. `AppTests/AppSoundTests` (new): `speakingPutsTheVideosModeBack` and `nightSpeaksMoreQuietly`. Value: protects=T13's night mute for videos, D7 A's quieter night; fails_when=the mode is left on "speak on silent"; why_new=no sound tests; seam=none; no_claim=the real loudness (device).
+8. `UITests/QuestionsFlowTests`: `testSiriQuestionIsAskedAndRead` and `testSiriDangerSignShowsGetHelp`, with a Little Log Dev launch flag, `-siriQuestion`, that hands words to the engine as the action does (no AI runs: sample answers). Value: protects=the hand-off and the Stop button; fails_when=Ask doesn't open or doesn't show Stop; why_new=no Siri path exists; seam=`-siriQuestion` (Dev only, like `-openScreen`); no_claim=Siri, the unlock and the voice.
+9. `UITests/NHSLinkFlowTests` (new): `testPooPanelLinkOpensTheWords` (with AI insights off) and `testSleepEditorLink`; the audit gains `testNHSLinks` (day and night looks). Value: protects=D5 A and D6 A; fails_when=a link hides with the AI off or opens the wrong subject; why_new=no links exist; seam=none; no_claim=the passages' own words (checked by Parent A).
+
+**On the devices (manual):** the Siri phrase, the unlock and the voice on the Duo, by day and at night; an alarm stopping the voice; page 4 on the Ultra 4 and in the 42, 46 and 49 mm simulators (`--mask=alpha` screenshots).
+
+**Regression rule:** three existing behaviours are touched. Typed questions in Ask (the busy guard, F9): kept, covered by `InsightQuestionsTests` and `QuestionsFlowTests`, run again. Videos' night mute (F16): kept, by test 7, under the journal's approved T13. Older watch states (F19): kept, by `anOlderStateStillReads` (`WatchStateTests:602`), run again. No new regression contract is needed.
+
+**Tests made obsolete:** none.
+
+**Dispositions (Section 3):** the tests above are required proof of step 4 D3 A to D8 A and of F9, F11, F12, F16; no new question.
+
+### Section 4: Performance (step 4)
+
+- **F20** [INFORMATIONAL] (confidence: 7/10) `FeedingCore/Sources/FeedingInsights/InsightCards.swift:360` (`let facts = data.insightFacts(babyID: babyID, now: now)`) — working out the card builds the facts sheet, about 80 ms in a debug build with a year of entries [measured: S21, step 2]; the watch relay would do it on each state it sends, on the main thread. Remedy: build it once per send and only with the AI on (the gate first, as `onScreen` does), and measure in the build. Accepted; no question.
+- The watch's state grows by the card's lines, about 1 to 2 KB [estimated]; the phone already sends it as one small file.
+- A link runs the chooser over 41 passages when a form opens: no measurable cost [estimated].
+- The read-aloud uses the phone's own voice, with no network.
+
+**Dispositions (Section 4):** F20 accepted under D4 A; no question.
+
+### Outside voice (Codex, `gpt-6.2-sol`, high effort, read-only, 25 Nov 2026)
+
+Codex CLI 0.172.0 (updated first; `gpt-6.2-sol` is still the newest everyday model, probed MODEL_OK). About 1,231,000 tokens in (1,136,000 cached) and 5,550 out (step 3's round: about 1,012,000 in, 900,000 cached, 5,800 out). Verdict: findings. Each was checked in the code before it was recorded.
+
+- **Y1** [CRITICAL] (confidence: 9/10, verified) `App/Insights/InsightEngine.swift:324` (`guard !typed.isEmpty, !askingQuestion, let babyID = model.baby?.name else { return }`) and `InsightQuestions.swift:162-163` (the danger-sign check is the route's first step) — F9's remedy, as written, would hold a spoken danger sign behind an unrelated answer or "Set up Little Log first". Remedy, as necessary proof of A2 and step 3's route: the danger-sign check runs the moment a Siri question arrives, before the busy and set-up checks; only a question bound for the AI waits its turn. Accepted under A2. Its second half, Get help now behind an open form (F13), is step 4 D9.
+- **Y2** [HIGH] (confidence: 8/10, verified) `InsightEngine.swift:336-337` (`participants = await model.sync.householdParticipants()`) and `:409` (`for attempt in 0..<2 {`) — the phone can be locked during the iCloud read or between the two tries, and the next call still starts: the AI would run with the app closed, against D13. This is already true for typed questions. Remedy, as necessary proof of D13: the app checks it is open and in front before every call and before speaking; if not, nothing is sent and the question shows "Stopped when the phone locked" with Send again. Accepted under D13.
+- **Y3** [HIGH] (confidence: 8/10, verified) `App/Insights/QuestionsView.swift:242` (the answer is checked against the log each time it is shown) and `InsightQuestions.swift:350` — speaking from the saved answer could read facts the log no longer holds, and D3 A's order puts "This is AI, not medical advice" after the AI's sentences, so a parent who stops early never hears who wrote them. Remedy (speak the reply as checked at that moment, the people line first when shown, the AI notice before the AI's words) changes D3 A's order. Decision: step 4 D10.
+- **Y4** [HIGH] (confidence: 8/10, verified) `App/Alerts/AlertScheduler.swift:33-119` (AlarmKit is only scheduled here; the code that hears an alarm start is in the Dev spike, `App/Spikes/AlarmSpike.swift:265`) and `NotificationTaps.swift:15` (the backup notification's own path) — "an alarm stops it" (D7 A) had no way to happen in the real app. Remedy, as necessary proof of D7 A: the speech stops on the sound system's interruption, on AlarmKit's alarm updates (moved into the real app), and when an alert notification arrives; checked on the Duo that each alarm and the backup alarm stay loud. Accepted under D7 A.
+- **Y5** [HIGH] (confidence: 8/10, verified) `Watch/App/PhoneLink.swift:203` and `WatchState.swift:396` — the watch keeps the last state it heard; a pause, a "no", or a corrected entry on the phone can't reach a watch out of range, which would keep showing the card until its day ends. Decision: step 4 D11.
+- **Y6** [MEDIUM] (confidence: 9/10, verified) `App/Model/WatchRelay.swift:106-107` (`session.transferCurrentComplicationUserInfo([WatchKey.state: data])`) and `Watch/Shared/WatchFile.swift:4-5` ("a file in the watch's App Group, so the watch face can read it too") — a card inside `WatchState` would also travel to the watch face and sit in the file the face reads. Remedy, as necessary proof of F6 (never on the watch face): the card goes under its own key in the app's state only, never in the face's transfer, and the watch keeps it in the watch app's own storage, not the shared file. Accepted under F6.
+- **Y7** [MEDIUM] (confidence: 9/10, verified) `NHSPassages.swift:272` (`feeding-well-signs`: topics `[.enoughMilk, .nappies, .weight]`), `:648` (`poo-how-often`: `[.nappies]`), `:169` (`notWith: … ["poo-how-often", "feeding-well-signs"]`) and `:195` (sorted by name) — with no turning by day (F12), the poo link would always drop `poo-how-often`. Remedy, as necessary proof of D5 A and step 2's D6: a link opens a list of its subject's passages by title, each opening alone, so no pair ever shows together and none is dropped. Accepted under D5 A and step 2 D6.
+- **Y8** [MEDIUM] (confidence: 9/10, verified) `App/Home/CareTiles.swift:866` (`try? await Task.sleep(for: .milliseconds(450))`, the poo panel closing itself after both details) — a tap on the link could race the close. Remedy, as necessary proof of D6 A: the panel makes room for the link, and opening it stops the panel closing. Accepted under D6 A.
+
+**Cross-model:** both reviews found the Siri path's ordering and the watch card's freshness to be where the risk sits. Codex alone found the danger sign waiting behind the busy check (Y1), the lock during a wait (Y2), the spoken order (Y3), the alarm path (Y4), the watch out of range (Y5), the face's copy (Y6), the dropped poo passage (Y7) and the panel's race (Y8).
+
+### Y1: does Get help now show on top of an open form?
+Finding: Y1 (second half), CRITICAL, confidence 8/10, `App/Alerts/NotificationTaps.swift:160-166` (`FormOnScreen`: "while it is open, a night return leaves it in front") and F13 (Siri's opening goes the same way); reviewer Codex, verified by Claude.
+Plan baseline: the journal's re-review (E13 to E17, 18 to 19 Nov 2026): an open form stays in front when the app is opened from outside, so a half-made entry isn't lost. A2 and step 3's route: a danger sign shows the Get help now card, with Call 999 and Call 111, before anything else. Step 4 F13 (accepted): Siri's opening of Ask follows the form rule.
+Runtime evidence: `FormOnScreen` counts open forms; a notification tap or night return waits while one is open. Get help now is reached from Ask and from Settings › About today.
+Comparison grid:
+
+| Choice | Current | A | B | C | D |
+|---|---|---|---|---|---|
+| Y1 Get help now with a form open | waits behind the form (F13), pending | covers everything at once; the form stays open underneath with what was typed, and closing the card goes back to it | waits until the form is closed (as today's rule) | try it on the Duo first (can a full-screen card cover a form without losing it?), then ask again; until then it waits, as B | left as B for step 4; looked at again later |
+| Other Siri replies with a form open | F13, accepted | still wait behind the form | the same | the same | the same |
+| The danger-sign check first, before busy and set-up | Y1 first half, accepted (A2) | kept | kept | kept | kept |
+| D3 A, D4 A, D5 A to D8 A | approved | kept | kept | kept | kept |
+
+Question D9:
+D9 — Should "Get help now" show on top of a half-filled form?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, Codex's critical finding on Siri.
+ELI10: When the app is opened from outside (a notice, or coming back at night) while you are halfway through a form, such as changing a feed, the app keeps the form in front so your typing isn't lost. You set that rule on 18 and 19 Nov. A Siri question opens the app the same way. Codex found that if the question has a danger sign, the Get help now card, with Call 999 and Call 111, would wait behind that form. Other replies can wait; this is about danger signs only.
+Stakes if we pick wrong: with B, a parent who said a danger sign to Siri may see a half-filled feed form instead of the Call 999 button.
+Recommendation: A because the call buttons must never wait, and the form and its typing stay safe underneath.
+Completeness: A=9/10, B=5/10, C=6/10, D=5/10
+Pros / cons:
+A) Help covers the form (recommended)
+  ✅ Get help now and its call buttons show at once, whatever is on the screen
+  ✅ The form stays open underneath, with your typing, and comes back when you close the card
+  ❌ It bends the 18 Nov rule for this one case: the form is covered for a moment
+B) Keep the form in front
+  ✅ The 18 Nov rule stays exactly as it is, with no exception at all
+  ✅ Nothing ever covers a form you are in the middle of
+  ❌ The call buttons wait until you close the form, in the one case where seconds matter
+C) Try it on the Duo first
+  ✅ We see on the real phone that the form and its typing survive before deciding
+  ✅ No change to the rule until the test shows it works
+  ❌ Until then the card waits behind the form, as in B
+D) Defer it
+  ✅ Step 4 ships sooner, with this looked at in a later step
+  ✅ The 18 Nov rule stays as it is for now
+  ❌ Same risk as B until the later step
+Net: A puts the call buttons first and keeps the form safe underneath; B, C and D leave them waiting for now.
+Header: Help first
+Options:
+A) Help covers the form (recommended)
+A danger sign from Siri shows Get help now at once, on top of any open form. The form stays open underneath with what was typed; closing the card goes back to it. Other replies still wait for the form. Effort: human ~2 hours / Claude ~20 min.
+B) Keep the form in front
+Get help now waits until the form is closed, as the 18 Nov rule says. Effort: none.
+C) Try it on the Duo first
+Build a test on the Duo of the card covering a form, check the typing survives, then ask again. Until then it waits, as B. Effort: human ~1 hour / Claude ~15 min, then the question again.
+D) Defer it
+Leave it as B for step 4 and look at it again in a later step. Effort: none now.
+
+State: approved
+Actual answer: A) Help covers the form (step 4 D9, Parent A, 25 Nov 2026)
+Accepted scope: a danger sign in a Siri question shows the Get help now card at once, covering any open form; the form stays open underneath with what was typed, and closing the card returns to it. Every other Siri reply still waits for an open form (F13). Tested: a tap test with a form open and `-siriQuestion` holding a danger sign (the card shows, then the form with its typing). Effort: human ~2 hours / Claude ~20 min.
+History: none
+
+### Y3: in what order is the reply spoken?
+Finding: Y3, HIGH, confidence 8/10, `App/Insights/QuestionsView.swift:242` (the answer is checked against the log each time it is shown) and `FeedingCore/Sources/FeedingInsights/InsightQuestions.swift:350`; reviewer Codex, verified by Claude.
+Plan baseline: step 4 D3 A (25 Nov 2026): an answer is read as "the log facts, the AI's sentences, "This is AI, not medical advice", and the NHS passage's name". Step 4 D8 A: the other replies in their own words. The AUP asks that a person is told they are dealing with AI (D5). Step 3's D6 A: after a third similar question, the "talk to someone" people line shows.
+Runtime evidence: Ask's screen writes the "From your log" facts again from the log each time it shows an answer and leaves out any fact the log no longer holds; the AI's sentences carry the AI mark where they sit; the people line shows when the repeat rule says so.
+Comparison grid:
+
+| Choice | Current | A | B | C | D |
+|---|---|---|---|---|---|
+| Y3 the spoken order and source | D3 A: facts, AI sentences, "This is AI, not medical advice", the NHS page's name; from the saved answer, pending | the people line first when it shows; then the facts as checked against the log at that moment; then "The next part is from AI:" before the AI's sentences; then "This is AI, not medical advice" and the NHS page's name | D3 A's order, unchanged, but the facts as checked at that moment | read on the Duo with both orders, then ask again; until then D3 A's order | D3 A's order for step 4; looked at again later |
+| What is read for other replies | approved (D8 A) | kept | kept | kept | kept |
+| When and how loud | approved (D7 A) | kept | kept | kept | kept |
+| The words' one source | accepted (F15) | kept, built from the reply as Ask shows it | the same | the same | the same |
+
+Question D10:
+D10 — In what order should a spoken answer be read?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, Codex's finding on the read-aloud.
+ELI10: You chose the order: the facts from your log, then the AI's lines, then "This is AI, not medical advice", then the NHS page's name. Codex found two problems. If you tap Stop after the AI's lines, you never hear that they came from AI. And after a third similar question the screen shows "talk to someone" first, which the voice would leave out. The fix speaks the "talk to someone" line first when it shows, says "The next part is from AI" before the AI's lines, and always reads the facts as the log holds them at that moment.
+Stakes if we pick wrong: with B, a parent who stops the voice early can take the AI's lines as Little Log's own.
+Recommendation: A because you always hear who wrote a line before you hear it, and the voice matches the screen.
+Completeness: A=9/10, B=7/10, C=7/10, D=6/10
+Pros / cons:
+A) Say "from AI" first (recommended)
+  ✅ You hear "The next part is from AI" before any AI line, even if you stop early
+  ✅ The "talk to someone" line comes first, exactly as the screen puts it
+  ❌ A few more words before the AI's lines, so the answer takes a little longer
+B) Keep your order
+  ✅ The order you chose stays: facts, AI lines, then "This is AI, not medical advice"
+  ✅ The facts are still read as the log holds them at that moment
+  ❌ Stopping after the AI's lines skips the notice that they came from AI
+C) Hear both on the Duo
+  ✅ You hear both orders on the phone before deciding
+  ✅ Nothing changes until you have heard them
+  ❌ Until then your order stays, with the early-stop gap
+D) Defer it
+  ✅ Step 4 ships sooner, with this looked at later
+  ✅ Your order stays for now
+  ❌ The early-stop gap stays until the later step
+Net: A always names the AI before its words and follows the screen; B keeps your order with the early-stop gap.
+Header: Spoken order
+Options:
+A) Say "from AI" first (recommended)
+The people line first when it shows; then the facts as the log holds them now; then "The next part is from AI:" and the AI's lines; then "This is AI, not medical advice" and the NHS page's name. Effort: human ~1 hour / Claude ~10 min.
+B) Keep your order
+Facts (as the log holds them now), the AI's lines, "This is AI, not medical advice", the NHS page's name, as you chose in D3. Effort: none beyond D3.
+C) Hear both on the Duo
+Build both orders, play them on the Duo, then ask again; your order until then. Effort: human ~1 hour / Claude ~15 min, then the question again.
+D) Defer it
+Your order for step 4, looked at again later. Effort: none now.
+
+State: approved
+Actual answer: B) Keep your order (step 4 D10, Parent A, 25 Nov 2026; against the recommendation, logged as decision `02a5487c`)
+Accepted scope: a Siri question's spoken answer keeps D3 A's order: the log facts, checked against the log at the moment of speaking (any fact the log no longer holds is left out, as on screen), the AI's sentences, then "This is AI, not medical advice" and the NHS page's name. No "The next part is from AI" before the AI's sentences, and the people line is not spoken first. Code that builds this order carries `gstack-shortcut(dec-02a5487c)`. Look at again (A) when a parent stops the voice early and takes an AI line as the app's own, when the repeat rule's people line fires on a Siri question, before any other family uses the app, or if Anthropic or Apple rules on telling people about AI ask for it. Effort: none beyond D3 A.
+History: none
+
+### Y5: what does the watch show when it can't reach the phone?
+Finding: Y5, HIGH, confidence 8/10, `Watch/App/PhoneLink.swift:203` and `FeedingCore/Sources/FeedingCore/Watch/WatchState.swift:396` (the watch keeps and shows the last state it heard); reviewer Codex, verified by Claude.
+Plan baseline: step 4 D4 A: page 4 shows "only while the phone shows the morning card or its paused facts"; F11 (accepted): the card carries the end of its day and the watch drops it after; F6: nothing with no yes or the AI off.
+Runtime evidence: the phone sends a new state only when something on it changes (`WatchRelay.swift:96`: `guard sent != state.content`), and only when the watch can receive it. A watch out of range keeps its last state.
+Comparison grid:
+
+| Choice | Current | A | B | C | D |
+|---|---|---|---|---|---|
+| Y5 the card when the phone can't be reached | shown until its day ends (F11), pending | shown only once the phone has said it is still current: opening page 4 asks the phone; out of reach, page 4 says "The card is on your iPhone" with no card words; a "no card" from the phone closes an open card screen at once | shown until its day ends, as F11 | measure on the Ultra 4 how often mornings are spent out of reach, then ask again; B until then | B for step 4; looked at again later |
+| The card's day end | accepted (F11) | kept | kept | kept | kept |
+| D4 A (page 4, its screen) | approved | kept | kept | kept | kept |
+| F6 (no model call, never on the face) and Y6 (not in the face's copy) | accepted | kept | kept | kept | kept |
+
+Question D11:
+D11 — What should the watch show when it can't reach the phone?
+Project/branch/task: Little Log, branch claude/focused-hamilton-47r7qx, AI insights step 4, Codex's finding on the watch card.
+ELI10: The watch shows what the phone last sent it. If the watch is out of range of the phone, and on the phone someone pauses AI insights, says no to it, or corrects an entry, the watch can't hear about it. So it would keep showing the old card until the end of that day. The fix: when you open the card's page, the watch first checks with the phone. If the phone is out of reach, the page says "The card is on your iPhone" and shows no card words.
+Stakes if we pick wrong: with B, a watch away from its phone can show a card that a parent has paused or said no to, for the rest of that day.
+Recommendation: A because the watch then never shows a card the phone has taken back, which is what you chose in D4.
+Completeness: A=9/10, B=6/10, C=6/10, D=6/10
+Pros / cons:
+A) Check with the phone (recommended)
+  ✅ A paused or withdrawn card never shows on the watch, even out of range
+  ✅ A card screen already open closes as soon as the phone says the card is gone
+  ❌ Out of range of the phone, the page shows only "The card is on your iPhone"
+B) Show until its day ends
+  ✅ The card stays readable on the watch when the phone is in another room
+  ✅ Nothing to build beyond the day's end check already agreed
+  ❌ A paused or withdrawn card can stay on the watch for the rest of that day
+C) Measure first
+  ✅ We learn how often your watch is out of range in the morning before deciding
+  ✅ Nothing changes until we know
+  ❌ Until then the card stays as in B, with the same gap
+D) Defer it
+  ✅ Step 4 ships sooner, with this looked at later
+  ✅ The card behaves as in B for now
+  ❌ The same gap as B until the later step
+Net: A follows the phone strictly at the cost of an empty page out of range; B keeps the card readable but can show a withdrawn one.
+Header: Watch away
+Options:
+A) Check with the phone (recommended)
+Opening the card's page asks the phone if the card is still current; it shows only when the phone says yes. Out of reach, the page says "The card is on your iPhone" with no card words. A "no card" from the phone closes an open card screen. Effort: human ~3 hours / Claude ~30 min.
+B) Show until its day ends
+The watch shows the last card the phone sent until that card's day ends, as already agreed. Effort: none beyond F11.
+C) Measure first
+Log on the Ultra 4 how often it is out of reach of the phone in the mornings, then ask again; B until then. Effort: human ~1 hour / Claude ~15 min, then the question again.
+D) Defer it
+B for step 4, looked at again later. Effort: none now.
+
+State: approved
+Actual answer: A) Check with the phone (step 4 D11, Parent A, 25 Nov 2026)
+Accepted scope: the watch shows the card's words only once the phone has said the card is still current. Opening page 4 (or the card's screen) asks the phone; the phone answers from `CardShown` as Home shows it. Out of reach, page 4 says "The card is on your iPhone" with no card words. A "no card" from the phone (paused, a "no", the AI off, a changed card) closes an open card screen at once. F11's end of day still applies. Tested: the relay's answer for each `CardShown` case, and a withdrawal with the card screen open (watch simulator, `-watchSendTest`). Effort: human ~3 hours / Claude ~30 min.
+History: none
+
+**Dispositions (outside voice):** Y1 second half approved, A (step 4 D9); Y3 approved, B (D10, against the recommendation, logged as `02a5487c`); Y5 approved, A (D11); Y1 first half, Y2, Y4, Y6, Y7 and Y8 accepted as necessary proof of A2, D13, D7 A, F6, D5 A with step 2's D6, and D6 A.
+
+**TODOS.md:** no item proposed. D10 B carries its own "look at again" conditions in its record above and in the decision log (`02a5487c`).
+
+Approval readiness: PASS — structure (step 4 D1 B), F1 (D3 A, after D2's "B and A"), F3 (D4 A), F5 (D5 A), F8 (D6 A), F10 (D7 A), F14 (D8 A), Y1 (D9 A), Y3 (D10 B), Y5 (D11 A), each answered by Parent A on 25 Nov 2026; F2, F4, F6, F7, F9, F11, F12, F13, F15, F16 to F20, Y1's first half, Y2, Y4, Y6, Y7 and Y8 under the approved contracts they cite (A2, A8, D4, D5 A, D6 A, D7 A, D10 B of step 3, D13, step 2's contracts and D6, the journal's T13 and E13 to E17, R1).
+
+### NOT in scope (step 4)
+- Siri answering inside Siri, or a second "out loud" phrase (step 4 D3: B and C not chosen; D13 keeps the AI to an open app).
+- "The next part is from AI" and the people line spoken first (step 4 D10 B; its "look at again" conditions are recorded).
+- The "This week" card on the watch (D4 A: the morning card only), and anything AI on the watch face or a complication (F6, Y6).
+- NHS links on Home, the end-of-feed panel, the medicine editor or the watch (step 4 D6 A).
+- A new rules file for spoken questions (step 4 D1 B: Siri uses Ask's route).
+- Other families (A12): a company, a privacy policy, App Review's health rules, a clinician's check.
+
+### What already exists (step 4)
+Reused as they are: Ask's route and `QuestionLog` (`InsightEngine.ask`, with Y1's order fix, Y2's open-app check and F9's waiting turn), `FeedingShortcuts`, `NotificationTaps`' one routing place (F13; Y1's exception for Get help now), `CardShown.now`, `WatchState` and `WatchRelay` (a new key, Y6), `NHSPassages.choose` (no limit, no day turn, F12) and `NHSPassageTile`, `GetHelpNowView`, `DangerSigns`. New: the Siri action (`AskIntent`), `InsightQuestions.spoken`, `AppSound`, `WatchCard` and page 4 with its card screen, the phone's "still current?" answer to the watch, and the link view.
+
+### Failure modes (step 4)
+
+| Path | A realistic failure | Covered by | What the parent sees |
+|---|---|---|---|
+| Siri's phrase | Siri treats "Ask Little Log" as its own command | F18's three phrases, checked on the Duo | Siri's own reply; the other phrases work |
+| A spoken danger sign | another question is with the AI, or a form is open | Y1 (the check first), D9 A (the card covers the form), tap test | the Get help now card at once |
+| The lock during a wait | the phone locks during the iCloud read or between tries | Y2 (the open-app check before each call), QuestionEngineTests | "Stopped when the phone locked", Send again |
+| The read-aloud | an alarm rings while it speaks | Y4 (three stop paths), checked on the Duo | the alarm, loud; the voice stops |
+| The read-aloud | stopped after the AI's sentences | nothing on purpose (D10 B) | the AI's lines, without hearing they are AI: **accepted gap, D10 B** (the screen still marks them) |
+| The sound mode | left on "speak on silent" | F16 (`AppSound`), AppSoundTests | a journal video stays muted at night |
+| The watch card | the phone out of reach after a pause or a "no" | D11 A (the watch asks first), F11 (end of day) | "The card is on your iPhone" |
+| The watch face | the card in the face's copy | Y6 (its own key, the app's own storage) | nothing on the face |
+| A link | a pair of passages that must not show together | Y7 (a list by title, one at a time) | every passage, one at a time |
+| The poo panel | it closes as the link is tapped | Y8 (the link stops the close) | the passages open |
+
+No failure mode is silent with no test and no handling: the D10 B gap is chosen and the screen still marks the AI's sentences.
+
+### Worktree parallelization strategy (step 4)
+
+| Step | Modules touched | Depends on |
+|---|---|---|
+| AI23 the spoken words and the link chooser | `FeedingCore/Sources/FeedingInsights` | — |
+| AI24 the watch card in the state | `FeedingCore/Sources/FeedingCore/Watch` | — |
+| AI25 the Siri action, Ask's changes, the read-aloud | `App/Insights`, `App/Model`, `App/Alerts` | AI23 |
+| AI26 the watch's page 4 and the phone's answer | `App/Model`, `Watch/App`, `Watch/Shared` | AI24 |
+| AI27 the NHS links on the forms | `App/Home`, `App/Insights` | AI23 |
+| AI28 tap tests, the audit and device checks | `UITests`, devices | AI25, AI26, AI27 |
+| AI29 docs | `docs`, `CLAUDE.md`, `DESIGN.md` | AI28 |
+
+Lane A: AI23 → AI25 → AI27 (they share `FeedingInsights` and `App/Insights`). Lane B: AI24 → AI26 (the watch). Launch A and B; merge both; then AI28, then AI29. Conflict flags: AI25 and AI26 both touch `App/Model` (`FeedingShortcuts`, `WatchRelay`): different files, merge with care.
+
+### Implementation Tasks (step 4)
+
+- [x] **AI23 (P1, human: ~1d / CC: ~45min)** — FeedingInsights — the spoken words and the links' passages
+  - Surfaced by: D8 A, D10 B, F12, F15, Y3, Y7
+  - Files: `FeedingCore/Sources/FeedingInsights/InsightQuestions.swift` (`spoken`, `KeptQuestion`'s two optional fields, F17), `NHSPassages.swift` (passages for a link: the chooser with no limit and no day turn, by title), tests in `InsightQuestionsTests` and `NHSPassagesTests`
+  - What: each reply's spoken words from the reply as checked at that moment, in D3 A's order (`gstack-shortcut(dec-02a5487c)`); never the NHS words; a link's passages filtered by feeding way, age and ticks, every one listed
+  - Verify: `swift test --package-path FeedingCore` (Linux and macOS)
+  - Done 25 Nov 2026: `InsightQuestions.spoken`, `KeptQuestion.viaSiri` and `readAt`, `.stopped`; `NHSPassages.forLink`, `Passage.title`, `PassageCheck.by`; tests `SpokenReplyTests` and `NHSLinkPassagesTests`.
+- [x] **AI24 (P1, human: ~3h / CC: ~20min)** — FeedingCore — `WatchCard` and `WatchState` version 4
+  - Surfaced by: D4 A, F4, F11, F19, Y6
+  - Files: `FeedingCore/Sources/FeedingCore/Watch/WatchState.swift`, `WatchStateTests.swift`
+  - What: plain lines, its time, the end of its day; sent under its own key, never in the face's transfer
+  - Verify: `swift test --package-path FeedingCore`; `anOlderStateStillReads` still passes
+  - Done 25 Nov 2026: `FeedingCore/Sources/FeedingCore/Watch/WatchCard.swift`, sent under its own key (`WatchKey.card`, and `WatchKey.cardCheck` for the watch's question) beside the state, so `WatchState` itself did not change; tests `WatchCardTests`.
+- [ ] **AI25 (P1, human: ~2d / CC: ~1.5h)** — App — the Siri action, Ask's changes and the read-aloud
+  - Surfaced by: D3 A, D7 A, D9 A, F9, F13, F16, F18, Y1, Y2, Y4
+  - Files: `App/Insights/AskIntent.swift` (new: needs an unlock, opens the app), `App/Model/FeedingShortcuts.swift`, `App/Insights/InsightEngine.swift` (the danger check first, the waiting turn, the open-app check before each call), `App/Alerts/NotificationTaps.swift` (`showAsk`; Get help now covers a form), `App/Insights/QuestionsView.swift` (read once, Stop), `AppSound` (new), the alarm and alert stop paths, `-siriQuestion` in Little Log Dev; tests `AskIntentTests`, `QuestionEngineTests`, `AppSoundTests`
+  - Verify: `xcodebuild test -scheme FeedingDev`; on the Duo: the phrase, Touch ID, the voice by day and at night, an alarm stopping it, the phone locked during a wait
+  - Done 25 Nov 2026 in the simulator: the action, `SiriQuestions`, `ReadAloud`, `AppSound` and `HelpPresenter` are in `App/Insights/SiriAsk.swift` (not `AskIntent.swift`); tests `SiriAskTests` and `QuestionEngineTests.aLockedPhoneSendsNothing`. The Duo checks are still to do.
+- [ ] **AI26 (P1, human: ~1.5d / CC: ~1h)** — Watch — page 4 and the phone's "still current?" answer
+  - Surfaced by: D4 A, D11 A, F6, F11, F20, Y5, Y6
+  - Files: `App/Model/WatchRelay.swift` (the card from `CardShown`, built once per send and only with the AI on; the answer to the watch), `Watch/App/WatchPages.swift` or a new card screen, `Watch/App/PhoneLink.swift`, `Watch/App/WatchSamples.swift` (`-sampleWatch card`); `WatchRelayTests` (new)
+  - Verify: the watch simulators at 42, 46 and 49 mm with `--mask=alpha`; a withdrawal with the card screen open (`-watchSendTest`); the Ultra 4
+  - Done 25 Nov 2026 in the simulators: `App/Model/WatchCardMaker.swift`, `WatchRelay` (the card and the answer), `Watch/App/WatchLastNight.swift`, `PhoneLink`, `-sampleLastNight` with `-watchPage 4`; the watch facts are tested in `SiriAskTests` (no separate `WatchRelayTests`). Seen on the Ultra 4 on 26 Nov 2026 in Little Log Dev (both yeses given in Dev): page 4 showed "Nothing logged last night.", as expected with nothing logged in the night.
+- [x] **AI27 (P1, human: ~1d / CC: ~45min)** — App — the NHS links on the forms
+  - Surfaced by: D5 A, D6 A, F12, Y7, Y8
+  - Files: a link view in `App/Insights`, `App/Home/CareTiles.swift` (the poo panel: room, and the link stops the close), `App/Home/CareEditor.swift`, `App/Home/EventEditor.swift`
+  - Verify: screenshots in the day and night looks and on the open Duo
+  - Done 25 Nov 2026: `App/Insights/NHSLink.swift`; the poo panel, `CareEditor` and `EventEditor`; `-samplePassagesTicked YES`.
+- [ ] **AI28 (P1, human: ~1d / CC: ~1h)** — UITests and devices — tap tests and the audit
+  - Surfaced by: Section 3's tests 8 and 9; D9 A
+  - Files: `UITests/QuestionsFlowTests.swift` (a Siri question asked and read; a danger sign covering an open form), `UITests/NHSLinkFlowTests.swift` (new), `UITests/AccessibilityAuditTests.swift` (`testNHSLinks`)
+  - Verify: `-only-testing` on these in `FeedingDevAudit`, then the full suite; the model tests before the TestFlight upload (`App/Insights/` changes)
+  - Simulator part done 25 Nov 2026: `QuestionsFlowTests` (`testASiriQuestionIsAskedAndRead`, `testASiriDangerSignCoversAnOpenForm`), `NHSLinkFlowTests` (3 tests), the audit's `testStep4` (no findings on the link sheet; the poo panel's are the same as without the link). The device checks are still to do.
+- [x] **AI29 (P2, human: ~2h / CC: ~20min)** — Docs — `CLAUDE.md` (layout, commands, flags, the Siri phrase that works), `DESIGN.md` (page 4, the link, Stop), this plan's step list, `InsightQuestions.swift`'s diagram
+  - Verify: read through
+  - Done 25 Nov 2026.
+
+Carried, still open (not seen done): T14, the journal's two-phone checks. Done since step 3's list: AI16 to AI22 (`31ea2bf`, `71b8654`, `eb9a362`, `c854b9b`, `31d31e1`, `60bb8ce`, `294c840`), T12, T15 and T18 to T21 (`9137553`).
+
+### Unresolved decisions (step 4)
+None: D1 to D11 are answered (D2's answer was asked again as D3).
+
+### Completion summary (step 4)
+- Step 0: Scope Challenge — scope accepted as-is (the smaller arrangement keeps every part)
+- Reality rows: 7/7 applicable rows emitted (`PLAN_REALITY: phase=eng rows=7/7 missing=none unverified=1 verdict=complete`), 4 false premises (P1, P2, P5, P7), 1 unverified premise (P3, Siri's wait on a phone)
+- Architecture Review: 7 issues found (F9 to F15)
+- Code Quality Review: 4 issues found (F16 to F19)
+- Test Review: diagram produced, 33 gaps identified (5 E2E, 4 manual on devices), no new decision
+- Performance Review: 1 issue found (F20)
+- NOT in scope: written
+- What already exists: written
+- TODOS.md updates: 0 items proposed to the user
+- Failure modes: 0 critical gaps (one chosen gap: D10 B)
+- Unresolved decisions: 0
+- Outside voice: Codex (`gpt-6.2-sol`), completed, 8 findings (1 Critical, 4 High, 3 Medium); 3 became decisions (D9, D10, D11), 5 accepted under approved contracts
+- Parallelization: 2 lanes, then 2 steps in order
+- Lake Score: 0/8 (no option was scored 10/10; of the scored decisions, the most complete option was picked in all but D10, and D2's answer chose two options and was asked again as D3)
+- Decisions: step 4 D1 to D11, all answered by Parent A on 25 Nov 2026; one against the recommendation (D10 B, logged with conditions to look at again)
+
+**Cross-model:** both reviews put the risk in the Siri path's order and the watch card's freshness. Codex alone found Y1 to Y8.
+
+## Design review: step 4, the watch's "Last night", the NHS links, reading aloud (25 Nov 2026)
+
+**Target:** the screens of step 4 as the engineering review above settled them: the watch's fourth page "Last night", its card screen and its out-of-reach and paused states (step 4 D4 A, D11 A); the "About … ›" NHS link on each kind's form and what it opens (D5 A, D6 A); Ask while it reads a Siri reply aloud (D3 A, D7 A, D8 A, D10 B); Get help now over a half-filled form (D9 A). Calibrated against `DESIGN.md`. This review's questions are "step 4 design D1", "D2", …; its findings are G1, G2, …
+
+**Step 0.** Design completeness at the start: **4/10**: the plan said what each new screen holds, but not where things sit, how they look, or what they show in each state. A 10 here: each of the four parts has a picked look, a state table (checking, out of reach, paused, empty, failed, night), its words, its VoiceOver lines, its behaviour at the largest text sizes and on 42 mm, and the tokens from `DESIGN.md` it uses. `DESIGN.md` exists; every decision below is checked against it. Existing parts to reuse: the watch's `WatchPageFrame` (label beside the clock), its rows and big numbers; `NHSCardBox` (the NHS blue box) and `PassagesListView`'s rows; Ask's bubbles and its pinned text box; `GetHelpNowView` with its pinned call buttons; the AI mark. Focus (step 4 design D1, Parent A): A, all 7 areas.
+
+**Mockups** (Parent A's way of choosing, HTML side by side with a Day/3am switch, opened in Safari): `designs/ai-step4-20261125/round1.html` in the gstack design folder; the picks are in `approved.json` beside it. Confirmed by Parent A (step 4 design D6 A):
+- **D2 B, the watch's "Last night" page:** three short facts, each with its kind's shape, and a tap anywhere on the page opens the card. "LAST NIGHT" and the AI mark beside the clock.
+- **D3 B, the NHS link:** one slim full-width row in the NHS blue box with its 4 pt blue edge, "NHS  About baby poo ›", at the bottom of the form.
+- **D4 A, reading aloud:** a "Reading aloud" bar with sound waves and a coral Stop, just above Ask's text box.
+- **D5 A, Get help now over a form:** exactly as today.
+- The same in every option, and so part of the pick: the watch's card screen (the only watch screen that scrolls), "The card is on your iPhone" out of reach, "FACTS ONLY TODAY" when paused; the link's sheet listing the subject's passages by their own headings, and one passage word for word.
+
+**Outside voices** (step 4 design D7 A): Codex (`gpt-6.2-sol`, high effort, read-only) and an independent Claude reviewer. Codex's first run (about 1,270,000 tokens in, 1,155,000 cached, 7,768 out) gave 10 findings but left out the required closing line, so the check counted it as no review; it ran again with the format made strict (about 1,125,000 in, 1,015,000 cached, 6,499 out) and completed with 10 findings (1 Critical, 6 High, 3 Medium). Both runs agree; the second is the record. The Claude reviewer (164,000 tokens) gave 10 findings, none critical: the picks are sound, but the plan didn't record them, and the watch page's facts and states, the poo panel's link, read-aloud with VoiceOver and the danger-sign path need writing down. Both are folded into the findings below (G1 to G15), with who found each.
+
+**Litmus scorecard** (Claude review, Codex): brand unmistakable in the first screen: no, no (an in-app Operate surface; not needed); one visual anchor: yes, yes; scannable by headings alone: no, no (the watch's card screen was titled "Card": fixed in G9); one job per section: yes, yes; cards needed: yes, yes (the "From your log" tile and the NHS box mark who wrote what); motion helps: no, no (still, as 3am needs); premium without shadows: yes, yes. Hard rejections: none, none.
+
+### Pass 1: Information architecture (step 4 design) — 5/10, then 8/10
+
+```
+WATCH                                    PHONE
+page 1 ─ page 2 ─ page 3 ─ page 4        a form (poo panel, an editor)
+                          "LAST NIGHT AI"     ... fields ... Undo / Done
+                          moon  3h 10m · longest sleep logged      NHS │ About baby poo ›  ──► sheet: passages by heading ──► one passage
+                          feed  4 · feeds logged
+                          drop+swirl 3 · nappies logged          Ask (from Siri)
+                          (tap anywhere) ──► card screen          question · "Asked with Siri"
+                                             LAST NIGHT AI ...    answer (facts, AI lines, NHS name)
+                                             YESTERDAY AI ...     ┌ Reading aloud ········ [■ Stop] ┐
+                                             Made at · foot       └ text box ──────────────────────┘
+```
+
+- **G1** (both reviewers) the three facts on page 4. **Step 4 design D8, Parent A: A, three night facts.** The app writes them from the log: "longest sleep logged" with the moon in `sleep`, "feeds logged" with a plain feed shape in `text-muted` (not the bottle: the count holds breastfeeds), "nappies logged" with the wee drop and poo swirl. Zeros are shown; with no sleep logged, "No sleep logged" in muted text. The same three rows show when facts only (no AI mark). Yesterday's facts stay on the card screen.
+
+**Pass 1 after:** 8/10. Each new surface has its first, second and third thing; Ask's order while a Siri reply is read is settled in Pass 2 (G3).
+
+### Pass 2: States (step 4 design) — 3/10, then 9/10
+
+- **G2** (both reviewers) page 4's states. **Step 4 design D9, Parent A: A, the full set.** It widens D4 A, which named only the card and the paused facts:
+
+| Situation | The watch's page 4 |
+|---|---|
+| Opening (every time) | "LAST NIGHT", no AI mark, "Checking with iPhone…", for up to about 2 seconds |
+| No answer from the phone | "The card is on your iPhone", no card words (D11 A) |
+| The card is current | the three facts (G1) with the AI mark; a tap opens the card screen |
+| Paused / couldn't reach the AI / no card today | the same three facts under "FACTS ONLY TODAY", no AI mark, and one muted line: "Paused. iPhone says why." / "Couldn't reach the AI. iPhone says why." / "No card today." |
+| The card being made, or no phone has opened Little Log this morning | no page 4 |
+| Nothing logged last night | "Nothing logged last night." |
+| Taken back while page 4 shows | the page switches to its new state at once; it goes the next time the watch app opens |
+
+- **G3** (both reviewers) Ask between a Siri question and its reading. **Step 4 design D10, Parent A: A, the full set.** Siri says "Asking Little Log. The answer will be read out." Ask shows the question with "Asked with Siri"; the reading bar shows at once, "Waiting for the answer…" with Stop. The answer opens scrolled to its top (Ask otherwise scrolls to the end), and reading starts only once the answer and Stop are on screen. The same Siri question again while one waits shows "Already asking" and isn't sent twice (a different one waits its turn, F9). Leaving Ask cancels a reading not yet finished. At night (the household's night hours) the voice is at half the day's volume; with the phone's volume at zero, the bar says "Volume is off".
+- **G4** (both reviewers) the link's sheet in its edge cases. **Step 4 design D11, Parent A: A.** A list that empties while open (a tick passing 90 days) says "No checked NHS pages on this right now" with Back to the form; a subject with one ticked passage opens it at once; the foot names who ticked it and when, the same on both phones ("Checked against the NHS page by Sam, 23 Nov").
+
+**Pass 2 after:** 9/10. The states of page 4, the Siri wait and the link's sheet are set; the danger path's states are in Pass 3 (G7).
+
+### Pass 3: The 3am journey (step 4 design) — 5/10
+
+| Step | The parent does | Feels | The plan gives |
+|---|---|---|---|
+| 1 | Holding the baby, says "Ask Little Log" and a question | hopeful, hands full | Siri: "Asking Little Log. The answer will be read out." (G3) |
+| 2 | Touches Touch ID | a small effort | Ask opens over whatever is on screen (F13) |
+| 3 | Waits 4 to 10 seconds | unsure | "Waiting for the answer…" with Stop (G3) |
+| 4 | Listens, phone in hand | calm, or worried | the reading bar, half volume at night (G3, D7 A) |
+| 5 | Shifts the phone | doesn't want to lose it | G5 |
+| 6 | A danger sign was in the question | frightened | G7 |
+| 7 | Morning, glances at the watch | curious | page 4's three facts (G1), its states (G2) |
+| 8 | Logs a poo and wonders about its colour | a little worried | the link on the poo panel (G6) |
+
+5-second test: the reading bar says what is happening; 5-minute: the parent can stop, hear again and go on asking; 5-year: the NHS's words and the AI mark are always told apart.
+
+- **G5** (both reviewers) touches and VoiceOver while it reads. **Step 4 design D12, Parent A: A.** Only a tap stops the voice, not a scroll or a drag; a button tapped stops it and still does its job. After a stop or an alarm, a soft "Read again" takes the bar's place until the next question; it never plays by itself. Stop is at least 44 pt tall; VoiceOver: "Stop reading aloud". With VoiceOver running, the app doesn't speak: VoiceOver reads the same words, its focus moved to the start of the answer. (This amends D7 A's "a touch … stop[s] it" and F17's "read once": a reading can now be asked for again.)
+- **G6** (both reviewers) the poo panel's link and its quick close (`CareTiles.swift:855`, a fixed 390 pt; `:866`, closing 450 ms after both picks). **Step 4 design D13, Parent A: A.** On the poo panel the link sits above Undo and Done (not at the bottom, amending step 4 D6 A for this panel only), the panel grows to fit it, and it still closes by itself after both picks; a tap on the link before then stops the close (Y8). The same link is in that nappy's editor afterwards. The link is the same for every colour.
+- **G7** (both reviewers) Get help now from a Siri danger sign, over an open form. **Step 4 design D14, Parent A: B, a normal sheet** (against the recommendation, a full-screen cover; logged as decision `6ac49277`). Get help now opens as a sheet over whatever is open, with the look of D5 A (its NHS tile and the two call buttons pinned at the bottom, one above the other at the largest text sizes, as `DESIGN.md` has it), closed by a swipe down or its round ✕; the form under it keeps its typing. The voice reads its heading once (D3 A, D8 A), stopped by a tap (G5); Ask doesn't read that reply again after the sheet closes. Look at again (A, a full-screen cover) if a parent swipes it away by mistake, if a tap test finds the call buttons under the keyboard or a nested sheet, before any other family uses the app, or if a clinician's review asks. Code for this sheet carries `gstack-shortcut(dec-6ac49277)`. Where VoiceOver starts and the keyboard: G13.
+
+**Pass 3 after:** 7/10. The journey is written down and each break has its answer; two answers are chosen gaps (D10 B: the AI notice after the AI's lines; D14 B: a sheet that a swipe can close).
+
+### Pass 4: Generic patterns (step 4 design) — 8/10, then 9/10
+
+An Operate surface (an app, not a landing page). No hard rejection hit (both reviewers). Litmus as scored above. The NHS box's blue edge is `DESIGN.md`'s own NHS box (22 Nov 2026), not decoration. Two small things, settled in Pass 5: the watch's card screen was titled "Card" (G9), and the mockup centred or right-aligned three lines on the watch, against "leading alignment everywhere" (G8).
+
+### Pass 5: Design system (step 4 design) — 6/10
+
+- **G8** (Claude reviewer; Codex on alignment) the watch page's sizes and AI mark (`Watch/App/WatchTheme.swift:38-48` has no size for three facts; `DESIGN.md`'s AI mark sits on `background`, black on the watch). **Step 4 design D15, Parent A: A.** A new watch `fact` style: the number at 22 pt, SF Pro Rounded with fixed-width digits, bold by day and medium at night; its words in the watch's 13 pt `line` style, dropping under the number when they don't fit. The watch's AI mark: a small pill in the watch's button colour (`#2A1F18` by day, `#1C1612` at night) with the "AI" in muted bold; it never shrinks, the label beside the clock shrinks first. Every line starts at the left; the last line is a muted "Open the card ›".
+- **G9** (Claude reviewer; Codex on its title) what the watch's card screen holds. **Step 4 design D16, Parent A: B, sentences, patterns and medicine chips.** Titled "Last night" (not "Card"); last night's and yesterday's sentences, each part with the watch's AI mark; the card's patterns under "PATTERN"; yesterday's medicine chips as the phone shows them ("Vitamin D · 09:05", made by the app, never seen by the AI, never a next time); "Made at" its time; the foot "Picked by AI from your log. Every sentence and number is written by Little Log. NHS information is on your iPhone."; a soft Back at the end, as the Tonight screen has. It is the only watch screen that scrolls. No NHS words, no "This was wrong".
+- The passage page a link opens uses the NHS blue box (`NHSCardBox`, with no summary), as the approved mockup draws it; the plan's earlier "`NHSPassageTile`" (a plain tile) is corrected to it.
+- **G10** (both reviewers) the link row's colours: the mockup's 11 pt blue "NHS" is about 3.6:1 by day and 3.4:1 at night, under 4.5:1. **Step 4 design D17, Parent A: A, the same blue box everywhere.** `bottle-tint` with the 4 pt `bottle-mark` edge (the NHS box's own tokens, not the mockup's `#DDEBF7`) on every form, the feed and pumping editors included; "NHS" in the `label` style in `text-muted` (about 5.1:1 by day, 4.8:1 at night); the words in `smallButton`; the › in `text-muted`; 48 pt tall at least, growing with the text.
+- **G11** (Claude reviewer; Codex on the label) the link in the editors (`CareEditor.swift:83-110`, `EventEditor.swift:71-104`: system forms ending with Note, then Delete, which doesn't ask first). **Step 4 design D18, Parent A: A.** The link has its own section after "who did it" and before Note and Delete, a row in the NHS blue box shaped like the form's rows (the form's own corner radius); it shows when adding and when changing an entry. The nappy editor's link says "About nappies ›"; the poo panel keeps "About baby poo ›". (This replaces step 4 D6 A's "at the bottom" for the editors.)
+
+**Pass 5 after:** 9/10. Every new part names its tokens; three additions go into `DESIGN.md` before the build (the watch's `fact` style and AI pill, the link row, the reading bar).
+
+### Pass 6: Text sizes and accessibility (step 4 design) — 4/10
+
+- **G12** (both reviewers) the largest text sizes. **Step 4 design D19, Parent A: A, grow and reflow.** Watch page 4: the facts stack (number above words) and the page may scroll, as `DESIGN.md` allows watch pages at those sizes; the card screen already scrolls. The poo panel grows to fit (no fixed 390 pt) and scrolls inside if needed, Undo and Done always reachable. The link row: "NHS" above the words, the row grows. The reading bar: its words take two lines; Stop stays 44 pt tall, on the right. Checked at the largest size on 42 mm and 49 mm, the phone and the open Duo, in both looks.
+- **G13** (both reviewers) VoiceOver's words and where it starts. **Step 4 design D20, Parent A: A.** Watch page 4 is one button (with the button trait kept: prior learning `swiftui-ignore-drops-button-trait`): "Last night, picked by AI. Longest sleep logged, 3 hours 10 minutes. 4 feeds logged. 3 nappies logged. Opens the card."; the shapes are silent. The card screen says "Picked by AI" once per part. The link: "NHS information: About baby poo. Opens the NHS's pages." The bar: "Reading aloud"; Stop, "Stop reading aloud"; "Read the answer again". When Get help now opens from Siri, the keyboard is put away (the form keeps its typing) and VoiceOver starts on "Get help now", then the call buttons.
+
+**Pass 6 after:** 9/10. Large text and VoiceOver are set for every new part; they still need checking on the devices (tasks below).
+
+### Pass 7: Decisions left open (step 4 design)
+
+| Decision | Settled by |
+|---|---|
+| The watch page's look and facts | D2 B, D8 A (G1) |
+| Its states | D9 A (G2) |
+| The Siri wait and reading | D10 A (G3), D12 A (G5) |
+| The link's sheet | D11 A (G4) |
+| The poo panel's link | D13 A (G6) |
+| Get help now from Siri | D5 A, D14 B (G7) |
+| Watch sizes, AI pill, card screen | D15 A, D16 B (G8, G9) |
+| The link's colours and place in editors | D17 A, D18 A (G10, G11) |
+| Large text, VoiceOver | D19 A, D20 A (G12, G13) |
+
+- **G14** (Claude reviewer) a correction, no question: step 4 D4 A's accepted scope says page 4 shows "the card's short line large"; the picked look (D2 B) and G1 replace that with the three facts. D4 A's place, its card screen and its rules stand.
+- **G15** (Claude reviewer) the order of work, no question: `DESIGN.md` gets the new parts (the watch's `fact` style and AI pill, page 4 and its states, the link row, the reading bar, Get help now from Siri) before the screens are built, not after (task AI30 below, ahead of AI25 to AI27).
+- The reading bar's sound waves are a still symbol, as drawn (no pulsing), by day and at night.
+- Both reviewers asked to reopen step 4 D10 B (the AI notice after the AI's lines). No new risk since Parent A's answer, so it stands, with its conditions to look at again (decision `02a5487c`).
+
+No design decision is left open. The mockups were drawn again with every answer (step 4 design D21 A): `round2-final.html`.
+
+### NOT in scope (step 4 design)
+- A full-screen Get help now that can't be swiped away (D14 B chose a sheet; its conditions to look at again are logged, `6ac49277`).
+- "The next part is from AI" spoken before the AI's lines (step 4 D10 B stands; `02a5487c`).
+- The "This week" card on the watch, and anything AI on the watch face (D4 A, F6).
+- NHS links on Home, the panel at the end of a feed, the medicine editor or the watch (D6 A).
+- Moving sound waves in the reading bar (still, as drawn).
+
+### What already exists (step 4 design)
+Reused: `DESIGN.md`'s watch rules (black background, label beside the clock, the largest-text scrolling exception), its NHS blue box (`NHSCardBox`, `bottle-tint` with the `bottle-mark` edge), the AI mark (on the watch as a pill in the button colour, G8), `PassagesListView`'s rows, Ask's bubbles and pinned text box, `GetHelpNowView` and its pinned call buttons, the Tonight screen's soft Back (for the card screen), the medicine chips. New: the watch's `fact` style, page 4 and its states, the card screen, the link row and its sheet, the reading bar with Stop and Read again.
+
+### TODOS.md (step 4 design)
+No item proposed: the two answers against the recommendation (D10 B, D14 B) carry their own conditions in the decision log.
+
+### Implementation Tasks (step 4 design)
+These add to the engineering tasks AI23 to AI29; AI30 comes first, then AI31 to AI34 go with AI26, AI27 and AI25, and AI35 with AI28.
+
+- [x] **AI30 (P1, human: ~2h / CC: ~20min)** — `DESIGN.md` — write step 4's parts before the screens: the watch's `fact` style and AI pill, page 4 and its states, the card screen, the link row and its sheet, the reading bar, Get help now from Siri; a Decisions Log row
+  - Surfaced by: G15; step 4 design D2 to D20
+  - Verify: read through against `round2-final.html`
+  - Done 25 Nov 2026.
+- [ ] **AI31 (P1, human: ~2d / CC: ~1.5h)** — Watch — page 4 as picked: G1's facts, G2's states, G8's sizes and AI pill, G9's card screen, G12's large text, G13's one VoiceOver button
+  - Files: `Watch/App/WatchPages.swift`, `Watch/App/WatchTheme.swift`, `Watch/App/WatchSamples.swift` (`-sampleWatch` for each state), `App/Model/WatchRelay.swift`, `WatchState.swift`
+  - Verify: the watch simulators at 42, 46 and 49 mm with `--mask=alpha`, by day and night, at the largest text size; the Ultra 4
+  - Done 25 Nov 2026 in the simulators (42 and 49 mm, day and night); page 4 seen on the Ultra 4 on 26 Nov 2026 (its "nothing logged" state); the card screen on a real watch is still to see.
+- [ ] **AI32 (P1, human: ~1.5d / CC: ~1h)** — Links — the row (G10), on the poo panel above Undo and Done with the quick close kept (G6), in the editors before Note and Delete with "About nappies" (G11), the sheet's three cases (G4), large text and VoiceOver (G12, G13)
+  - Files: `App/Home/CareTiles.swift`, `App/Home/CareEditor.swift`, `App/Home/EventEditor.swift`, `App/Insights/PassagesListView.swift`, `App/Insights/InsightCardViews.swift`
+  - Verify: screenshots in both looks, on the phone and the open Duo, at the largest size
+  - Done 25 Nov 2026 in the simulator; the open Duo is still to do.
+- [ ] **AI33 (P1, human: ~1.5d / CC: ~1h)** — Ask — the Siri wait and reading (G3), touches, Read again and VoiceOver (G5), large text and words (G12, G13)
+  - Files: `App/Insights/QuestionsView.swift`, `App/Insights/AskIntent.swift`
+  - Verify: `-siriQuestion` with sample answers; on the Duo by day and at night, with the volume at zero, and with VoiceOver on
+  - Done 25 Nov 2026 in the simulator; the Duo (day, night, volume at zero, VoiceOver) is still to do.
+- [x] **AI34 (P1, human: ~3h / CC: ~20min)** — Get help now from a Siri danger sign as a sheet over any form (`gstack-shortcut(dec-6ac49277)`), the keyboard put away, VoiceOver on its heading (G7, G13)
+  - Files: `App/Insights/GetHelpNowView.swift`, `App/Alerts/NotificationTaps.swift`
+  - Verify: a tap test with a form open and a danger sign in `-siriQuestion`
+  - Done 25 Nov 2026: `HelpPresenter` and `GetHelpNowSheet` in `SiriAsk.swift`; tap test `testASiriDangerSignCoversAnOpenForm`.
+- [ ] **AI35 (P1, human: ~1d / CC: ~1h)** — Checks — page 4's states, Ask's four states, the link sheet's three cases in the tap tests and the audit; VoiceOver and the largest text on the Duo and the Ultra 4
+  - Files: `UITests/QuestionsFlowTests.swift`, `UITests/NHSLinkFlowTests.swift`, `UITests/AccessibilityAuditTests.swift`
+  - Verify: `FeedingDevAudit`, then the full suite
+  - Simulator part done 25 Nov 2026: `QuestionsFlowTests` (`testASiriQuestionIsAskedAndRead`, `testASiriDangerSignCoversAnOpenForm`), `NHSLinkFlowTests` (3 tests), the audit's `testStep4` (no findings on the link sheet; the poo panel's are the same as without the link). The device checks are still to do.
+
+## Codex review of the step 4 build (26 Nov 2026)
+
+Codex (`gpt-6.2-sol`, high effort, read-only, about 228,000 tokens) read the uncommitted step 4 work (AI23 to AI35). 17 findings and 2 on the tests. Each was checked against the code before it was fixed. What was done:
+
+| # | Finding | Done |
+|---|---|---|
+| 1 | "She cannot be woken" (the NHS's own words) wasn't a danger sign, so it went to the AI | Fixed, and wider: a test now runs every bullet under a "Call 999" heading in the NHS passages through the phone's check (`NHSUrgentListTests`); it found "has not had a pee", "does not sound like their normal cry" and the mental health page's two. A parent's own danger words (`ParentDanger`, `InsightSafety.swift`) now open the parent's urgent help (step 3 D13 A's page) before any AI, typed or said to Siri (`QuestionRoute.parentHelp`). Words that come up in ordinary questions ("hurt her", "keep her safe") are left out on purpose. |
+| 2 | A Siri danger sign could be lost: before set-up, or with a screen on its way in or out | Fixed: the danger check comes before set-up; `HelpPresenter` keeps the request and tries every 0.3 s until the sheet is on screen; the sheet reads its heading when it appears. |
+| 3 | An ordinary reply could talk over "Get help now" | Fixed: the help sheet holds the voice (`ReadAloud.helpHolds`); a reply meanwhile waits as "Read again". |
+| 4 | App Attest's wait came after the open-app check, so a lock during it could still send | Fixed: App Attest (`prepare`) runs first, then the gate and the open-app check, then the call. A lock between the two tries says "wasn't answered", not "wasn't sent". |
+| 5 | An off or a pause saved on the other phone could be missed if it hadn't arrived yet | Fixed: before any call, the phone fetches from iCloud first (`HouseholdSync.freshParticipants`); if the fetch fails, nothing is sent. |
+| 6 | "This child appears well." passed the word check | The words are added ("appears well", "thriving", "this child" and the like). The wider remedy (no free sentences) would undo step 3 D2 B, so it stays under `gstack-shortcut(dec-0d90be60)`. |
+| 7 | A late answer from the phone could bring back a card it had taken back | Fixed: the phone numbers each card it means (`WatchKey.cardRevision`), and the watch never goes back to an older number; each check has its own number for its timer. |
+| 8 | `.requiresAuthentication` can be met by a paired device | Fixed: `.requiresLocalDeviceAuthentication`, tested. |
+| 9 | Two Siri replies could be read in the wrong order, or one after Ask was closed | Fixed: the oldest first, one at a time; nothing to a question asked before Ask last closed. |
+| 10 | A queued Siri question was lost if the system closed the app; a cold launch from Siri could miss opening Ask | Fixed: on leaving the app, waiting questions are kept as "Stopped when the phone locked" with Send again; the open request waits until the screens are up. |
+| 11 | A finished reading's late call could end a newer one | Fixed: only the reading going on can end. |
+| 12 | A reply could start during a feed alert or an alarm | Fixed: 15 seconds of quiet after an alert, and no start while an alarm rings. |
+| 13 | The watch's open card could outlive its day, or show after turning to facts only | Fixed: it shows only while current and made by the AI, and closes when the card changes. |
+| 14 | The watch missed "facts only" when the card couldn't be made | Fixed: the watch is sent the change when the card's outcome changes. |
+| 15 | An NHS passage could stay on screen past its 90 days | Fixed: the link's sheet and page look again each minute and say "No checked NHS pages on this right now." |
+| 16 | A tick from Parent B makes a passage show | Parent A's answer, 26 Nov 2026: **A, either parent's tick counts** (as built since step 1). Both parents can read the NHS website, and the link's foot names who ticked. This changes D10's "Parent A checks the passages" to "a parent checks"; no code change. |
+| 17 | After opening the NHS link the poo panel never closed by itself | Fixed: it waits only while the link's sheet is open, and closes once it shuts if both are chosen. |
+| Tests | The audit could audit the wrong screen; the sound test compared with its own value | Fixed: the audit checks each screen first; the sound tests check `.ambient` and go through Stop. Left: the lock test still calls `askAI` directly, as the real path needs iCloud; `isOpen` is now a required argument, so no caller can leave it out. |
+
+## Approved Mockups
+
+| Screen/Section | Mockup Path | Direction | Notes |
+|----------------|-------------|-----------|-------|
+| All four parts, round 1 (the picks) | ~/.gstack/projects/<owner>-Feeding-Tracker/designs/ai-step4-20261125/round1.html | Watch B, link B, reading A, Get help now A | HTML side by side with a Day/3am switch (Parent A's way of choosing), not images; `approved.json` beside it |
+| All four parts, final | ~/.gstack/projects/<owner>-Feeding-Tracker/designs/ai-step4-20261125/round2-final.html | every answer D8 to D20 drawn once | the reference for AI30 to AI35 |
+
+## Design Review Completion Summary
+
+```
+  +====================================================================+
+  |         DESIGN PLAN REVIEW — COMPLETION SUMMARY                    |
+  +====================================================================+
+  | System Audit         | DESIGN.md present; UI scope: watch page 4,  |
+  |                      | NHS links, Ask's read-aloud, Get help now   |
+  | Step 0               | 4/10; focus: all 7 areas (D1 A)             |
+  | Pass 1  (Info Arch)  | 5/10 → 8/10 after fixes                     |
+  | Pass 2  (States)     | 3/10 → 9/10 after fixes                     |
+  | Pass 3  (Journey)    | 5/10 → 7/10 after fixes                     |
+  | Pass 4  (AI Slop)    | 8/10 → 9/10 after fixes                     |
+  | Pass 5  (Design Sys) | 6/10 → 9/10 after fixes                     |
+  | Pass 6  (Responsive) | 4/10 → 9/10 after fixes                     |
+  | Pass 7  (Decisions)  | 15 resolved, 0 deferred                     |
+  +--------------------------------------------------------------------+
+  | NOT in scope         | written (5 items)                           |
+  | What already exists  | written                                     |
+  | TODOS.md updates     | 0 items proposed                            |
+  | Approved Mockups     | 2 pages drawn, 4 picks approved             |
+  | Decisions made       | 17 added to plan (4 picks, 13 issues)       |
+  | Decisions deferred   | 0                                           |
+  | Overall design score | 3/10 → 7/10                                 |
+  +====================================================================+
+```
+
+Pass 3 stays at 7 because two answers are chosen gaps, both logged with conditions to look at again: D10 B (the AI notice comes after the AI's lines when read aloud) and D14 B (Get help now from Siri is a sheet a swipe can close). Every other pass is 8 or more.
+
+### Unresolved Decisions (step 4 design)
+None: every finding G1 to G15 has an answer or needed none.
+
 ## GSTACK REVIEW REPORT
 
 | Review | Trigger | Why | Runs | Status | Findings |
 |--------|---------|-----|------|--------|----------|
 | CEO Review | `/plan-ceo-review` | Scope & strategy | 2 | ISSUES OPEN (20 Nov, "who does what"; none for AI insights) | 5 proposals, 4 accepted, 1 deferred |
-| Outside Review | Codex `gpt-6.2-sol` via `/plan-eng-review` (host claude) | Independent 2nd opinion | 10 | completed (plan-review, 23 Nov, step 3) | 9 findings (7 High, 2 Medium) |
-| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 6 | ISSUES OPEN (step 3; issues mapped to tasks AI16 to AI22) | 36 issues, 1 critical gap (accepted, D11 B) |
-| Design Review | `/plan-design-review` | UI/UX gaps | 2 | ISSUES OPEN (20 Nov, "who does what"; none for AI insights) | score: 2/10 → 7/10, 30 decisions |
+| Outside Review | Codex `gpt-6.2-sol` via `/plan-eng-review` and `/plan-design-review` (host claude) | Independent 2nd opinion | 11 plan, plus design | completed (plan-review, 25 Nov, step 4; design phase, 25 Nov, step 4) | plan: 8 findings (1 Critical, 4 High, 3 Medium); design: 10 findings (1 Critical, 6 High, 3 Medium) |
+| Eng Review | `/plan-eng-review` | Architecture & tests (required) | 7 | ISSUES OPEN (step 4; issues mapped to tasks AI23 to AI29) | 45 issues, 0 critical gaps |
+| Design Review | `/plan-design-review` | UI/UX gaps | 3 | ISSUES OPEN (25 Nov, AI insights step 4; Pass 3 at 7/10 by two chosen gaps) | score: 3/10 → 7/10, 17 decisions |
 | DX Review | `/plan-devex-review` | Developer experience gaps | 0 | — | — |
 
-- **OUTSIDE COVERAGE:** Codex, plan-review phase, completed on 23 Nov 2026 for step 3 (`gpt-6.2-sol`, high effort, read-only; about 1,012,000 tokens in, 900,000 cached, 5,800 out), 9 findings; all resolved (D10 B, D11 B, D12 A, and 6 accepted under approved contracts, each checked in the code). Step 2's run (22 Nov 2026, 8 findings) is recorded in step 2's section.
-- **CROSS-MODEL:** Codex and this review agreed that the danger-sign route and the AI's own sentences carry the risk; Codex alone found the yes's words (X1), the danger sign split over two questions (X2), the parent's crisis words (X3), "When can I give" (X4), the retry that skips the gate (X5), the unreadable answer (X6), the answer to the wrong question (X7), deleted facts in kept answers (X8) and the lost wrong-report (X9).
-- **VERDICT:** ENG REVIEW of step 3 (Ask) done, issues mapped to tasks AI16 to AI22; no review is CLEAR for AI insights. Ask's screens follow the picked mockup (look A); a design review of the AI screens is still to come. Eng review required (not CLEAR until a run with no open issues).
+- **OUTSIDE COVERAGE:** Codex, plan-review phase, completed on 25 Nov 2026 for step 4 (`gpt-6.2-sol`, CLI 0.172.0, high effort, read-only; about 1,231,000 tokens in, 1,136,000 cached, 5,550 out), 8 findings, all resolved. Codex, design phase, 25 Nov 2026: a first run gave findings but missed the required closing line (counted as unavailable); the second completed (about 1,125,000 in, 1,015,000 cached, 6,499 out) with 10 findings, all resolved in G1 to G13. An independent Claude reviewer (in-host) also completed the design phase with 10 findings.
+- **CROSS-MODEL:** in the design phase Codex and the Claude reviewer agreed on the watch facts' words and shapes, page 4's states, the silent Siri wait, the poo panel's link, the NHS label's contrast, large text and VoiceOver, and Get help now's focus; Codex alone pressed the touch rules for Stop, the Claude reviewer alone the editors' Delete, "Checked by you" and the watch's invisible AI pill. Both asked to reopen D10 B; it stands (no new risk).
+- **VERDICT:** ENG REVIEW and DESIGN REVIEW of step 4 done; their tasks are AI23 to AI35 (AI30 first). No review is CLEAR for AI insights. Eng review required (not CLEAR until a run with no open issues).
 
 **UNRESOLVED DECISIONS:**
 - + 3 unresolved from prior reviews (the "who does what" CEO review, 20 Nov 2026)
+
+

@@ -279,3 +279,63 @@ struct AnswerCheckPassageTests {
             [Rejection(part: "passage", reason: .unknownPassage("urgent-help"))], needsHelpNow: false))
     }
 }
+
+@Suite("Danger signs: the NHS's own urgent lists (Codex step 4 review, 1)")
+struct NHSUrgentListTests {
+    /// The bullets under each "Call 999" heading in the NHS passages, as a parent might say them.
+    static var urgentBullets: [String] {
+        var bullets: [String] = []
+        for passage in NHSPassages.all {
+            var inUrgent = false
+            for line in passage.words.split(separator: "\n").map({ $0.trimmingCharacters(in: .whitespaces) }) {
+                if line.hasPrefix("#") { inUrgent = line.contains("999") }
+                else if inUrgent, line.hasPrefix("- ") { bullets.append(String(line.dropFirst(2))) }
+            }
+        }
+        return bullets
+    }
+
+    /// Every sign the NHS says needs 999 is caught on the phone, before any AI: none of them
+    /// can reach Claude and wait on its answer. A parent's own (the mental health page) opens the
+    /// parent's help.
+    @Test func everyNHS999SignIsCaughtBeforeTheAI() {
+        let bullets = Self.urgentBullets
+        #expect(bullets.count >= 10)
+        for bullet in bullets {
+            #expect(!DangerSigns.check(bullet).isEmpty || ParentDanger.check(bullet), "not caught: \(bullet)")
+        }
+    }
+
+    @Test func aParentsOwnDangerOpensTheirHelpBeforeTheAI() {
+        for said in ["I can't keep myself safe", "I want to end it all", "I'm scared I'll hurt the baby",
+                     "I took an overdose"] {
+            #expect(ParentDanger.check(said), "not caught: \(said)")
+        }
+        // Ordinary questions don't.
+        for said in ["Did I hurt her cutting her nails?", "How do I keep her safe in the car seat?",
+                     "How many feeds last night?"] {
+            #expect(!ParentDanger.check(said), "caught: \(said)")
+        }
+    }
+
+    @Test func theWaysAParentSaysItAreCaught() {
+        for said in ["She cannot be woken.", "He can't be woken", "she won't be woken up", "I'm unable to wake her",
+                     "She hasn't had a pee all day", "he has not had a wee since this morning", "She fainted"] {
+            #expect(!DangerSigns.check(said).isEmpty, "not caught: \(said)")
+        }
+    }
+}
+
+@Suite("Answer check: no word on how this baby is (Codex step 4 review, 6)")
+struct NoVerdictWordsTests {
+    @Test func aCalmVerdictIsTurnedDown() {
+        for sentence in ["This child appears well.", "Your child looks well.", "The baby seems well.",
+                         "This baby is thriving.", "She is well."] {
+            #expect(AnswerCheck.sentenceProblem(sentence, names: [], medicines: []) != nil, "let through: \(sentence)")
+        }
+    }
+
+    @Test func generalInformationStillPasses() {
+        #expect(AnswerCheck.sentenceProblem("Many babies feed more often in the evening.", names: [], medicines: []) == nil)
+    }
+}

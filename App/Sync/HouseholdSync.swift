@@ -144,6 +144,16 @@ final class HouseholdSync {
         return members
     }
 
+    /// The household's members after a fetch (AI insights; Codex step 4 review, 5): an off, a pause
+    /// or a yes taken back on the other phone is on this one before anything is sent. Nil when
+    /// the fetch or the members can't be read: then nothing is sent.
+    func freshParticipants() async -> Set<MemberID>? {
+        let started = Date()
+        await fetchNow()
+        guard let fetched = lastFetchAt, fetched >= started else { return nil }
+        return await householdParticipants()
+    }
+
     // MARK: The household
 
     private var ownZoneID: CKRecordZone.ID {

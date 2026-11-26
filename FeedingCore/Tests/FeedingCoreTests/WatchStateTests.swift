@@ -785,3 +785,41 @@ struct WatchSleepNappyTests {
         #expect(WatchState(madeAt: now, setUp: false).sleepTap() == nil)
     }
 }
+
+// AI insights step 4: the watch's "Last night" card (D4 A, D11 A, F11, Y6).
+@Suite("The watch's Last night card")
+struct WatchCardTests {
+    let made = Date(timeIntervalSince1970: 1_795_600_000)
+
+    var card: WatchCard {
+        WatchCard(mode: .card,
+                  facts: [WatchCard.Fact(kind: .sleep, number: "3h 10m", words: "longest sleep logged",
+                                         spoken: "Longest sleep logged, 3 hours 10 minutes"),
+                          WatchCard.Fact(kind: .feeds, number: "4", words: "feeds logged", spoken: "4 feeds logged"),
+                          WatchCard.Fact(kind: .nappies, number: "3", words: "nappies logged", spoken: "3 nappies logged")],
+                  sections: [WatchCard.Section(title: "Last night", lines: ["4 feeds were logged."], patterns: [])],
+                  medicines: ["Vitamin D · 09:05"], madeAt: made, ends: made.addingTimeInterval(12 * 3600))
+    }
+
+    @Test func aCardRoundTrips() throws {
+        let data = try WatchCoding.encode(card)
+        #expect(WatchCoding.decode(WatchCard.self, from: data) == card)
+    }
+
+    /// F11: the watch drops yesterday's card even when the phone can't tell it to.
+    @Test func aCardPastItsDayIsNotShown() {
+        #expect(card.isCurrent(at: made.addingTimeInterval(60)))
+        #expect(!card.isCurrent(at: made.addingTimeInterval(12 * 3600)))
+    }
+
+    /// Y6: the card has its own key, never the state's, so the watch face never gets it.
+    @Test func theCardHasItsOwnKey() {
+        #expect(WatchKey.card != WatchKey.state && WatchKey.cardCheck != WatchKey.state)
+    }
+
+    @Test func voiceOverReadsThePageAsOneSentence() {
+        #expect(card.spokenPage == "Last night, picked by AI. Longest sleep logged, 3 hours 10 minutes. 4 feeds logged. 3 nappies logged. Opens the card.")
+        let paused = WatchCard(mode: .factsOnly, why: "Paused. iPhone says why.", facts: [], ends: made)
+        #expect(paused.spokenPage == "Last night, facts only. Nothing logged last night. Paused. iPhone says why.")
+    }
+}

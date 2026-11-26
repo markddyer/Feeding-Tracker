@@ -18,7 +18,11 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @u
         #endif
         let identifier = notification.request.identifier
         // Feed alerts and asks answer at once, as before; only a new first's notice looks at the hour.
-        guard NotificationTaps.firstID(identifier) != nil else { return [.banner, .list, .sound] }
+        // An alert stops a reply being read aloud, so it is heard (AI insights step 4, Y4).
+        guard NotificationTaps.firstID(identifier) != nil else {
+            await MainActor.run { ReadAloud.shared.alertCame() }
+            return [.banner, .list, .sound]
+        }
         let isNight = await MainActor.run {
             let settings = AppModel.shared.store.data.householdSettings
             if case .night = settings.dayHours.period(at: Date(), in: settings.timeZone) { return true }
@@ -114,6 +118,39 @@ final class NotificationTaps {
     func takePendingExport() -> Bool {
         defer { pendingExport = false }
         return pendingExport
+    }
+
+    /// Goes up by one for each Siri question (AI insights step 4): the app goes to Home once no
+    /// form is open (F13), then `askOpenRequests` opens Ask.
+    private(set) var askRequests = 0
+    /// Goes up by one when Home may open Ask; `takeAskOpen` says whether one waits.
+    private(set) var askOpenRequests = 0
+    @ObservationIgnored private var askOpenPending = false
+
+    @ObservationIgnored private var askPending = false
+
+    func showAsk() {
+        tappedSinceLeaving = true
+        askPending = true
+        askRequests += 1
+    }
+
+    /// True once per Siri question: also when the request came before the screens were up, as on a
+    /// cold launch from Siri (Codex step 4 review, 10).
+    func takeAskRequest() -> Bool {
+        defer { askPending = false }
+        return askPending
+    }
+
+    /// Home is in front and no form is open: Ask may open.
+    func openAsk() {
+        askOpenPending = true
+        askOpenRequests += 1
+    }
+
+    func takeAskOpen() -> Bool {
+        defer { askOpenPending = false }
+        return askOpenPending
     }
 
     func showFirst(_ id: String) {

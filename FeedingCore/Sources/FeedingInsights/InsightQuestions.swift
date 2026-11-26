@@ -12,6 +12,13 @@ import FeedingCore
 //                          └─▶ .ask(job): the last 7 days and nights, today so far, the latest weights,
 //                              the question before it (D4 B) and the question ──▶ the AI ──▶ accept ──▶ CheckedAnswer
 //
+// Step 4, from Siri (`App/Insights/SiriAsk.swift`): the phone is unlocked and the app opens first.
+//
+//  spoken words ──▶ danger signs ──▶ Get help now over any form, "Get help now…" read (no AI)
+//               └─▶ Ask opens ──▶ the same route as typed words, one at a time ──▶ the reply shows
+//                   ──▶ `spoken(_:checked:lastGiven:helpTitle:)` reads it once (never the NHS words)
+//  Before each call the app must still be open: a phone locked first sends nothing (`.stopped`).
+//
 // Questions are "questions" in code: "ask" already means the night rota's ask (Q4).
 
 // MARK: - The AI's form and answer
@@ -82,6 +89,9 @@ public struct QuestionJob: Hashable, Sendable {
 public enum QuestionRoute: Hashable, Sendable {
     /// A danger sign: the Get help now card, in place of an answer, with no AI (A2).
     case helpNow([DangerSign])
+    /// A parent's own danger in their words: the parent's urgent help, with no AI (Codex step 4
+    /// review, 1; the page of step 3 D13 A).
+    case parentHelp
     /// "When did she last have Vitamin D?": answered from the log, with no AI (D6, X4). Nil: none logged.
     case lastGiven(medicine: String, at: Date?)
     /// Any other medicine question: D6's fixed reply, with no AI.
@@ -100,6 +110,9 @@ public struct KeptQuestion: Hashable, Sendable, Codable, Identifiable {
         /// The AI pressed "needs help now" on a question about how a parent feels: the NHS's urgent
         /// mental health page, not the baby's urgent list (step 3 D13 A, after the model tests).
         case parentHelp
+        /// The phone was locked, or the app left, before a call to the AI: nothing was sent
+        /// (step 4 Y2: the AI never runs with the app closed, D13).
+        case stopped
     }
 
     public var id: String
@@ -112,9 +125,15 @@ public struct KeptQuestion: Hashable, Sendable, Codable, Identifiable {
     public var offered: [String]
     /// It started with the line to people (step 3 D6 A).
     public var peopleLine: Bool
+    /// Asked through Siri, so its reply is read aloud (step 4 D3 A). Nil (an older entry, or typed)
+    /// means typed: a typed question is never read.
+    public var viaSiri: Bool?
+    /// When its reply was first read aloud, or the reading was given up (a stop, leaving Ask): it
+    /// is never read again by itself (F17; "Read again" is a tap, design D12 A).
+    public var readAt: Date?
 
     public init(id: String = UUID().uuidString, askedAt: Date, text: String, kind: Kind, answer: QuestionAnswer? = nil,
-                offered: [String] = [], peopleLine: Bool = false) {
+                offered: [String] = [], peopleLine: Bool = false, viaSiri: Bool? = nil, readAt: Date? = nil) {
         self.id = id
         self.askedAt = askedAt
         self.text = text
@@ -122,7 +141,12 @@ public struct KeptQuestion: Hashable, Sendable, Codable, Identifiable {
         self.answer = answer
         self.offered = offered
         self.peopleLine = peopleLine
+        self.viaSiri = viaSiri
+        self.readAt = readAt
     }
+
+    /// A Siri question whose reply hasn't been read yet.
+    public var waitsToBeRead: Bool { viaSiri == true && readAt == nil }
 
     /// Sent to the AI: only these may go along with the next question (D4 B).
     public var wasSent: Bool { kind == .asked }
@@ -150,6 +174,68 @@ public enum InsightQuestions {
     public static let footer = "AI · not medical advice. If you're worried, ask your health visitor or call NHS 111."
     /// The NHS pages the people line brings (A10, D6 A), with its urgent pair.
     public static let peoplePassages = ["postnatal-depression-help", "mental-health-urgent"]
+    /// Shown when the phone was locked before a call (step 4 Y2).
+    public static let stoppedReply = "Stopped when the phone locked. Your question wasn't sent."
+
+    // MARK: Siri and reading aloud (AI insights step 4)
+
+    /// What Siri says once it has the question (step 4 design D10 A).
+    public static let siriAsking = "Asking Little Log. The answer will be read out."
+    /// The same question again while the first still waits (design D10 A).
+    public static let siriAlreadyAsking = "Already asking."
+    /// Before the app is set up (step 4 D8 A).
+    public static let siriNotSetUp = "Set up Little Log first."
+    /// Read after the AI's sentences (step 4 D3 A, D10 B).
+    public static let spokenNotice = "This is AI, not medical advice."
+    public static let spokenCalls = "Call 999 and Call 111 are on the screen."
+
+    /// What Little Log reads aloud for the reply to a Siri question (step 4 D3 A, D8 A, D10 B): only
+    /// what the screen shows, short, in the order the parents chose: the facts from the log (as
+    /// checked against the log now), the AI's sentences, the AI notice, then each NHS passage's
+    /// name, whose words stay on the screen. Never an NHS passage's words.
+    /// - Parameters:
+    ///   - checked: an answer as the screen shows it now (`accept` with `leaveOut`), for `.asked`.
+    ///   - lastGiven: the screen's line for `.lastGiven` ("Vitamin D: last logged at 09:05 today.").
+    ///   - helpTitle: the urgent page's heading for `.parentHelp`.
+    public static func spoken(_ kind: KeptQuestion.Kind, checked: CheckedAnswer? = nil, lastGiven: String? = nil,
+                              helpTitle: String? = nil) -> String {
+        switch kind {
+        case .helpNow:
+            return "Get help now. " + spokenCalls
+        case .parentHelp:
+            return "\(helpTitle ?? "Get help now"). " + spokenCalls
+        case .lastGiven:
+            return lastGiven ?? firstSentence(medicineReply)
+        case .medicineReply:
+            return firstSentence(medicineReply)
+        case .closed:
+            return "AI insights is off, so Little Log can't answer that."
+        case .couldNotAsk:
+            return "Couldn't reach the AI. Call 111 is on the screen."
+        case .stopped:
+            return stoppedReply
+        case .asked:
+            // gstack-shortcut(dec-02a5487c): the AI notice comes after the AI's sentences, so a parent who
+            // stops early hasn't heard it; upgrade (say "The next part is from AI" first, the people line
+            // first) when a parent takes an AI line for the app's own, or before another family uses the app.
+            var parts = checked?.lines ?? []
+            parts += checked?.sentences ?? []
+            parts.append(spokenNotice)
+            let titles = (checked?.passages ?? []).map(\.passage.title)
+            if titles.count == 1 {
+                parts.append("The NHS page \"\(titles[0])\" is on the screen.")
+            } else if titles.count > 1 {
+                parts.append("The NHS pages \"" + titles.joined(separator: "\" and \"") + "\" are on the screen.")
+            }
+            if checked?.cannotAnswer ?? true { parts.append(cannotAnswerLine) }
+            return parts.joined(separator: " ")
+        }
+    }
+
+    private static func firstSentence(_ text: String) -> String {
+        guard let end = text.firstIndex(of: ".") else { return text }
+        return String(text[...end])
+    }
 
     // MARK: Route
 
@@ -158,10 +244,10 @@ public enum InsightQuestions {
     public static func route(_ text: String, data: HouseholdData, babyID: String, me: MemberID?,
                              participants: Set<MemberID>?, kept: [KeptQuestion], now: Date) -> QuestionRoute {
         let earlier = earlierQuestion(kept, now: now)
-        // The checks read the words alone and with the question before them, which is what is sent (X2).
         let sent = [earlier?.text, text].compactMap { $0 }.joined(separator: " ")
-        let signs = Array(Set(DangerSigns.check(text) + DangerSigns.check(sent))).sorted { $0.rawValue < $1.rawValue }
+        let signs = dangerSigns(text, kept: kept, now: now)
         if !signs.isEmpty { return .helpNow(signs) }
+        if parentInDanger(text, kept: kept, now: now) { return .parentHelp }
         let medicines = data.medicines
         if let medicine = MedicineQuestions.check(text, medicines: medicines) ?? MedicineQuestions.check(sent, medicines: medicines) {
             if medicine.asksWhenLastGiven, let name = medicine.medicine {
@@ -174,6 +260,34 @@ public enum InsightQuestions {
         if let closed = gate.show ?? gate.make { return .closed(closed) }
         let (request, offered) = self.request(text, earlier: earlier?.text, data: data, babyID: babyID, now: now)
         return .ask(QuestionJob(request: request, form: form(for: request), offered: offered))
+    }
+
+    /// The danger signs in a question, read alone and with the question before it, which is what is
+    /// sent (X2). The first check on every question, typed or spoken; a Siri question runs it the
+    /// moment it arrives, before anything can make it wait (step 4 Y1).
+    public static func dangerSigns(_ text: String, kept: [KeptQuestion], now: Date) -> [DangerSign] {
+        let earlier = earlierQuestion(kept, now: now)
+        let sent = [earlier?.text, text].compactMap { $0 }.joined(separator: " ")
+        return Array(Set(DangerSigns.check(text) + DangerSigns.check(sent))).sorted { $0.rawValue < $1.rawValue }
+    }
+
+    /// A parent's own danger (`ParentDanger`), read alone and with the question before it, like the
+    /// baby's signs; checked just after them, on every question, typed or spoken.
+    public static func parentInDanger(_ text: String, kept: [KeptQuestion], now: Date) -> Bool {
+        let earlier = earlierQuestion(kept, now: now)
+        let sent = [earlier?.text, text].compactMap { $0 }.joined(separator: " ")
+        return ParentDanger.check(text) || ParentDanger.check(sent)
+    }
+
+    /// The same question again (step 4 design D10 A): the same words, ignoring case, punctuation and
+    /// spacing. A Siri question repeated while the first still waits is not sent twice.
+    public static func isSameQuestion(_ first: String, _ second: String) -> Bool {
+        func plain(_ text: String) -> String {
+            let kept = text.lowercased().unicodeScalars.map { CharacterSet.alphanumerics.contains($0) ? Character($0) : " " }
+            return String(kept).split(separator: " ").joined(separator: " ")
+        }
+        let a = plain(first)
+        return !a.isEmpty && a == plain(second)
     }
 
     /// The question before it in the open chat (D4 B): only the last one, only if it was itself

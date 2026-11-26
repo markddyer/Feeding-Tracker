@@ -445,7 +445,8 @@ extension ModelTests {
                                                now: { household.now },
                                                gate: { InsightCards.gate(household.data, me: household.parentA,
                                                                          participants: [household.parentA, household.parentB],
-                                                                         now: household.now).make })
+                                                                         now: household.now).make },
+                                               isOpen: { true })
         switch result {
         case .helpNow(let forParent):
             return outcome(question.flagAllowed ? "passed" : "flagged help",

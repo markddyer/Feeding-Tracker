@@ -4,6 +4,7 @@ import FeedingInsights
 import Foundation
 import FoundationModels
 import Observation
+import UIKit
 
 // AI insights, step 2 (`docs/planning/12-ai-insights-gauntlet.md`, task AI8): the one place the
 // app calls Claude. Every rule (when a card is due, the two-yes gate, what is sent, the form,
@@ -109,7 +110,14 @@ final class InsightEngine {
     /// True while this phone gets ready after a yes (S8).
     private(set) var preparing = false
     /// Why the last look at each kind made no card, with its period; cleared when one is made.
-    private(set) var outcomes: [CardKind: CardOutcome] = [:]
+    private(set) var outcomes: [CardKind: CardOutcome] = [:] {
+        // The watch's "Last night" page follows a card that turned to facts only, which changes no
+        // household data (Codex step 4 review, 14).
+        didSet {
+            guard outcomes != oldValue else { return }
+            AppModel.shared.watch.update(AppModel.shared)
+        }
+    }
 
     @ObservationIgnored var answerer: (any CardAnswerer)? = ClaudeAnswerer.fromInfo(Bundle.main.infoDictionary)
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -174,7 +182,7 @@ final class InsightEngine {
         defer { making.remove(kind) }
         // Signed out, no household yet or no signal: nothing can be sent, so the card shows the
         // facts only and Settings says why (S12).
-        guard let participants = await model.sync.householdParticipants() else {
+        guard let participants = await model.sync.freshParticipants() else {
             fail(.noSignal, kind, period)
             return
         }
@@ -200,9 +208,12 @@ final class InsightEngine {
             fail(.noKey, kind, period)
             return
         }
+        // Y2: a phone locked during the iCloud read or between the tries sends nothing; the card
+        // waits for the next time Home is in front ("later").
         let result = await Self.make(job, data: { model.store.data }, babyID: babyID, answerer: answerer,
-                                     gate: { InsightCards.gate(model.store.data, me: model.me, participants: participants,
-                                                               now: Date()).make },
+                                     gate: { Self.appIsOpen ? InsightCards.gate(model.store.data, me: model.me,
+                                                                                 participants: participants, now: Date()).make
+                                                            : .later },
                                      onCall: { self.recordCall(kind, job.request.period) })
         switch result {
         case .closed(let closed):
@@ -237,6 +248,13 @@ final class InsightEngine {
             return .failed(.unavailable)
         }
         let prompt = InsightCards.prompt(job.request, timeZone: data().householdSettings.timeZone)
+        // App Attest first (4 to 8 seconds on a first run), so the gate's last look is just before
+        // the words go (Codex step 4 review, 4).
+        do {
+            try await answerer.prepare()
+        } catch {
+            return .failed(failure(error))
+        }
         var note = ""
         for attempt in 0..<2 {
             if let closed = gate() { return .closed(closed) }
@@ -319,25 +337,34 @@ final class InsightEngine {
     /// A typed question, from Ask: the route first (danger signs, medicines, the gate), then the AI.
     /// What it got is kept on this phone (`QuestionLog`), never synced. Log lines name what
     /// happened, never words (Q12).
-    func ask(_ text: String, model: AppModel = .shared, log: QuestionLog = .shared) async {
+    func ask(_ text: String, fromSiri: Bool = false, model: AppModel = .shared, log: QuestionLog = .shared,
+             isOpen: @escaping () -> Bool = { InsightEngine.appIsOpen }) async {
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // A Siri question never arrives here while another is with the AI or before set-up:
+        // `SiriQuestions` holds it its turn, and answers "Set up Little Log first" (F9).
         guard !typed.isEmpty, !askingQuestion, let babyID = model.baby?.name else { return }
         askingQuestion = true
         defer { askingQuestion = false }
         let now = Date()
         log.removeExpired(now: now)
+        let viaSiri: Bool? = fromSiri ? true : nil
+        func keep(_ kind: KeptQuestion.Kind, answer: QuestionAnswer? = nil, offered: [String] = [], people: Bool = false) {
+            log.add(KeptQuestion(askedAt: now, text: typed, kind: kind, answer: answer, offered: offered,
+                                 peopleLine: people, viaSiri: viaSiri))
+        }
         func route(_ participants: Set<MemberID>?) -> QuestionRoute {
             InsightQuestions.route(typed, data: model.store.data, babyID: babyID, me: model.me, participants: participants,
                                    kept: log.questions, now: now)
         }
         var participants: Set<MemberID>?
         var routed = route(nil)
-        // The household's members are read from iCloud only when the AI could be asked (O2).
+        // The household's members are read from iCloud only when the AI could be asked (O2), after
+        // a fetch, so an off, a pause or a yes taken back on the other phone is here first.
         if case .closed(.notChecked) = routed {
-            participants = await model.sync.householdParticipants()
+            participants = await model.sync.freshParticipants()
             guard participants != nil else {
                 SyncLog.add("ask: no signal")
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: .couldNotAsk))
+                keep(.couldNotAsk)
                 fail(.noSignal)
                 return
             }
@@ -346,41 +373,51 @@ final class InsightEngine {
         switch routed {
         case .helpNow:
             SyncLog.add("ask: danger sign, Get help now")
-            log.add(KeptQuestion(askedAt: now, text: typed, kind: .helpNow))
+            keep(.helpNow)
+        case .parentHelp:
+            SyncLog.add("ask: a parent's danger words, their urgent help")
+            keep(.parentHelp)
         case .lastGiven:
-            log.add(KeptQuestion(askedAt: now, text: typed, kind: .lastGiven))
+            keep(.lastGiven)
         case .medicineReply:
-            log.add(KeptQuestion(askedAt: now, text: typed, kind: .medicineReply))
+            keep(.medicineReply)
         case .closed:
-            log.add(KeptQuestion(askedAt: now, text: typed, kind: .closed))
+            keep(.closed)
         case .ask(let job):
             guard let answerer else {
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: .couldNotAsk))
+                keep(.couldNotAsk)
                 fail(.noKey)
                 return
             }
             SyncLog.add("ask: sent")
             let result = await Self.askAI(job, data: { model.store.data }, babyID: babyID, answerer: answerer,
                                           gate: { InsightCards.gate(model.store.data, me: model.me, participants: participants,
-                                                                    now: Date()).make })
+                                                                    now: Date()).make },
+                                          isOpen: isOpen)
             switch result {
             case .answered(let answer):
                 SyncLog.add("ask: answered")
                 let people = InsightQuestions.needsPeopleLine(answer.topic, kept: log.questions, now: now)
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: .asked, answer: answer, offered: job.offered,
-                                     peopleLine: people))
+                keep(.asked, answer: answer, offered: job.offered, people: people)
             case .helpNow(let forParent):
                 SyncLog.add("ask: the AI's flag, Get help now")
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: forParent ? .parentHelp : .helpNow))
+                keep(forParent ? .parentHelp : .helpNow)
             case .closed:
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: .closed))
+                keep(.closed)
+            case .stopped:
+                SyncLog.add("ask: stopped, the app wasn't open")
+                keep(.stopped)
             case .failed(let failure):
                 SyncLog.add("ask: failed, \(failure.rawValue)")
-                log.add(KeptQuestion(askedAt: now, text: typed, kind: .couldNotAsk))
+                keep(.couldNotAsk)
                 if failure != .turnedDown { fail(failure) }
             }
         }
     }
+
+    /// The app is open and in front (step 4 Y2): asked before every call to the AI, so it never
+    /// runs with the app closed or the phone locked (D13).
+    static var appIsOpen: Bool { UIApplication.shared.applicationState == .active }
 
     enum QuestionResult: Hashable, Sendable {
         case answered(QuestionAnswer)
@@ -388,6 +425,8 @@ final class InsightEngine {
         /// question about how a parent feels, the parent's urgent help shows (step 3 D13 A).
         case helpNow(forParent: Bool)
         case closed(CardClosed)
+        /// The app wasn't open before a call: nothing was sent (step 4 Y2).
+        case stopped
         case failed(InsightFailure)
     }
 
@@ -397,7 +436,8 @@ final class InsightEngine {
     /// still brings the card (X6). On the last try a part that fails is left out on its own; the
     /// answer is checked again each time it is shown (X8).
     static func askAI(_ job: QuestionJob, data: () -> HouseholdData, babyID: String, answerer: any CardAnswerer,
-                      now: () -> Date = Date.init, gate: () -> CardClosed?) async -> QuestionResult {
+                      now: () -> Date = Date.init, gate: () -> CardClosed?,
+                      isOpen: () -> Bool) async -> QuestionResult {
         let schema: GenerationSchema
         do {
             schema = try self.schema(job.form)
@@ -405,9 +445,18 @@ final class InsightEngine {
             return .failed(.unavailable)
         }
         let prompt = InsightQuestions.prompt(job.request, timeZone: data().householdSettings.timeZone)
+        // App Attest first, so the open-app check is just before the words go (Codex step 4 review, 4).
+        do {
+            try await answerer.prepare()
+        } catch {
+            return .failed(failure(error))
+        }
         var note = ""
         for attempt in 0..<2 {
             if let closed = gate() { return .closed(closed) }
+            // Locked before the first call: nothing was sent. Before the second: the first was
+            // sent but not answered, so it says "wasn't answered", not "wasn't sent".
+            guard isOpen() else { return attempt == 0 ? .stopped : .failed(.turnedDown) }
             let text: String
             do {
                 text = try await answerer.answer(prompt + note, schema: schema)

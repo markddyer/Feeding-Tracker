@@ -144,4 +144,35 @@ final class QuestionsFlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH \"You've asked about this a few times\""))
             .firstMatch.waitForExistence(timeout: 8))
     }
+
+    // MARK: AI insights step 4: Siri (`-siriQuestion` hands the words in as the Siri action does)
+
+    /// D3 A, design D10 A, D12 A: Ask opens by itself, the question says "Asked with Siri", the reply
+    /// is read aloud with Stop, and after Stop, "Read again". The reply here is the log's own (a
+    /// medicine's last time), so no AI runs.
+    func testASiriQuestionIsAskedAndRead() {
+        let app = launch(["-sampleQuestions", "none", "-siriQuestion", "When was the last Vitamin D?"])
+        XCTAssertTrue(app.staticTexts["Asked with Siri"].waitForExistence(timeout: 10), "Ask opened with the Siri question")
+        // A reply with one part takes the bubble's name, so look for its words.
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Vitamin D: last logged'"))
+            .firstMatch.waitForExistence(timeout: 8), "the reply shows")
+        let stop = app.buttons["stopReading"]
+        XCTAssertTrue(stop.waitForExistence(timeout: 5), "read aloud, with Stop")
+        stop.tap()
+        XCTAssertTrue(app.buttons["readAgain"].waitForExistence(timeout: 3), "Read again after a stop")
+        keep(app, "siri question read")
+    }
+
+    /// D9 A, design D14 B, Y1: a danger sign said to Siri shows Get help now at once, over a
+    /// half-filled form, which is there again when the sheet closes.
+    func testASiriDangerSignCoversAnOpenForm() {
+        let app = launch(["-sampleQuestions", "none", "-homeSheet", "pooDetails",
+                          "-siriQuestion", "She is floppy and her lips look blue"])
+        XCTAssertTrue(app.buttons["Call 9 9 9"].waitForExistence(timeout: 10), "Get help now at once, over the form")
+        XCTAssertTrue(app.buttons["Call NHS 1 1 1"].exists)
+        keep(app, "siri danger sign over a form")
+        app.buttons["Close"].firstMatch.tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Yellow'")).firstMatch.waitForExistence(timeout: 5),
+                      "the poo panel is there again")
+    }
 }

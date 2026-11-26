@@ -421,6 +421,15 @@ public enum WatchKey {
     public static let request = "request"
     /// A `WatchActionRequest`, the same way. An older phone ignores it.
     public static let action = "action"
+    /// A `WatchCard`, in the application context beside the state (absent: no card), and in the
+    /// phone's answer to `cardCheck`. Never in a watch face transfer (AI insights step 4, Y6).
+    public static let card = "lastNightCard"
+    /// The watch's message as page 4 opens: is the card still current (step 4 D11 A)?
+    public static let cardCheck = "lastNightCheck"
+    /// The phone's number for the card it means, sent with the card or its absence in the context
+    /// and in each answer, higher for each change: the watch never goes back to an older one, so a
+    /// late answer can't bring back a card the phone took back (Codex step 4 review, 7).
+    public static let cardRevision = "lastNightRevision"
 }
 
 /// What travels between the phone and the watch, as JSON.

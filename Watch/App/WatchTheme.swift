@@ -34,6 +34,10 @@ enum WatchText {
     case label
     /// "suggested".
     case hint
+    /// "3h 10m", "4": a fact on the "Last night" page (AI insights step 4, design D15 A).
+    case fact
+    /// The same on 41 and 42 mm.
+    case factSmall
 
     var size: CGFloat {
         switch self {
@@ -46,6 +50,8 @@ enum WatchText {
         case .note: 15
         case .label: 10.5
         case .hint: 10
+        case .fact: 22
+        case .factSmall: 20
         }
     }
 
@@ -55,6 +61,7 @@ enum WatchText {
         case .button, .side: .headline
         case .line, .note: .footnote
         case .label, .hint: .caption2
+        case .fact, .factSmall: .title2
         }
     }
 
@@ -66,7 +73,7 @@ enum WatchText {
             return Font.custom(night ? "Fredoka-Regular" : "Fredoka-SemiBold", fixedSize: size)
         }
         let weight: Font.Weight = switch self {
-        case .mainTime, .careTime, .amount: night ? .medium : .bold
+        case .mainTime, .careTime, .amount, .fact, .factSmall: night ? .medium : .bold
         case .label: night ? .semibold : .heavy
         case .hint: .semibold
         default: .regular

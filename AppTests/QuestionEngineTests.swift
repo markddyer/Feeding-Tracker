@@ -23,7 +23,7 @@ struct QuestionEngineTests {
         -> InsightEngine.QuestionResult {
         let data = engine.household()
         return await InsightEngine.askAI(job, data: { data }, babyID: engine.baby, answerer: answerer,
-                                         now: { engine.at(22, 10) }, gate: gate)
+                                         now: { engine.at(22, 10) }, gate: gate, isOpen: { true })
     }
 
     static let good = #"""
@@ -47,6 +47,34 @@ struct QuestionEngineTests {
                                                                     babyID: engine.baby, now: engine.at(22, 10))
         else { Issue.record("turned down when shown"); return }
         #expect(checked.lines.first == "8 feeds logged yesterday.")
+    }
+
+    /// Step 4 Y2: a phone locked (or the app left) before a call sends nothing: the question shows
+    /// "Stopped when the phone locked", never an answer made with the app closed (D13).
+    @Test func aLockedPhoneSendsNothing() async throws {
+        let job = try #require(job())
+        let answerer = FixedAnswerer(.success(Self.good))
+        let data = engine.household()
+        let result = await InsightEngine.askAI(job, data: { data }, babyID: engine.baby, answerer: answerer,
+                                               now: { engine.at(22, 10) }, gate: { nil }, isOpen: { false })
+        #expect(result == .stopped)
+        #expect(answerer.calls == 0)
+    }
+
+    /// Codex step 4 review, 4: locked after the first call went out (its answer couldn't be read),
+    /// the second isn't sent, and the question says "wasn't answered", never "wasn't sent".
+    @Test func aPhoneLockedBetweenTheTriesSaysNotAnswered() async throws {
+        let job = try #require(job())
+        let answerer = FixedAnswerer(.success("not an answer"))
+        let data = engine.household()
+        var looks = 0
+        let result = await InsightEngine.askAI(job, data: { data }, babyID: engine.baby, answerer: answerer,
+                                               now: { engine.at(22, 10) }, gate: { nil }, isOpen: {
+                                                   looks += 1
+                                                   return looks == 1
+                                               })
+        #expect(result == .failed(.turnedDown))
+        #expect(answerer.calls == 1)
     }
 
     /// X6: the flag is read first; an answer that can't be read in full still brings the card.

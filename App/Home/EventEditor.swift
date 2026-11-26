@@ -84,6 +84,12 @@ struct EventEditor: View {
                 if case .edit(let id) = mode, let copy = copy(of: id) {
                     loggedTwiceSection(id: id, copy: copy)
                 }
+                // The NHS link, before Note and Delete (AI insights step 4, design D18 A).
+                let subject: NHSLinkSubject = isPump ? .pump : .feed
+                if !NHSLinks.passages(subject).isEmpty {
+                    Section { NHSLinkRow(subject: subject, inForm: true) }
+                        .listRowBackground(NHSLinkBox(cornerRadius: 0))
+                }
                 Section {
                     TextField("Optional", text: Binding {
                         draft.payload?.note ?? ""

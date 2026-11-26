@@ -31,6 +31,8 @@ struct WatchHomeView: View {
     @State private var bottleAsk: String?
     /// Tonight's choices, from page 3 (step 3).
     @State private var tonightOpen = false
+    /// The "Last night" card screen (AI insights step 4, design D16 B).
+    @State private var lastNightOpen = false
     /// The last feed finished for this parent by the other parent whose details were offered, so
     /// the offer comes once (outside review of step 2).
     @AppStorage("watch.detailsOffered") private var detailsOffered = ""
@@ -49,6 +51,7 @@ struct WatchHomeView: View {
         _pumping = State(initialValue: WatchSamples.screen == "pump")
         _medicineList = State(initialValue: WatchSamples.screen == "medicines")
         _tonightOpen = State(initialValue: WatchSamples.screen == "tonight")
+        _lastNightOpen = State(initialValue: WatchSamples.screen == "lastNightCard")
         // Step 2: `-watchScreen addToFeed`, `justFinished`, `earlierFeed` or `bottle`.
         _addTo = State(initialValue: WatchSamples.screen == "addToFeed" ? AddToFeed(feedID: "sample-last", tap: nil, finishedAt: Date()) : nil)
         _justFinishedAsk = State(initialValue: WatchSamples.screen == "justFinished")
@@ -73,8 +76,23 @@ struct WatchHomeView: View {
             .animation(.easeOut(duration: 0.3), value: look)
         }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { link.refresh() }
+            if phase == .active {
+                link.appOpened()
+                link.refresh()
+                if page == .lastNight { link.checkCard() }
+            }
         }
+        // Page 4 checks with the phone each time it comes into sight (step 4 D11 A).
+        .onChange(of: page) { _, page in
+            if page == .lastNight { link.checkCard() }
+        }
+        // A card taken back while its screen is open closes it (D11 A).
+        .onChange(of: link.cardCheck) { _, check in
+            if check != .current { lastNightOpen = false }
+        }
+        // A changed card (taken back, facts only, or another day's) closes the card screen: the
+        // next tap opens what the phone says now.
+        .onChange(of: link.card) { lastNightOpen = false }
         .onChange(of: link.saved) { _, _ in
             noticeRefusedCorrections()
             offerDetailsFinishedForMe()
@@ -298,6 +316,11 @@ struct WatchHomeView: View {
                 addTo = AddToFeed(feedID: id, tap: tap, past: true)
                 followPastFeed(tap, id: id, start: start)
             }
+        } else if lastNightOpen, let card = link.card, link.cardCheck == .current, card.mode == .card,
+                  card.isCurrent(at: now), let state {
+            // Only a current AI card: one past its day, or turned to facts only, never stays open
+            // (Codex step 4 review, 13).
+            WatchLastNightCardScreen(card: card, timeZoneID: state.timeZoneID) { lastNightOpen = false }
         } else if tonightOpen, let state, let tonight = state.tonight {
             WatchTonightScreen(state: state, tonight: tonight) { choice in
                 tonightOpen = false
@@ -361,6 +384,11 @@ struct WatchHomeView: View {
                         }
                         .environment(\.watchDoubleTapAllowed, false)
                         .tag(WatchPage.today)
+                    }
+                    if link.showsLastNight(at: now) {
+                        WatchLastNightPage(card: link.card, check: link.cardCheck) { lastNightOpen = true }
+                            .environment(\.watchDoubleTapAllowed, false)
+                            .tag(WatchPage.lastNight)
                     }
                 }
                 .tabViewStyle(.verticalPage)
@@ -480,6 +508,8 @@ enum WatchPage: Hashable {
     case feeds
     case care
     case today
+    /// "Last night", on days with a morning AI card (AI insights step 4).
+    case lastNight
 }
 
 /// The bottles still waiting for their amount after Finish on this watch, asked one at a time.

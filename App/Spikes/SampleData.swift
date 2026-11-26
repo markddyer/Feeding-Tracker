@@ -222,6 +222,15 @@ enum SampleData {
             }
             if defaults.bool(forKey: "sampleInsightCard") {
                 addInsightCards(&data, me: me, other: other, now: now)
+            } else if defaults.bool(forKey: "samplePassagesTicked") {
+                // `-samplePassagesTicked YES`: every NHS passage ticked by Sam today, with AI insights
+                // off (the NHS links on the forms, AI insights step 4, show either way).
+                let today = PlainDate(now, in: data.householdSettings.timeZone)
+                for passage in NHSPassages.all {
+                    for id in [passage.id] + passage.summaries.map(\.id) {
+                        data.setPassageCheck(id, checkedOn: today, by: other, now: now)
+                    }
+                }
             }
         }
         if defaults.bool(forKey: "sampleFirsts") {
@@ -240,7 +249,7 @@ enum SampleData {
         let today = PlainDate(now, in: zone)
         for passage in NHSPassages.all {
             for id in [passage.id] + passage.summaries.map(\.id) {
-                data.setPassageCheck(id, checkedOn: today, now: now)
+                data.setPassageCheck(id, checkedOn: today, by: other, now: now)
             }
         }
         for kind in CardKind.allCases {

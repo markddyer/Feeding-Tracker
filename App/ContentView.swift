@@ -91,6 +91,20 @@ struct ContentView: View {
         // A tapped notice of a new first opens its page, at any hour (design review D18, eng2 D1);
         // also when the tap started the app, before these screens were there.
         .onChange(of: NotificationTaps.shared.firstRequests) { openTappedFirst() }
+        // A Siri question (AI insights step 4) opens Ask on Home, once no form or panel is open:
+        // an open form stays in front (F13). Ask already open takes it as it is.
+        .onChange(of: NotificationTaps.shared.askRequests, initial: true) {
+            if NotificationTaps.shared.takeAskRequest() { openAskForSiri() }
+        }
+        #if FEEDING_DEV
+        // `-siriQuestion "<words>"`: hands the words in as the Siri action does, a moment after
+        // launch (tap tests: Siri can't be driven in the simulator).
+        .task(id: journalReady) {
+            guard journalReady, let words = UserDefaults.standard.string(forKey: "siriQuestion") else { return }
+            try? await Task.sleep(for: .seconds(1.5))
+            _ = SiriQuestions.shared.receive(words)
+        }
+        #endif
         // At night, coming back after more than 5 minutes away opens Home (D40).
         .onChange(of: scenePhase, initial: true) { _, phase in
             if phase == .background { NotificationTaps.shared.leftScreen() }
@@ -232,6 +246,20 @@ struct ContentView: View {
             && model.me != nil && model.baby != nil
     }
 
+    /// Waits until no form, panel or other sheet is open (Ask itself aside), then goes to Home and
+    /// opens Ask. Its answer is kept meanwhile, so nothing is lost while a form stays in front.
+    private func openAskForSiri() {
+        Task {
+            while !QuestionsView.isOpen, Self.somethingOpen() || NotificationTaps.shared.formsOpen > 0 {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            guard !QuestionsView.isOpen else { return }
+            path = NavigationPath()
+            tab = .home
+            NotificationTaps.shared.openAsk()
+        }
+    }
+
     /// The first a notice was tapped for goes to the Journal tab, which opens it once it can;
     /// until the tabs are showing, it stays waiting (Codex review of X1).
     private func openTappedFirst() {
@@ -317,6 +345,10 @@ if ask {
                 }
                 .navigationBarTitleDisplayMode(.inline)
                 .sheet(isPresented: $asking) { QuestionsView() }
+                // A Siri question, once Home is in front with no form open (AI insights step 4).
+                .onChange(of: NotificationTaps.shared.askOpenRequests, initial: true) {
+                    if ask, NotificationTaps.shared.takeAskOpen() { asking = true }
+                }
         }
     }
 }

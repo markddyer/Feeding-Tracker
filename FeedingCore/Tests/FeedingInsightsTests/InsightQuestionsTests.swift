@@ -256,3 +256,94 @@ struct QuestionKeptTests {
         #expect(InsightQuestions.kept([item], now: before.addingTimeInterval(24 * 3600)).isEmpty)
     }
 }
+
+// AI insights step 4: Siri questions and what is read aloud (D3 A, D8 A, D10 B, design D10 A; Y1).
+@Suite("Ask from Siri: the words read aloud and the first check")
+struct SpokenReplyTests {
+    let data = askHousehold()
+
+    /// An answer as the screen shows it, with the facts the app writes and one AI sentence.
+    var checked: CheckedAnswer? {
+        let answer = QuestionAnswer(topic: .feeding, facts: [FactRef(.day(date("2026-11-21")), .feeds)],
+                                    sentences: ["Many babies feed more often in the evening."])
+        guard case .accepted(let checked) = InsightQuestions.accept(answer, offered: [], data: data, babyID: baby,
+                                                                     now: askNow, leaveOut: true) else { return nil }
+        return checked
+    }
+
+    @Test func anAnswerIsReadInTheParentsOrder() throws {
+        let checked = try #require(checked)
+        let words = InsightQuestions.spoken(.asked, checked: checked)
+        // The facts, then the AI's sentence, then the notice (D10 B), and nothing the screen doesn't show.
+        #expect(words.hasPrefix("8 feeds logged yesterday. Many babies feed more often in the evening. This is AI, not medical advice."))
+        #expect(!words.contains("NHS"), "no passage was chosen")
+    }
+
+    @Test func anAnswerThatCantBeGivenSaysSo() {
+        let words = InsightQuestions.spoken(.asked, checked: nil)
+        #expect(words == "This is AI, not medical advice. " + InsightQuestions.cannotAnswerLine)
+    }
+
+    @Test func eachOtherReplySaysItsOwnWords() {
+        #expect(InsightQuestions.spoken(.helpNow) == "Get help now. Call 999 and Call 111 are on the screen.")
+        #expect(InsightQuestions.spoken(.parentHelp, helpTitle: "Urgent help") == "Urgent help. Call 999 and Call 111 are on the screen.")
+        #expect(InsightQuestions.spoken(.medicineReply) == "Little Log doesn't answer questions about medicines or doses.")
+        #expect(InsightQuestions.spoken(.lastGiven, lastGiven: "Vitamin D: last logged at 09:05 today.")
+                == "Vitamin D: last logged at 09:05 today.")
+        #expect(InsightQuestions.spoken(.closed) == "AI insights is off, so Little Log can't answer that.")
+        #expect(InsightQuestions.spoken(.couldNotAsk) == "Couldn't reach the AI. Call 111 is on the screen.")
+        #expect(InsightQuestions.spoken(.stopped) == InsightQuestions.stoppedReply)
+        // Never a medicine's dose or an NHS passage's words in any of them.
+        for kind in [KeptQuestion.Kind.helpNow, .medicineReply, .closed, .couldNotAsk, .stopped] {
+            #expect(!InsightQuestions.spoken(kind).contains("ml"))
+        }
+    }
+
+    /// Y1: the danger check that runs the moment a Siri question arrives is the route's own.
+    @Test func theSiriCheckIsTheRoutesCheck() {
+        let text = "She feels really hot and she's very sleepy"
+        #expect(!InsightQuestions.dangerSigns(text, kept: [], now: askNow).isEmpty)
+        guard case .helpNow(let signs) = InsightQuestions.route(text, data: data, babyID: baby, me: parentA,
+                                                                participants: [parentA, parentB], kept: [], now: askNow) else {
+            Issue.record("the route didn't stop it")
+            return
+        }
+        #expect(signs == InsightQuestions.dangerSigns(text, kept: [], now: askNow))
+        #expect(InsightQuestions.dangerSigns("How many feeds last night?", kept: [], now: askNow).isEmpty)
+    }
+
+    @Test func theSameQuestionAgain() {
+        #expect(InsightQuestions.isSameQuestion("How long did she sleep?", "how long did she sleep"))
+        #expect(InsightQuestions.isSameQuestion("How  long, did she sleep ?", "How long did she sleep"))
+        #expect(!InsightQuestions.isSameQuestion("How long did she sleep?", "How many feeds?"))
+        #expect(!InsightQuestions.isSameQuestion("?", "?"), "no words is never the same question")
+    }
+
+    /// An entry kept by an older build reads as typed: never read aloud.
+    @Test func anOlderEntryIsTyped() throws {
+        let json = #"{"id":"a","askedAt":0,"text":"x","kind":"asked","offered":[],"peopleLine":false}"#
+        let item = try JSONDecoder().decode(KeptQuestion.self, from: Data(json.utf8))
+        #expect(item.viaSiri == nil && !item.waitsToBeRead)
+        let spoken = KeptQuestion(askedAt: askNow, text: "x", kind: .asked, viaSiri: true)
+        #expect(spoken.waitsToBeRead)
+        var read = spoken
+        read.readAt = askNow
+        #expect(!read.waitsToBeRead)
+    }
+}
+
+@Suite("Ask: a parent's danger words go to their help, with no AI (Codex step 4 review, 1)")
+struct ParentDangerRouteTests {
+    @Test func aParentsDangerWordsNeverReachTheAI() {
+        let data = HouseholdData()
+        let route = InsightQuestions.route("I don't think I can keep myself safe tonight", data: data, babyID: "baby",
+                                           me: "parent-a", participants: ["parent-a", "parent-b"], kept: [], now: Date())
+        #expect(route == .parentHelp)
+        let woken = InsightQuestions.route("She cannot be woken", data: data, babyID: "baby", me: "parent-a",
+                                           participants: ["parent-a", "parent-b"], kept: [], now: Date())
+        guard case .helpNow = woken else {
+            Issue.record("a danger sign must open Get help now: \(woken)")
+            return
+        }
+    }
+}

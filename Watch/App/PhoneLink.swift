@@ -26,12 +26,53 @@ final class PhoneLink {
     /// What the watch shows.
     var shown: WatchState? { saved.shown }
 
+    /// The "Last night" card the phone last sent (AI insights step 4). Kept in the watch app's own
+    /// settings, never in the file the watch face reads (Y6).
+    private(set) var card: WatchCard?
+    /// Where page 4's check with the phone stands (step 4 D11 A, design D9 A).
+    enum CardCheck: Equatable {
+        /// Asking the phone: "Checking with iPhone…".
+        case checking
+        /// The phone said the card (or its facts) is current.
+        case current
+        /// No answer: "The card is on your iPhone".
+        case unreachable
+        /// The phone took the card back while the page showed: "No card today.", and the page goes
+        /// the next time the app opens.
+        case takenBack
+    }
+    private(set) var cardCheck: CardCheck = .checking
+    private static let cardKey = "watch.lastNightCard"
+    private static let revisionKey = "watch.lastNightRevision"
+    /// The phone's number for the card kept here (`WatchKey.cardRevision`).
+    private var cardRevision: Int64 = 0
+    /// Each check's own number: only the newest check's timer and errors count.
+    private var checkNumber = 0
+
+    /// Page 4 shows: on days with a card the phone hasn't taken back, before the card's day ends.
+    func showsLastNight(at now: Date) -> Bool {
+        if cardCheck == .takenBack { return true }
+        return card?.isCurrent(at: now) ?? false
+    }
+
     /// Taps are waiting and the phone is out of reach.
     var waitingForPhone: Bool { (!saved.pending.isEmpty || !saved.actions.isEmpty) && !reachable }
 
     private init() {
         saved = WatchFile.load()
         saved.dropStale(now: Date())
+        card = UserDefaults.standard.data(forKey: Self.cardKey).flatMap { WatchCoding.decode(WatchCard.self, from: $0) }
+        cardRevision = (UserDefaults.standard.object(forKey: Self.revisionKey) as? NSNumber)?.int64Value ?? 0
+    }
+
+    /// True when the phone's word is newer than what is kept, or the same; false for an older one,
+    /// which is ignored. With no number (never from a build that sends cards), it counts.
+    private func takes(_ revision: Int64?) -> Bool {
+        guard let revision else { return true }
+        guard revision >= cardRevision else { return false }
+        cardRevision = revision
+        UserDefaults.standard.set(NSNumber(value: revision), forKey: Self.revisionKey)
+        return true
     }
 
     private var session: WCSession? {
@@ -42,6 +83,8 @@ final class PhoneLink {
     func activate() {
         #if FEEDING_DEV
         if let sample = WatchSamples.fromLaunchArguments() {
+            card = WatchSamples.lastNightCard()
+            cardCheck = WatchSamples.lastNightCheck()
             // "waiting": a tap that changes nothing on screen, held with the phone out of reach.
             let held = WatchSamples.showsWaiting ? [WatchRequest(command: .finish(feedID: "none"), at: Date())] : []
             saved = WatchSaved(phone: sample, pending: held)
@@ -231,6 +274,8 @@ final class PhoneLink {
         if let data = session.receivedApplicationContext[WatchKey.state] as? Data,
            let state = WatchCoding.decode(WatchState.self, from: data) {
             receive(state)
+            receiveCard(session.receivedApplicationContext[WatchKey.card] as? Data,
+                        revision: (session.receivedApplicationContext[WatchKey.cardRevision] as? NSNumber)?.int64Value)
         }
         deliverWaiting()
         refresh()
@@ -246,6 +291,77 @@ final class PhoneLink {
             deliverWaiting()
             refresh()
         }
+    }
+
+    // MARK: The "Last night" card (AI insights step 4)
+
+    /// The card that came with the phone's state; none means the phone has none now.
+    fileprivate func receiveCard(_ data: Data?, revision: Int64?) {
+        guard takes(revision) else { return }
+        let new = data.flatMap { WatchCoding.decode(WatchCard.self, from: $0) }
+        guard new != card else { return }
+        // A card taken back while page 4 shows: the page says so, and goes next time (design D9 A).
+        if card != nil, new == nil, cardCheck == .current { cardCheck = .takenBack }
+        keep(new)
+    }
+
+    private func keep(_ new: WatchCard?) {
+        card = new
+        if let new, let data = try? WatchCoding.encode(new) {
+            UserDefaults.standard.set(data, forKey: Self.cardKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.cardKey)
+        }
+    }
+
+    /// As page 4 opens: asks the phone whether the card is still current (step 4 D11 A). The card's
+    /// words show only once the phone has said so; with no answer in about 2 seconds, "The card is
+    /// on your iPhone".
+    func checkCard() {
+        #if FEEDING_DEV
+        if WatchSamples.fromLaunchArguments() != nil { return }
+        #endif
+        if cardCheck == .takenBack { return }
+        cardCheck = .checking
+        checkNumber += 1
+        let number = checkNumber
+        guard let session, session.activationState == .activated, session.isReachable else {
+            cardCheck = .unreachable
+            return
+        }
+        session.sendMessage([WatchKey.cardCheck: true], replyHandler: { @Sendable reply in
+            let data = reply[WatchKey.card] as? Data
+            let revision = (reply[WatchKey.cardRevision] as? NSNumber)?.int64Value
+            Task { @MainActor in self.cardAnswered(data, revision: revision) }
+        }, errorHandler: { @Sendable _ in
+            Task { @MainActor in if self.checkNumber == number, self.cardCheck == .checking { self.cardCheck = .unreachable } }
+        })
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if checkNumber == number, cardCheck == .checking { cardCheck = .unreachable }
+        }
+    }
+
+    private func cardAnswered(_ data: Data?, revision: Int64?) {
+        // An answer after the 2 seconds still counts, unless the phone has said something newer
+        // since (a card taken back in the context): it is the phone's word now.
+        guard takes(revision) else { return }
+        let new = data.flatMap { WatchCoding.decode(WatchCard.self, from: $0) }
+        if new == nil, card != nil {
+            cardCheck = .takenBack
+            keep(nil)
+        } else {
+            keep(new)
+            cardCheck = .current
+        }
+    }
+
+    /// The app opened again: a card taken back is gone now.
+    func appOpened() {
+        #if FEEDING_DEV
+        if WatchSamples.fromLaunchArguments() != nil { return }
+        #endif
+        if cardCheck == .takenBack { cardCheck = .checking }
     }
 
     /// Saves every change, for the next launch and the watch face, and reloads the watch face
@@ -305,6 +421,10 @@ private final class SessionDelegate: NSObject, WCSessionDelegate, @unchecked Sen
 
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         deliver(applicationContext[WatchKey.state] as? Data)
+        // The "Last night" card comes beside the state, never in the watch face's transfer (Y6).
+        let card = applicationContext[WatchKey.card] as? Data
+        let revision = (applicationContext[WatchKey.cardRevision] as? NSNumber)?.int64Value
+        Task { @MainActor in self.link?.receiveCard(card, revision: revision) }
     }
 
     /// The phone's instant update for the watch face.

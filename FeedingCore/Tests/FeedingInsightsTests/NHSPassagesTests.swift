@@ -214,3 +214,47 @@ struct NHSPassagesTests {
         }
     }
 }
+
+// AI insights step 4: the "About … ›" link on a form (D5 A, D6 A, F12, Y7).
+@Suite("NHS passages for a link")
+struct NHSLinkPassagesTests {
+    let today = date("2026-11-25")
+    var allChecked: PassageChecks {
+        Dictionary(uniqueKeysWithValues: NHSPassages.all.flatMap { [$0.id] + $0.summaries.map(\.id) }.map { ($0, today) })
+    }
+
+    @Test func aBottleOnlyHouseholdIsNeverOfferedBreastfeeding() {
+        let bottleOnly = NHSPassages.forLink(.feed, ageInDays: 10, breastfeeds: false, bottleFeeds: true,
+                                             checks: allChecked, today: today)
+        #expect(!bottleOnly.isEmpty)
+        #expect(!bottleOnly.contains { $0.feeding == .breastfeeding })
+        let both = NHSPassages.forLink(.feed, ageInDays: 10, breastfeeds: true, bottleFeeds: true, checks: allChecked, today: today)
+        #expect(both.contains { $0.feeding == .breastfeeding })
+    }
+
+    @Test func onlyTickedPassagesWithinNinetyDays() {
+        #expect(NHSPassages.forLink(.nappy, ageInDays: 10, breastfeeds: true, bottleFeeds: false, checks: [:], today: today).isEmpty)
+        let late = today.adding(days: NHSPassages.checkEveryDays + 1)
+        #expect(NHSPassages.forLink(.nappy, ageInDays: 10, breastfeeds: true, bottleFeeds: false, checks: allChecked, today: late).isEmpty)
+    }
+
+    /// Y7: the link lists every passage for its subject, so a pair a card never shows together is
+    /// never dropped (they open one at a time); in the library's order, the same every day.
+    @Test func nothingIsDroppedAndNothingTurnsByDay() {
+        let nappies = NHSPassages.forLink(.nappy, ageInDays: 10, breastfeeds: true, bottleFeeds: false,
+                                          checks: allChecked, today: today)
+        let ids = nappies.map(\.id)
+        #expect(ids.contains("poo-how-often") && ids.contains("feeding-well-signs"))
+        #expect(ids == NHSPassages.all.map(\.id).filter(ids.contains), "the library's order")
+        let tomorrow = NHSPassages.forLink(.nappy, ageInDays: 11, breastfeeds: true, bottleFeeds: false,
+                                           checks: allChecked, today: today.adding(days: 1))
+        #expect(tomorrow.map(\.id) == ids)
+        #expect(!nappies.contains { $0.isUrgent })
+    }
+
+    @Test func aPassageIsNamedByItsFirstHeading() throws {
+        let passage = try #require(NHSPassages.passage("poo-how-often"))
+        #expect(!passage.title.hasPrefix("#"))
+        #expect(passage.words.contains("## " + passage.title))
+    }
+}

@@ -109,8 +109,9 @@ struct VideoItem: View {
 
     private func play() {
         guard let files = MediaFiles.appGroup(), files.hasFile(id) else { return }
-        // By day the Silent switch decides; nothing else of the app's sound is touched.
-        try? AVAudioSession.sharedInstance().setCategory(.ambient)
+        // By day the Silent switch decides; nothing else of the app's sound is touched (`AppSound`,
+        // the one owner of the sound mode, F16).
+        AppSound.forVideo()
         let item = AVPlayerItem(asset: files.videoAsset(id))
         let player = AVPlayer(playerItem: item)
         muted = look == .night

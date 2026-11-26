@@ -194,6 +194,32 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// AI insights step 4: the NHS link on the poo panel and in an editor, its sheet, and Ask after a
+    /// Siri question (stopped, so its bar stays for the audit).
+    func testStep4() {
+        let ticked = ["-samplePassagesTicked", "YES"]
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(ticked + ["-homeSheet", "pooDetails"], look: look), "poo panel with link \(look)")
+            // Each screen is checked to be the one named before it is audited (Codex step 4 review).
+            let sheet = launch(ticked + ["-homeSheet", "pooDetails"], look: look)
+            XCTAssertTrue(sheet.buttons["nhsLink"].waitForExistence(timeout: 8), "the link shows")
+            sheet.buttons["nhsLink"].tap()
+            XCTAssertTrue(sheet.buttons["nhsPassageRow"].firstMatch.waitForExistence(timeout: 5)
+                          || sheet.descendants(matching: .any)["nhsPassagePage"].waitForExistence(timeout: 2), "the link's sheet")
+            audit(sheet, "nhs link sheet \(look)")
+            let editor = launch(ticked + ["-openScreen", "editLastSleep"], look: look)
+            XCTAssertTrue(editor.buttons["Save"].waitForExistence(timeout: 8), "the sleep editor")
+            audit(editor, "sleep editor with link \(look)")
+            let siri = launch(["-sampleQuestions", "none", "-siriQuestion", "When was the last Vitamin D?"], look: look)
+            XCTAssertTrue(siri.staticTexts["Asked with Siri"].waitForExistence(timeout: 10), "Ask after a Siri question")
+            if siri.buttons["stopReading"].waitForExistence(timeout: 5) { siri.buttons["stopReading"].tap() }
+            XCTAssertTrue(siri.buttons["readAgain"].waitForExistence(timeout: 5), "the reading bar, stopped")
+            audit(siri, "ask after siri \(look)")
+        }
+        audit(launch(ticked + ["-homeSheet", "pooDetails"], largeText: true), "poo panel with link large text")
+        report()
+    }
+
     /// Ask (AI insights step 3): before asking, every kind of answer, a danger sign.
     func testAsk() {
         let card = ["-sampleInsightCard", "YES", "-openScreen", "ask"]

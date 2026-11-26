@@ -802,10 +802,27 @@ struct PooDetailsSheet: View {
     let zone: TimeZone
     let log: CareLog
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
+    /// The NHS link's sheet is open: the panel doesn't close by itself meanwhile (AI insights step
+    /// 4, Y8), and closes once it shuts if both are chosen (Codex step 4 review, 17).
+    @State private var linkShowing = false
 
     private var store: HouseholdStore { AppModel.shared.store }
 
     var body: some View {
+        let hasLink = !NHSLinks.passages(.poo).isEmpty
+        ScrollView {
+            panel
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        // Taller with the NHS link, which sits above Undo and Done (design D13 A); at the largest
+        // text sizes the panel takes the screen and scrolls inside, Undo and Done reachable (D19 A).
+        .presentationDetents(typeSize.isAccessibilitySize ? [.large] : [.height(hasLink ? 456 : 390)])
+        .presentationBackground(Theme.background)
+    }
+
+    @ViewBuilder
+    private var panel: some View {
         let snapshot = store.data.events[target.id]?.snapshot
         let nappy = snapshot?.payload?.nappy ?? NappyDetails(wee: false, poo: true)
         let at = snapshot?.event.startedAt ?? Date()
@@ -837,6 +854,8 @@ struct PooDetailsSheet: View {
                     }
                 }
             }
+            // The NHS link, the same for every colour (never because of the colour picked).
+            NHSLinkRow(subject: .poo) { linkShowing = $0 }
             HStack(spacing: 8) {
                 if target.isNew {
                     BigButton(title: "Undo", prominent: false) {
@@ -852,20 +871,31 @@ struct PooDetailsSheet: View {
         }
         .padding(18)
         .foregroundStyle(Theme.text)
-        .presentationDetents([.height(390)])
-        .presentationBackground(Theme.background)
         // However it closes (Done, a swipe, or by itself), a new nappy's Undo card starts now,
         // with its full 10 seconds. Undo in the panel removed it, so then nothing shows.
         .onDisappear {
             if target.isNew { log.nappyFinished(target.id) }
         }
-        // Once both are chosen, the panel closes by itself.
+        // Once both are chosen, the panel closes by itself: not while the NHS sheet is open, nor
+        // if a pick was taken back during the short wait.
         .onChange(of: nappy.colour != nil && nappy.consistency != nil) { _, both in
-            guard both else { return }
-            Task {
-                try? await Task.sleep(for: .milliseconds(450))
-                dismiss()
-            }
+            if both { closeSoon() }
+        }
+        .onChange(of: linkShowing) { _, showing in
+            if !showing, bothChosen { closeSoon() }
+        }
+    }
+
+    private var bothChosen: Bool {
+        let nappy = store.data.events[target.id]?.snapshot.payload?.nappy
+        return nappy?.colour != nil && nappy?.consistency != nil
+    }
+
+    private func closeSoon() {
+        Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            guard !linkShowing, bothChosen else { return }
+            dismiss()
         }
     }
 

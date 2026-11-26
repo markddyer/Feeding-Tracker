@@ -13,8 +13,18 @@ struct QuestionsView: View {
     private let model = AppModel.shared
     private let engine = InsightEngine.shared
     private let log = QuestionLog.shared
+    private let siri = SiriQuestions.shared
+    private let voice = ReadAloud.shared
     @State private var typed = ""
     @FocusState private var typing: Bool
+    /// Stop pressed while a Siri answer was still coming: it shows, unread, with "Read again".
+    @State private var stopWaiting = false
+
+    /// Ask is on screen: a Siri question opens nothing more (AI insights step 4).
+    @MainActor static var isOpen = false
+    /// A Siri question's reply is read only if it comes within this time of the question: the
+    /// slowest answer (10 s) and an open form's wait, but never a reply found hours later.
+    static let readWithin: TimeInterval = 3 * 60
 
     static let suggestions = ["How many feeds last night?", "When was her last nappy?", "What does the NHS say about wind?",
                               "Longest sleep this week?"]
@@ -23,13 +33,16 @@ struct QuestionsView: View {
         NavigationStack {
             TimelineView(.periodic(from: .now, by: 60)) { context in
                 let shown = log.shown(now: max(context.date, Date()))
+                // The oldest reply still to be read first, one at a time (Codex step 4 review, 9).
+                let unread = shown.first(where: \.waitsToBeRead)
                 ScrollViewReader { reader in
                     ScrollView {
                         VStack(alignment: .leading, spacing: 14) {
                             header
                             if shown.isEmpty { beforeAsking }
                             ForEach(shown) { question in
-                                QuestionBubble(text: question.text)
+                                QuestionBubble(text: question.text, viaSiri: question.viaSiri == true)
+                                    .id(question.id)
                                 AnswerBubble(question: question, onSendAgain: { sendAgain(question) })
                             }
                             if engine.askingQuestion { MakingBubble() }
@@ -38,12 +51,30 @@ struct QuestionsView: View {
                         .padding(16)
                     }
                     .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: shown.count) { withAnimation { reader.scrollTo("end", anchor: .bottom) } }
-                    .onChange(of: engine.askingQuestion) { withAnimation { reader.scrollTo("end", anchor: .bottom) } }
-                    .onAppear { reader.scrollTo("end", anchor: .bottom) }
+                    // A tap stops the voice; a scroll doesn't. A button tapped stops it and does its job
+                    // (step 4 design D12 A).
+                    .simultaneousGesture(TapGesture().onEnded { voice.stop() })
+                    .onChange(of: shown.count) {
+                        guard shown.last?.viaSiri != true else { return }
+                        withAnimation { reader.scrollTo("end", anchor: .bottom) }
+                    }
+                    .onChange(of: engine.askingQuestion) {
+                        guard !siri.isWaiting else { return }
+                        withAnimation { reader.scrollTo("end", anchor: .bottom) }
+                    }
+                    .onAppear { reader.scrollTo(unread?.id ?? "end", anchor: unread == nil ? .bottom : .top) }
+                    // A Siri question's reply, once it shows: at its top, then read aloud, once (design
+                    // D10 A); the next waits until the voice has finished or been stopped.
+                    .onChange(of: unread?.id, initial: true) { readNext(shown, reader: reader) }
+                    .onChange(of: voice.state) { readNext(shown, reader: reader) }
                 }
             }
-            .safeAreaInset(edge: .bottom, spacing: 0) { inputBar }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(spacing: 0) {
+                    readingBar
+                    inputBar
+                }
+            }
             .foregroundStyle(Theme.text)
             .background(Theme.background.ignoresSafeArea())
             .toolbar(.hidden, for: .navigationBar)
@@ -51,7 +82,45 @@ struct QuestionsView: View {
         .tint(Theme.text)
         .presentationDetents([.large])
         .presentationBackground(Theme.background)
-        .onAppear { log.removeExpired() }
+        .onAppear {
+            Self.isOpen = true
+            log.removeExpired()
+        }
+        // Leaving Ask cancels a reading (design D10 A).
+        .onDisappear {
+            Self.isOpen = false
+            voice.clear()
+        }
+    }
+
+    /// Reads the oldest reply still to be read, unless the voice is busy with one.
+    private func readNext(_ shown: [KeptQuestion], reader: ScrollViewProxy) {
+        guard let question = shown.first(where: \.waitsToBeRead) else { return }
+        if case .reading = voice.state { return }
+        withAnimation { reader.scrollTo(question.id, anchor: .top) }
+        log.markRead(question.id)
+        // Only a reply that has just come, to a question asked since Ask last closed: one found
+        // later stays silent (leaving Ask cancels a reading, the one still coming included).
+        let fresh = Date().timeIntervalSince(question.askedAt) < Self.readWithin && question.askedAt > voice.silencedBefore
+        if stopWaiting || !fresh {
+            stopWaiting = false
+            return
+        }
+        voice.read(AnswerBubble.spoken(question, model: model), for: question.id)
+    }
+
+    /// The reading bar, above the text box, for a Siri question only (step 4 design D4 A, D10 A, D12 A).
+    @ViewBuilder
+    private var readingBar: some View {
+        if case .reading = voice.state {
+            ReadingBar(title: voice.volumeOff ? "Volume is off" : "Reading aloud",
+                       detail: voice.volumeOff ? "Turn the volume up to hear it" : "Tap Stop, or tap anywhere",
+                       button: .stop) { voice.stop() }
+        } else if siri.isWaiting, !stopWaiting {
+            ReadingBar(title: "Waiting for the answer…", detail: "It will be read out", button: .stop) { stopWaiting = true }
+        } else if case .stopped = voice.state {
+            ReadingBar(title: "Stopped", detail: nil, button: .readAgain) { voice.readAgain() }
+        }
     }
 
     private var header: some View {
@@ -146,20 +215,80 @@ struct QuestionsView: View {
     }
 }
 
-/// The parent's question, at the right.
+/// The parent's question, at the right; "Asked with Siri" under a spoken one.
 private struct QuestionBubble: View {
     let text: String
+    var viaSiri = false
 
     var body: some View {
-        Text(text)
-            .feedText(.body)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
-            .frame(maxWidth: .infinity, alignment: .trailing)
-            .padding(.leading, 40)
-            .accessibilityLabel("You asked: \(text)")
-            .accessibilityIdentifier("questionBubble")
+        VStack(alignment: .trailing, spacing: 4) {
+            Text(text)
+                .feedText(.body)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Theme.surface, in: RoundedRectangle(cornerRadius: 18))
+            if viaSiri {
+                Text("Asked with Siri")
+                    .feedText(.subheadline)
+                    .foregroundStyle(Theme.textMuted)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+        .padding(.leading, 40)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(viaSiri ? "You asked with Siri: \(text)" : "You asked: \(text)")
+        .accessibilityIdentifier("questionBubble")
+    }
+}
+
+/// The bar that says what the voice is doing, with Stop or Read again (step 4 design D4 A, D12 A).
+private struct ReadingBar: View {
+    enum Button { case stop, readAgain }
+    let title: String
+    let detail: String?
+    let button: Button
+    let action: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "speaker.wave.2.fill")
+                .foregroundStyle(Theme.textMuted)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).feedText(.smallButton)
+                if let detail {
+                    Text(detail).feedText(.subheadline).foregroundStyle(Theme.textMuted)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+            SwiftUI.Button(action: action) {
+                HStack(spacing: 7) {
+                    if button == .stop {
+                        RoundedRectangle(cornerRadius: 2).frame(width: 11, height: 11)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    Text(button == .stop ? "Stop" : "Read again").feedText(.smallButton)
+                }
+                .padding(.horizontal, 16)
+                .frame(minHeight: 44)
+                .foregroundStyle(button == .stop ? Theme.onPrimary : Theme.text)
+                .background(button == .stop ? Theme.primary : Theme.background, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(button == .stop ? "Stop reading aloud" : "Read the answer again")
+            .accessibilityIdentifier(button == .stop ? "stopReading" : "readAgain")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .frame(minHeight: 56)
+        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("readingBar")
     }
 }
 
@@ -219,8 +348,9 @@ private struct AnswerBubble: View {
                     .underline()
                     .frame(minHeight: 44, alignment: .leading)
             }
-        case .couldNotAsk:
-            FixedReply(text: "Couldn't reach the AI. Your question wasn't answered.")
+        case .couldNotAsk, .stopped:
+            FixedReply(text: question.kind == .stopped ? InsightQuestions.stoppedReply
+                                                       : "Couldn't reach the AI. Your question wasn't answered.")
             HStack(spacing: 10) {
                 Button(action: onSendAgain) {
                     Text("Send again")
@@ -238,9 +368,9 @@ private struct AnswerBubble: View {
         }
     }
 
-    @ViewBuilder
-    private func asked(zone: TimeZone) -> some View {
-        let checked: CheckedAnswer? = question.answer.flatMap { answer in
+    /// The answer as the screen shows it now: checked against this phone's log (X8).
+    static func checked(_ question: KeptQuestion, model: AppModel) -> CheckedAnswer? {
+        question.answer.flatMap { answer in
             guard let babyID = model.baby?.name,
                   case .accepted(let checked) = InsightQuestions.accept(answer, offered: question.offered,
                                                                         data: model.store.data, babyID: babyID,
@@ -248,6 +378,20 @@ private struct AnswerBubble: View {
             else { return nil }
             return checked
         }
+    }
+
+    /// What is read aloud for a Siri question's reply: the screen's own words, short
+    /// (`InsightQuestions.spoken`; step 4 D3 A, D8 A, D10 B).
+    static func spoken(_ question: KeptQuestion, model: AppModel) -> String {
+        let zone = model.store.data.householdSettings.timeZone
+        return InsightQuestions.spoken(question.kind, checked: checked(question, model: model),
+                                       lastGiven: lastGivenLine(question, model: model, zone: zone),
+                                       helpTitle: NHSPassages.passage(InsightQuestions.parentHelpPassage)?.title)
+    }
+
+    @ViewBuilder
+    private func asked(zone: TimeZone) -> some View {
+        let checked = Self.checked(question, model: model)
         if question.peopleLine {
             FixedReply(text: InsightQuestions.peopleLine)
             ForEach(peoplePassages, id: \.id) { passage in
@@ -300,6 +444,10 @@ private struct AnswerBubble: View {
 
     /// "Vitamin D: last logged at 09:05 today.", from the log now (D6, X4).
     private func lastGivenLine(zone: TimeZone) -> String {
+        Self.lastGivenLine(question, model: model, zone: zone)
+    }
+
+    static func lastGivenLine(_ question: KeptQuestion, model: AppModel, zone: TimeZone) -> String {
         let data = model.store.data
         guard let babyID = model.baby?.name,
               let name = MedicineQuestions.check(question.text, medicines: data.medicines)?.medicine else {
