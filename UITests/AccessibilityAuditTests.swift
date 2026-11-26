@@ -18,7 +18,8 @@ final class AccessibilityAuditTests: XCTestCase {
     private func launch(_ extra: [String], look: String = "automatic", largeText: Bool = false,
                         setUpDone: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
-        var arguments = ["-sampleData", "YES", "-sampleDataFresh", "YES", "-look.setting", look]
+        // `-speechSilent`: the voice reads at no volume, so the Mac doesn't speak during a run.
+        var arguments = ["-sampleData", "YES", "-sampleDataFresh", "YES", "-speechSilent", "YES", "-look.setting", look]
         if setUpDone {
             arguments += ["-setup.disclaimerSeen", "YES", "-setup.inviteOffered", "YES",
                           "-setup.permissionsAsked", "YES", "-setup.feedingStyle", "breastAndBottle"]

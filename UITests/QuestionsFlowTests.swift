@@ -9,7 +9,8 @@ final class QuestionsFlowTests: XCTestCase {
 
     private func launch(_ extra: [String]) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-sampleData", "YES", "-sampleDataFresh", "YES",
+        // `-speechSilent`: the voice reads at no volume, so the Mac doesn't speak during a run.
+        app.launchArguments = ["-sampleData", "YES", "-sampleDataFresh", "YES", "-speechSilent", "YES",
                                "-setup.disclaimerSeen", "YES", "-setup.inviteOffered", "YES",
                                "-setup.permissionsAsked", "YES", "-setup.feedingStyle", "breastAndBottle"] + extra
         app.launch()

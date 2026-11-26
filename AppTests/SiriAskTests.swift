@@ -42,6 +42,9 @@ struct SiriAskTests {
     @Test func stopPutsTheVideosModeBack() {
         let voice = ReadAloud.shared
         voice.clear()
+        // At no volume: the simulator plays the voice through the Mac's speakers.
+        UserDefaults.standard.set(true, forKey: "speechSilent")
+        defer { UserDefaults.standard.removeObject(forKey: "speechSilent") }
         voice.read("Vitamin D: last logged at 09:05 today.", for: "test-stop")
         guard case .reading = voice.state else {
             // VoiceOver or an alert held the voice: nothing to stop.

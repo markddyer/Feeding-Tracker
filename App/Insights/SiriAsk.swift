@@ -195,7 +195,7 @@ final class ReadAloud {
         volumeOff = AVAudioSession.sharedInstance().outputVolume == 0
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-GB")
-        utterance.volume = Self.isNight() ? 0.5 : 1
+        utterance.volume = Self.silent ? 0 : (Self.isNight() ? 0.5 : 1)
         state = .reading(id)
         speaking = ObjectIdentifier(utterance)
         synthesizer.speak(utterance)
@@ -284,6 +284,17 @@ final class ReadAloud {
                 }
             }
         }
+    }
+
+    /// Feeding Dev only: `-speechSilent YES` reads at no volume. The tap tests pass it, as the
+    /// simulator plays the voice through the Mac's speakers (26 Nov 2026); the reading still runs,
+    /// with its Stop and its end.
+    private static var silent: Bool {
+        #if FEEDING_DEV
+        UserDefaults.standard.bool(forKey: "speechSilent")
+        #else
+        false
+        #endif
     }
 
     /// The household's night hours (the rota's, 21:00 to 07:00 by default).
