@@ -110,6 +110,18 @@ final class AccessibilityAuditTests: XCTestCase {
         report()
     }
 
+    /// "Bottles through the day" (`14-bottles-through-the-day.md`): today and yesterday, in both
+    /// looks and at large text.
+    func testBottlesThroughDay() {
+        let page = ["-sampleWeek", "YES", "-openScreen", "bottles"]
+        for look in ["automatic", "alwaysNight"] {
+            audit(launch(page, look: look), "bottles through the day \(look)")
+            audit(launch(page + ["-graphPageDay", "1"], look: look), "bottles through the day yesterday \(look)")
+        }
+        audit(launch(page, largeText: true), "bottles through the day large text")
+        report()
+    }
+
     /// The Journal, with made-up firsts: the line, a first's page, the editor (empty, and with a
     /// photo in its square), the Firsts list and History with firsts in it.
     func testJournal() {

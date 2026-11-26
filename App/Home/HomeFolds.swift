@@ -84,13 +84,17 @@ extension FoldSection where Always == EmptyView {
     }
 }
 
-/// Today: the last 24 hours as the strip and the totals, with the totals in a line on the heading.
+/// Today: the last 24 hours as the strip and the totals, with the totals in a line on the heading;
+/// then the bottles since midnight, which opens "Bottles through the day" (`14-bottles-through-the-day.md`).
 struct TodayFold: View {
     let facts: HomeFacts
 
     var body: some View {
         FoldSection("Today", summary: HomeText.daySummary(facts.totals), key: "today") {
-            DaySummary(facts: facts)
+            VStack(alignment: .leading, spacing: 10) {
+                DaySummary(facts: facts)
+                BottlesTodayLine(facts: facts)
+            }
         }
     }
 }

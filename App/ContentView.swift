@@ -283,6 +283,8 @@ struct ContentView: View {
             }
             .arrangementViewStyle(.split.axes(.horizontal))
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { arrangementWidth = $0 }
+            // Home's "Bottles since midnight" line, in the path, so coming back at night clears it.
+            .navigationDestination(for: BottlesThroughDayRequest.self) { BottlesThroughDayPage(request: $0) }
             // The bar shows the baby's name and its buttons, not a title. "Home" is still the
             // back button's name on the next screen.
             .navigationTitle("Home")
@@ -416,6 +418,14 @@ struct DevScreen: View {
                 GraphPage(request: GraphPageRequest(
                     kind: GraphKind(rawValue: UserDefaults.standard.string(forKey: "graphPage") ?? "") ?? .feeds,
                     day: PlainDate(Date(), in: zone).adding(days: -back)))
+            }
+        case "bottles":
+            // "Bottles through the day", with `-graphPageDay 1` for yesterday.
+            let zone = AppModel.shared.store.data.householdSettings.timeZone
+            let back = UserDefaults.standard.integer(forKey: "graphPageDay")
+            NavigationStack {
+                BottlesThroughDayPage(request: BottlesThroughDayRequest(
+                    day: back > 0 ? PlainDate(Date(), in: zone).adding(days: -back) : nil))
             }
         case "duo":
             DuoPreview(me: me, babyID: babyID)

@@ -18,6 +18,8 @@ struct GraphsView: View {
     @State private var width: CGFloat = 0
     /// The graph page open now.
     @State private var page: GraphPageRequest?
+    /// "Bottles through the day" (`14-bottles-through-the-day.md`), from its tile.
+    @State private var bottlesPage: BottlesThroughDayRequest?
     /// "This week" (AI insights, AI11), and the graph page one of its lines asked for: opened once
     /// the card has closed, the same way as a tap on a graph (one navigation style, 21 Nov 2026).
     @State private var weekCardOpen = false
@@ -35,6 +37,9 @@ struct GraphsView: View {
             let rhythm = rhythmDays(visible, babyID: babyID, timeZone: zone, dayHours: data.householdSettings.dayHours,
                                     range: range, now: context.date)
             let open: (GraphKind, PlainDate?) -> Void = { page = GraphPageRequest(kind: $0, day: $1) }
+            let bottles = bottlesThroughDay(visible, babyID: babyID, timeZone: zone, now: context.date)
+            let feedTiles = GraphTiles(days: days, zone: zone, open: open, bottles: bottles, now: context.date,
+                                       openBottles: { bottlesPage = BottlesThroughDayRequest() })
             let rhythmTiles = RhythmTiles(days: Self.hidesRhythm ? [] : rhythm, zone: zone, dayHours: data.householdSettings.dayHours,
                                           open: open)
             let growthTile = GrowthTile(weights: weights(visible, babyID: babyID), entries: growthEntries(visible, babyID: babyID),
@@ -76,14 +81,14 @@ struct GraphsView: View {
                                   alignment: .leading, spacing: 11) {
                             rhythmTiles
                             growthTile
-                            GraphTiles(days: days, zone: zone, open: open)
+                            feedTiles
                         }
                     } else {
                         // One column on a phone and the folded Duo.
                         VStack(alignment: .leading, spacing: 11) {
                             rhythmTiles
                             growthTile
-                            GraphTiles(days: days, zone: zone, open: open)
+                            feedTiles
                         }
                     }
                 }
@@ -100,6 +105,7 @@ struct GraphsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(removing: .title)
         .navigationDestination(item: $page) { GraphPage(request: $0) }
+        .navigationDestination(item: $bottlesPage) { BottlesThroughDayPage(request: $0) }
         .task {
             #if FEEDING_DEV
             // `-graphsSheet week`: "This week" open at launch, for screenshots.
@@ -158,14 +164,21 @@ struct GraphsView: View {
     }
 }
 
-/// The five feed graphs, each only when it has something to show.
+/// The five feed graphs, each only when it has something to show, and "Bottles through the day"
+/// under the feeds when a bottle was logged today or in the 7 days before.
 struct GraphTiles: View {
     let days: [GraphDay]
     let zone: TimeZone
     let open: (GraphKind, PlainDate?) -> Void
+    var bottles: BottlesThroughDay?
+    var now = Date()
+    var openBottles: () -> Void = {}
 
     var body: some View {
         if days.contains(where: { $0.feeds > 0 }) { tile(.feeds) }
+        if let bottles, bottles.hasBottles {
+            BottlesThroughDayTile(facts: bottles, zone: zone, now: now, open: openBottles)
+        }
         if days.contains(where: { $0.bottleML > 0 }) { tile(.bottles) }
         if days.contains(where: { $0.longestGap != nil }) { tile(.gaps) }
         if days.contains(where: { $0.leftSeconds + $0.rightSeconds > 0 }) { tile(.breast) }

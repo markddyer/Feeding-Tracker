@@ -9,7 +9,9 @@ import SwiftUI
 
 /// What a link is about: one table, keyed by the form (and its kind's topics in `NHSPassages`).
 enum NHSLinkSubject {
-    case poo, nappy, sleep, growth, bath, feed, pump
+    /// `bottles`: "Bottles through the day" (`14-bottles-through-the-day.md`): the bottle-feeding
+    /// passages only, whatever else the baby has.
+    case poo, nappy, sleep, growth, bath, feed, pump, bottles
 
     var kind: InsightKind {
         switch self {
@@ -17,7 +19,7 @@ enum NHSLinkSubject {
         case .sleep: .sleep
         case .growth: .weight
         case .bath: .bath
-        case .feed: .feed
+        case .feed, .bottles: .feed
         case .pump: .pump
         }
     }
@@ -32,6 +34,7 @@ enum NHSLinkSubject {
         case .bath: "About bathing"
         case .feed: "About feeding"
         case .pump: "About expressing"
+        case .bottles: "About bottle feeding"
         }
     }
 
@@ -58,10 +61,17 @@ enum NHSLinks {
         guard let babyID = model.baby?.name else { return [] }
         let facts = data.insightFacts(babyID: babyID, now: now)
         let today = facts.today ?? PlainDate(now, in: data.householdSettings.timeZone)
-        return NHSPassages.forLink(subject.kind, ageInDays: facts.ageInDays,
-                                   breastfeeds: facts.days.contains { $0.breastFeeds > 0 },
-                                   bottleFeeds: facts.days.contains { $0.bottleFeeds > 0 },
-                                   checks: data.passageChecks, today: today)
+        let passages = NHSPassages.forLink(subject.kind, ageInDays: facts.ageInDays,
+                                           breastfeeds: subject != .bottles && facts.days.contains { $0.breastFeeds > 0 },
+                                           bottleFeeds: subject == .bottles || facts.days.contains { $0.bottleFeeds > 0 },
+                                           checks: data.passageChecks, today: today)
+        return subject == .bottles ? bottleFeedingOnly(passages) : passages
+    }
+
+    /// "About bottle feeding" opens the bottle-feeding passages alone, never the feed topic's
+    /// general ones, such as reflux (Codex review of `14-bottles-through-the-day.md`, 4).
+    static func bottleFeedingOnly(_ passages: [Passage]) -> [Passage] {
+        passages.filter { $0.feeding == .bottleFeeding }
     }
 
     /// "Checked against the NHS page by Sam, 23 Nov.", true on both phones; with no name for a tick
