@@ -374,9 +374,6 @@ final class InsightEngine {
         case .helpNow:
             SyncLog.add("ask: danger sign, Get help now")
             keep(.helpNow)
-        case .parentHelp:
-            SyncLog.add("ask: a parent's danger words, their urgent help")
-            keep(.parentHelp)
         case .lastGiven:
             keep(.lastGiven)
         case .medicineReply:

@@ -121,8 +121,9 @@ final class InsightCardFlowTests: XCTestCase {
         }
     }
 
-    /// Home's "Last night" with the AI mark opens the card, then the night's entries, then Get help
-    /// now, which opens and stays open.
+    /// Home's "Last night" with the AI mark opens the card, then the night's entries, then the NHS
+    /// passages, shut until tapped (Parent A, 26 Nov 2026), then Get help now, which opens and stays
+    /// open.
     func testLastNightOpensTheCardAndItsEntries() {
         let app = launch(["-sampleInsightCard", "YES", "-homeLastNight", "YES"])
         let line = app.buttons["lastNightLine"]
@@ -139,14 +140,34 @@ final class InsightCardFlowTests: XCTestCase {
         scrollTo(help, in: app)
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Picked by AI from your log.'")).firstMatch.exists,
                       "the foot")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Summary · AI, '")).firstMatch.exists,
-                      "the NHS passage's summary is marked AI")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Information from the NHS website, as at'"))
-            .firstMatch.exists, "the NHS credit")
         // "Sunday night · slept 7h 10m", over the night's entries.
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^[A-Z][a-z]+day night( · slept .*)?$"))
-            .firstMatch.exists, "the night's entries under the card")
+        let nightTitle = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "^[A-Z][a-z]+day night( · slept .*)?$"))
+            .firstMatch
+        XCTAssertTrue(nightTitle.exists, "the night's entries under the card")
+        let summary = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Summary · AI, '")).firstMatch
+        let credit = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Information from the NHS website, as at'"))
+            .firstMatch
+
+        // The NHS passage: one shut row under the night's entries.
+        let nhs = app.buttons["cardNHS"].firstMatch
+        XCTAssertTrue(nhs.exists, "the NHS passage's row")
+        XCTAssertTrue(nhs.label.hasPrefix("NHS information: "), nhs.label)
+        XCTAssertEqual(nhs.value as? String, "Closed")
+        XCTAssertGreaterThan(nhs.frame.minY, nightTitle.frame.maxY, "the NHS under the night's entries")
+        XCTAssertLessThan(nhs.frame.maxY, help.frame.minY, "Get help now last")
+        XCTAssertFalse(summary.exists, "shut: no summary")
+        XCTAssertFalse(credit.exists, "shut: no NHS words")
         keep(app, "Morning card, its end")
+
+        nhs.tap()
+        XCTAssertTrue(summary.waitForExistence(timeout: 3), "open: the summary, marked AI")
+        XCTAssertTrue(credit.exists, "open: the NHS credit")
+        XCTAssertEqual(nhs.value as? String, "Open")
+        keep(app, "Morning card, NHS open")
+        nhs.tap()
+        XCTAssertTrue(summary.waitForNonExistence(timeout: 3), "a second tap shuts it")
+
+        scrollTo(help, in: app)
         help.tap()
         XCTAssertTrue(app.buttons["Call 9 9 9"].waitForExistence(timeout: 5))
         sleep(2)

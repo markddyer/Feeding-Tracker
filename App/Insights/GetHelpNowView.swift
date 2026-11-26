@@ -10,8 +10,6 @@ import SwiftUI
 struct GetHelpNowView: View {
     /// Opened from a Siri danger sign: VoiceOver starts on the heading (step 4 design D20 A).
     var focusHeading = false
-    /// The baby's urgent list, or a parent's own urgent help (a parent's danger words to Siri).
-    var passage: Passage = NHSPassages.urgent
     @Environment(\.openURL) private var openURL
     @AccessibilityFocusState private var headingFocused: Bool
 
@@ -23,7 +21,7 @@ struct GetHelpNowView: View {
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityFocused($headingFocused)
                     .onAppear { if focusHeading { headingFocused = true } }
-                NHSPassageTile(passage: passage)
+                NHSPassageTile(passage: NHSPassages.urgent)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)

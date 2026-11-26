@@ -90,14 +90,12 @@ final class SiriQuestions {
         let now = Date()
         // Y1: the danger signs first, before set-up, the busy check, the queue or an open form
         // (Codex step 4 review, 2: a phone still loading its iCloud ID still gets Get help now).
-        let babySigns = !InsightQuestions.dangerSigns(text, kept: log.questions, now: now).isEmpty
-        if babySigns || InsightQuestions.parentInDanger(text, kept: log.questions, now: now) {
-            SyncLog.add(babySigns ? "ask: Siri, danger sign, Get help now" : "ask: Siri, a parent's danger words, their help")
+        if !InsightQuestions.dangerSigns(text, kept: log.questions, now: now).isEmpty {
+            SyncLog.add("ask: Siri, danger sign, Get help now")
             // Kept as read: Ask doesn't read it again once the sheet closes (G7).
-            log.add(KeptQuestion(askedAt: now, text: text, kind: babySigns ? .helpNow : .parentHelp, viaSiri: true, readAt: now),
-                    now: now)
-            // The sheet reads its heading once it is on screen, and holds the voice until it closes.
-            HelpPresenter.show(forParent: !babySigns)
+            log.add(KeptQuestion(askedAt: now, text: text, kind: .helpNow, viaSiri: true, readAt: now), now: now)
+            // The sheet reads "Get help now…" once it is on screen, and holds the voice until it closes.
+            HelpPresenter.show()
             return InsightQuestions.siriAsking
         }
         guard model.me != nil, model.baby != nil else { return InsightQuestions.siriNotSetUp }
@@ -239,10 +237,9 @@ final class ReadAloud {
     }
 
     /// Get help now's sheet is on screen: its words, once.
-    func helpShown(forParent: Bool) {
+    func helpShown() {
         helpHolds = true
-        let title = NHSPassages.passage(InsightQuestions.parentHelpPassage)?.title
-        read(InsightQuestions.spoken(forParent ? .parentHelp : .helpNow, helpTitle: title), for: Self.helpID)
+        read(InsightQuestions.spoken(.helpNow), for: Self.helpID)
     }
 
     /// Get help now's sheet closed.
@@ -352,13 +349,9 @@ enum HelpPresenter {
     /// opening or closing can't lose it (Codex step 4 review, 2).
     private(set) static var waiting = false
     private static var trying = false
-    /// The parent's own urgent help, not the baby's (a parent's danger words).
-    private static var forParent = false
 
-    static func show(forParent: Bool = false) {
+    static func show() {
         waiting = true
-        // The baby's list wins if both were said.
-        self.forParent = trying ? (self.forParent && forParent) : forParent
         ReadAloud.shared.helpComing()
         guard !trying else { return }
         trying = true
@@ -375,7 +368,7 @@ enum HelpPresenter {
                         // gstack-shortcut(dec-6ac49277): a sheet a swipe can close (the parents' D14 B);
                         // upgrade to a full-screen cover if a parent swipes it away by mistake, or before
                         // another family uses the app.
-                        let host = UIHostingController(rootView: GetHelpNowSheet(forParent: forParent))
+                        let host = UIHostingController(rootView: GetHelpNowSheet())
                         host.modalPresentationStyle = .pageSheet
                         top.present(host, animated: true)
                     }
@@ -403,16 +396,13 @@ enum HelpPresenter {
     }
 }
 
-/// Get help now as a sheet, with its round ✕: the baby's urgent list, or a parent's own urgent help.
+/// Get help now as a sheet, with its round ✕.
 struct GetHelpNowSheet: View {
-    var forParent = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
-            GetHelpNowView(focusHeading: true,
-                           passage: forParent ? NHSPassages.passage(InsightQuestions.parentHelpPassage) ?? NHSPassages.urgent
-                                              : NHSPassages.urgent)
+            GetHelpNowView(focusHeading: true)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button { dismiss() } label: {
@@ -428,7 +418,7 @@ struct GetHelpNowSheet: View {
         .modifier(LookModifier())
         .onAppear {
             HelpPresenter.shown()
-            ReadAloud.shared.helpShown(forParent: forParent)
+            ReadAloud.shared.helpShown()
         }
         .onDisappear { ReadAloud.shared.helpClosed() }
     }

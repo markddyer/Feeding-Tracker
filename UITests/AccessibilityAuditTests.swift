@@ -180,6 +180,8 @@ final class AccessibilityAuditTests: XCTestCase {
             audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard"], look: look), "morning card \(look)")
             audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard", "-cardAtBottom", "YES"], look: look),
                   "morning card end \(look)")
+            audit(openNHS(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard", "-cardAtBottom", "YES"], look: look)),
+                  "morning card nhs open \(look)")
             let plain = launch(["-sampleInsightYes", "both", "-homeLastNight", "YES", "-homeSheet", "insightCard"], look: look)
             _ = plain.descendants(matching: .any)["factsOnlyCard"].firstMatch.waitForExistence(timeout: 8)
             audit(plain, "facts only \(look)")
@@ -190,8 +192,20 @@ final class AccessibilityAuditTests: XCTestCase {
         audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard"], largeText: true), "morning card large text")
         audit(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard", "-cardAtBottom", "YES"], largeText: true),
               "morning card end large text")
+        audit(openNHS(launch(card + ["-homeLastNight", "YES", "-homeSheet", "insightCard", "-cardAtBottom", "YES"],
+                             largeText: true)), "morning card nhs open large text")
         audit(launch(week + ["-startTab", "graphs", "-graphsSheet", "week"], largeText: true), "week card large text")
         report()
+    }
+
+    /// The card's first NHS passage opened (they start shut, Parent A, 26 Nov 2026).
+    private func openNHS(_ app: XCUIApplication) -> XCUIApplication {
+        let row = app.buttons["cardNHS"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 8), "the card's NHS row")
+        row.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Information from the NHS website, as at'"))
+            .firstMatch.waitForExistence(timeout: 3), "the NHS's words, open")
+        return app
     }
 
     /// AI insights step 4: the NHS link on the poo panel and in an editor, its sheet, and Ask after a

@@ -211,6 +211,11 @@ struct InsightCardSheet: View {
                         if let night, !night.items.isEmpty {
                             NightEntriesTile(night: night, zone: zone)
                         }
+                        // The NHS's words under the night, each shut until tapped (Parent A, 26 Nov
+                        // 2026: the report on the night first, the NHS further down).
+                        ForEach(Self.passages(shown), id: \.passage.id) { item in
+                            NHSCardBox(passage: item.passage, summary: item.summary, folds: true)
+                        }
                         NavigationLink {
                             GetHelpNowView()
                         } label: {
@@ -270,10 +275,25 @@ struct InsightCardSheet: View {
             PlainCardTile(plain: plain, medicines: MedicineChips.given(in: period), why: why)
         }
     }
+
+    private struct ShownPassage {
+        let passage: Passage
+        let summary: PassageSummary?
+    }
+
+    /// The card's NHS passages: with the AI's checked summary on an AI card, without on "Facts only
+    /// today".
+    private static func passages(_ shown: CardShown) -> [ShownPassage] {
+        switch shown {
+        case .nothing, .making: []
+        case .card(let card, _): card.passages.map { ShownPassage(passage: $0.passage, summary: $0.summary) }
+        case .factsOnly(let plain, _, _): (plain?.passages ?? []).map { ShownPassage(passage: $0, summary: nil) }
+        }
+    }
 }
 
-/// The AI's card: the app's sentences from the AI's choices, the medicine chips, the NHS passages,
-/// the foot, and "This was wrong" (A7).
+/// The AI's card: the app's sentences from the AI's choices, the medicine chips, the foot, and
+/// "This was wrong" (A7). Its NHS passages sit under the night's entries (`InsightCardSheet`).
 struct AICardTile: View {
     let kind: CardKind
     let card: CheckedCard
@@ -297,9 +317,6 @@ struct AICardTile: View {
                     }
                 }
                 MedicineChips(chips: medicines)
-                ForEach(card.passages, id: \.passage.id) { item in
-                    NHSCardBox(passage: item.passage, summary: item.summary)
-                }
                 Text(CardText.foot)
                     .feedText(.subheadline)
                     .foregroundStyle(Theme.textMuted)
@@ -395,8 +412,9 @@ struct AICardTile: View {
     }
 }
 
-/// "Facts only today" (S12): the app's fixed facts, the medicines, the NHS passages without a
-/// summary, and why there is no AI card. No AI mark: nothing on it is the AI's.
+/// "Facts only today" (S12): the app's fixed facts, the medicines, and why there is no AI card. No
+/// AI mark: nothing on it is the AI's. Its NHS passages, without a summary, sit under the night's
+/// entries (`InsightCardSheet`).
 struct PlainCardTile: View {
     let plain: PlainCard?
     let medicines: [MedicineChips.Chip]
@@ -409,9 +427,6 @@ struct PlainCardTile: View {
                     Text(text).feedText(.body).monospacedDigit()
                 }
                 MedicineChips(chips: medicines)
-                ForEach(plain?.passages ?? [], id: \.id) { passage in
-                    NHSCardBox(passage: passage, summary: nil)
-                }
                 Text(why)
                     .feedText(.subheadline)
                     .foregroundStyle(Theme.textMuted)
@@ -471,15 +486,81 @@ struct MedicineChips: View {
 
 /// An NHS passage on a card: the page's name, the AI-chosen summary marked as AI (checked ahead of
 /// time by a parent), then the NHS's own words in full, the credit and the page's link (D9, R7).
+/// With `folds`, as on the AI card, it starts shut: one row, "NHS", the page's name and a chevron,
+/// that opens it in place (Parent A, 26 Nov 2026). Ask and the forms' links show it open.
 struct NHSCardBox: View {
     let passage: Passage
     let summary: PassageSummary?
+    var folds = false
+    @State private var open = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("NHS · \(passage.page)")
-                .feedText(.label)
-                .foregroundStyle(Theme.textMuted)
+            if folds {
+                Button {
+                    withAnimation(.snappy(duration: 0.25)) { open.toggle() }
+                } label: {
+                    foldRow
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("NHS information: \(passage.page)")
+                .accessibilityValue(open ? "Open" : "Closed")
+                .accessibilityHint(open ? "Hides the NHS's words." : "Shows the NHS's words.")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("cardNHS")
+            } else {
+                Text("NHS · \(passage.page)")
+                    .feedText(.label)
+                    .foregroundStyle(Theme.textMuted)
+            }
+            if !folds || open {
+                words
+                    .transition(.opacity)
+            }
+        }
+        .padding(.leading, 15)
+        .padding(.trailing, 11)
+        .padding(.vertical, folds ? 2 : 9)
+        .padding(.bottom, folds && open ? 7 : 0)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.bottleTint, in: RoundedRectangle(cornerRadius: 12))
+        // The NHS's blue edge on the left (the parents' pick, round 2).
+        .overlay(alignment: .leading) {
+            UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12)
+                .fill(Theme.bottleMark)
+                .frame(width: 4)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The shut row, as the forms' NHS link: "NHS" muted, the page's name, a muted chevron.
+    @ViewBuilder
+    private var foldRow: some View {
+        let nhs = Text("NHS").feedText(.label).foregroundStyle(Theme.textMuted)
+        let page = Text(passage.page).feedText(.smallButton).foregroundStyle(Theme.text)
+            .multilineTextAlignment(.leading)
+        let chevron = Image(systemName: "chevron.down")
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(Theme.textMuted)
+            .rotationEffect(.degrees(open ? 180 : 0))
+        if typeSize.isAccessibilitySize {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) { nhs; page }
+                Spacer(minLength: 8)
+                chevron
+            }
+        } else {
+            HStack(spacing: 10) { nhs; page; Spacer(minLength: 8); chevron }
+        }
+    }
+
+    @ViewBuilder
+    private var words: some View {
+        VStack(alignment: .leading, spacing: 8) {
             if let summary {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Summary · AI")
@@ -505,18 +586,6 @@ struct NHSCardBox: View {
                 .accessibilityLabel("Open the NHS page")
                 .accessibilityHint(passage.page)
             }
-        }
-        .padding(.leading, 15)
-        .padding(.trailing, 11)
-        .padding(.vertical, 9)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.bottleTint, in: RoundedRectangle(cornerRadius: 12))
-        // The NHS's blue edge on the left (the parents' pick, round 2).
-        .overlay(alignment: .leading) {
-            UnevenRoundedRectangle(topLeadingRadius: 12, bottomLeadingRadius: 12)
-                .fill(Theme.bottleMark)
-                .frame(width: 4)
-                .accessibilityHidden(true)
         }
     }
 }

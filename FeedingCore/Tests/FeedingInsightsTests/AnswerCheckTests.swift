@@ -285,7 +285,7 @@ struct NHSUrgentListTests {
     /// The bullets under each "Call 999" heading in the NHS passages, as a parent might say them.
     static var urgentBullets: [String] {
         var bullets: [String] = []
-        for passage in NHSPassages.all {
+        for passage in NHSPassages.all where passage.id != InsightQuestions.parentHelpPassage {
             var inUrgent = false
             for line in passage.words.split(separator: "\n").map({ $0.trimmingCharacters(in: .whitespaces) }) {
                 if line.hasPrefix("#") { inUrgent = line.contains("999") }
@@ -295,26 +295,15 @@ struct NHSUrgentListTests {
         return bullets
     }
 
-    /// Every sign the NHS says needs 999 is caught on the phone, before any AI: none of them
-    /// can reach Claude and wait on its answer. A parent's own (the mental health page) opens the
-    /// parent's help.
+    /// Every sign the NHS says needs 999 about a baby is caught on the phone, before any AI: none
+    /// of them can reach Claude and wait on its answer. The parents' own mental health page is left
+    /// out: a parent's crisis words have no phone check, by Parent A's choice (step 3 D11 B, kept
+    /// on 26 Nov 2026).
     @Test func everyNHS999SignIsCaughtBeforeTheAI() {
         let bullets = Self.urgentBullets
         #expect(bullets.count >= 10)
         for bullet in bullets {
-            #expect(!DangerSigns.check(bullet).isEmpty || ParentDanger.check(bullet), "not caught: \(bullet)")
-        }
-    }
-
-    @Test func aParentsOwnDangerOpensTheirHelpBeforeTheAI() {
-        for said in ["I can't keep myself safe", "I want to end it all", "I'm scared I'll hurt the baby",
-                     "I took an overdose"] {
-            #expect(ParentDanger.check(said), "not caught: \(said)")
-        }
-        // Ordinary questions don't.
-        for said in ["Did I hurt her cutting her nails?", "How do I keep her safe in the car seat?",
-                     "How many feeds last night?"] {
-            #expect(!ParentDanger.check(said), "caught: \(said)")
+            #expect(!DangerSigns.check(bullet).isEmpty, "not caught: \(bullet)")
         }
     }
 

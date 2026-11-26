@@ -257,26 +257,6 @@ public enum DangerSigns {
     }()
 }
 
-/// A parent's own danger, in their words (Codex step 4 review, 1): from the NHS's urgent help for
-/// mental health ("someone's life is at risk", "you do not feel you can keep yourself or someone
-/// else safe"). Checked on the phone before any AI, like the baby's signs; it opens the parent's
-/// urgent help (step 3 D13 A's page), never an answer. Negation is ignored, as for the baby's.
-public enum ParentDanger {
-    public static func check(_ text: String) -> Bool {
-        let words = WordReader.words(text)
-        return phrases.contains { WordReader.contains(words, phrase: $0, fuzzy: false) }
-    }
-
-    static let phrases: [[String]] = [
-        "suicide", "suicidal", "kill myself", "killing myself", "end my life", "end it all", "take my own life",
-        "want to die", "wish i was dead", "dont want to be here", "dont want to live", "better off without me",
-        "hurt myself", "hurting myself", "harm myself", "harming myself", "self harm", "selfharm", "cut myself",
-        "cutting myself", "overdose", "overdosed", "taken an overdose", "life is at risk", "life at risk",
-        "keep myself safe", "keep myself or", "keep yourself safe", "keep yourself or",
-        "hurt the baby", "harm the baby", "hurt my baby", "harm my baby", "shake the baby", "injured myself",
-    ].map { $0.split(separator: " ").map(String.init) }
-}
-
 // MARK: Medicine questions
 
 /// A question about a medicine: it is answered on the phone, never by the AI (D6, O3).

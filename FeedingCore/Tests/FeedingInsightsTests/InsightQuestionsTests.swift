@@ -332,14 +332,10 @@ struct SpokenReplyTests {
     }
 }
 
-@Suite("Ask: a parent's danger words go to their help, with no AI (Codex step 4 review, 1)")
-struct ParentDangerRouteTests {
-    @Test func aParentsDangerWordsNeverReachTheAI() {
-        let data = HouseholdData()
-        let route = InsightQuestions.route("I don't think I can keep myself safe tonight", data: data, babyID: "baby",
-                                           me: "parent-a", participants: ["parent-a", "parent-b"], kept: [], now: Date())
-        #expect(route == .parentHelp)
-        let woken = InsightQuestions.route("She cannot be woken", data: data, babyID: "baby", me: "parent-a",
+@Suite("Ask: the NHS's own words for a danger sign never reach the AI (Codex step 4 review, 1)")
+struct CannotBeWokenRouteTests {
+    @Test func cannotBeWokenOpensGetHelpNow() {
+        let woken = InsightQuestions.route("She cannot be woken", data: HouseholdData(), babyID: "baby", me: "parent-a",
                                            participants: ["parent-a", "parent-b"], kept: [], now: Date())
         guard case .helpNow = woken else {
             Issue.record("a danger sign must open Get help now: \(woken)")

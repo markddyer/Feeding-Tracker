@@ -89,9 +89,6 @@ public struct QuestionJob: Hashable, Sendable {
 public enum QuestionRoute: Hashable, Sendable {
     /// A danger sign: the Get help now card, in place of an answer, with no AI (A2).
     case helpNow([DangerSign])
-    /// A parent's own danger in their words: the parent's urgent help, with no AI (Codex step 4
-    /// review, 1; the page of step 3 D13 A).
-    case parentHelp
     /// "When did she last have Vitamin D?": answered from the log, with no AI (D6, X4). Nil: none logged.
     case lastGiven(medicine: String, at: Date?)
     /// Any other medicine question: D6's fixed reply, with no AI.
@@ -247,7 +244,6 @@ public enum InsightQuestions {
         let sent = [earlier?.text, text].compactMap { $0 }.joined(separator: " ")
         let signs = dangerSigns(text, kept: kept, now: now)
         if !signs.isEmpty { return .helpNow(signs) }
-        if parentInDanger(text, kept: kept, now: now) { return .parentHelp }
         let medicines = data.medicines
         if let medicine = MedicineQuestions.check(text, medicines: medicines) ?? MedicineQuestions.check(sent, medicines: medicines) {
             if medicine.asksWhenLastGiven, let name = medicine.medicine {
@@ -269,14 +265,6 @@ public enum InsightQuestions {
         let earlier = earlierQuestion(kept, now: now)
         let sent = [earlier?.text, text].compactMap { $0 }.joined(separator: " ")
         return Array(Set(DangerSigns.check(text) + DangerSigns.check(sent))).sorted { $0.rawValue < $1.rawValue }
-    }
-
-    /// A parent's own danger (`ParentDanger`), read alone and with the question before it, like the
-    /// baby's signs; checked just after them, on every question, typed or spoken.
-    public static func parentInDanger(_ text: String, kept: [KeptQuestion], now: Date) -> Bool {
-        let earlier = earlierQuestion(kept, now: now)
-        let sent = [earlier?.text, text].compactMap { $0 }.joined(separator: " ")
-        return ParentDanger.check(text) || ParentDanger.check(sent)
     }
 
     /// The same question again (step 4 design D10 A): the same words, ignoring case, punctuation and
