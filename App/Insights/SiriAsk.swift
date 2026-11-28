@@ -6,6 +6,7 @@ import FeedingInsights
 import Observation
 import SwiftUI
 import UIKit
+import UserNotifications
 
 // "Ask Little Log" with Siri (AI insights step 4, `docs/planning/12-ai-insights-gauntlet.md`: D3 A,
 // D7 A, D8 A, D9 A, D10 B; design D10 A, D12 A, D14 B, D20 A). Siri takes the question after the
@@ -21,15 +22,15 @@ import UIKit
 //                                 ─► InsightEngine.ask(fromSiri:) ─► QuestionLog ─► Ask reads it (ReadAloud)
 
 /// "Ask Little Log": the question is asked after the phrase, as an App Shortcut phrase can't hold
-/// free words (F2).
+/// free words (F2). On an unlocked phone Little Log opens on Ask, as before (doc 15, V7 A). On a
+/// locked phone Siri reads the answer and the app stays closed (V3 B, which changes D13 for this
+/// action alone): the question and its answer wait in Ask for the unlock (V5 A), and a danger sign
+/// also leaves Get help now on the Lock Screen (V6 B).
 struct AskLittleLogIntent: AppIntent {
     static let title: LocalizedStringResource = "Ask Little Log"
-    static let description = IntentDescription("Ask about your log or what the NHS says. Little Log opens with the answer and reads it out.")
-    /// Opens the app: the AI never runs with the app closed, and nothing shows on the Lock Screen (D13).
-    static let supportedModes: IntentModes = .foreground(.immediate)
-    /// The question and its answer are kept where only an unlocked phone can read them (`QuestionLog`):
-    /// this iPhone's own unlock, never a paired device's (Codex step 4 review, 8).
-    static let authenticationPolicy: IntentAuthenticationPolicy = .requiresLocalDeviceAuthentication
+    static let description = IntentDescription("Ask about your log or what the NHS says. Siri reads the answer.")
+    static let supportedModes: IntentModes = [.background, .foreground(.dynamic)]
+    static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
     @Parameter(title: "Question", requestValueDialog: "What's your question?")
@@ -42,8 +43,183 @@ struct AskLittleLogIntent: AppIntent {
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let said = await SiriQuestions.shared.receive(question)
+        let danger = await LockedAsk.hasDangerSign(question)
+        if await LockedAsk.isUnlocked() {
+            // A danger sign's page waits for the app, whichever way this goes (Codex step 3, 2).
+            if danger { await HelpNotice.openWhenActive(parent: false) }
+            do {
+                try await continueInForeground(alwaysConfirm: false)
+            } catch {
+                // The unlock was refused, or the phone locked just now: a danger sign still gets
+                // its help in Siri's voice and on the Lock Screen.
+                if danger { return .result(dialog: "\(await LockedAsk.help(question))") }
+                throw error
+            }
+            let said = await SiriQuestions.shared.receive(question)
+            return .result(dialog: "\(said)")
+        }
+        let said = danger ? await LockedAsk.help(question) : await LockedAsk.answer(question)
         return .result(dialog: "\(said)")
+    }
+}
+
+/// "Ask Little Log" on a locked phone (`docs/planning/15-hands-free-siri.md`, V3 B, V5 A, V6 B):
+/// the same route as Ask (danger signs first, medicines, the gate with both yeses, then the AI),
+/// with Siri's voice instead of the screen.
+///
+///   Siri ─► danger sign ─► where the NHS's urgent page waits, the Lock Screen notice, the page at the next open
+///        ─► the question before it unreadable ─► "unlock, then ask again" (no AI)
+///        ─► InsightEngine.ask (allowed with the app closed) ─► kept for the unlock ─► read by Siri
+@MainActor
+enum LockedAsk {
+    /// How long Siri waits for the answer; after that it is kept in Ask for the unlock.
+    static let wait: Duration = .seconds(25)
+
+    static func isUnlocked() -> Bool {
+        UIApplication.shared.isProtectedDataAvailable
+    }
+
+    static func hasDangerSign(_ spoken: String, log: QuestionLog = .shared) -> Bool {
+        let text = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !text.isEmpty && !InsightQuestions.dangerSigns(text, kept: log.questions, now: Date()).isEmpty
+    }
+
+    /// A danger sign (Y1, V6 B): kept as read, the notice on the Lock Screen, Get help now at the
+    /// next open, and where the NHS's page waits, in Siri's voice. Nothing goes to the AI.
+    static func help(_ spoken: String, log: QuestionLog = .shared) -> String {
+        let text = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        let now = Date()
+        SyncLog.add("ask: Siri locked, danger sign, Get help now")
+        log.add(KeptQuestion(askedAt: now, text: text, kind: .helpNow, viaSiri: true, readAt: now), now: now)
+        HelpNotice.post(parent: false)
+        return InsightQuestions.spoken(.helpNow, locked: true)
+    }
+
+    static func answer(_ spoken: String, model: AppModel = .shared, log: QuestionLog = .shared,
+                       engine: InsightEngine = .shared) async -> String {
+        let text = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return "Say \"Ask Little Log\" again with your question." }
+        guard model.me != nil, model.baby != nil else { return InsightQuestions.siriNotSetUp }
+        // The question before it may be in a file this locked phone can't read: the danger check and
+        // the AI read the two together, so this one waits for the unlock (Codex step 3, 3).
+        if log.mayHideRecent() { return lockedFollowUp }
+        guard !engine.askingQuestion else { return InsightQuestions.siriAlreadyAsking }
+        SyncLog.add("ask: Siri locked")
+        let now = Date()
+        let waited = Waited()
+        // A little more time for the answer once Siri stops waiting (Codex step 3, 6).
+        let background = UIApplication.shared.beginBackgroundTask(withName: "ask") {}
+        let asking = Task { @MainActor in
+            await engine.ask(text, fromSiri: true, spokenBySiri: true, model: model, log: log, isOpen: { true })
+            if let kept = Self.kept(text, since: now, log: log) {
+                // The help comes whether or not Siri is still waiting.
+                if kept.kind == .helpNow || kept.kind == .parentHelp { HelpNotice.post(parent: kept.kind == .parentHelp) }
+                // Siri stopped waiting: Ask reads it aloud when it shows it.
+                if waited.gaveUp { log.markUnread(kept.id) }
+            }
+            UIApplication.shared.endBackgroundTask(background)
+        }
+        guard await finishes(asking, within: wait), let kept = Self.kept(text, since: now, log: log) else {
+            waited.gaveUp = true
+            return "Little Log is still asking. The answer will be in Ask when you unlock."
+        }
+        return AnswerBubble.spoken(kept, model: model, locked: true)
+    }
+
+    static let lockedFollowUp = "Little Log can't see your last question while the phone is locked. Unlock, then ask again."
+
+    private static func kept(_ text: String, since: Date, log: QuestionLog) -> KeptQuestion? {
+        log.questions.last { $0.text == text && $0.askedAt >= since }
+    }
+
+    /// Whether Siri gave up waiting.
+    private final class Waited {
+        var gaveUp = false
+    }
+
+    /// True if `task` ends within `limit`. Returns at the limit even while the task carries on: the
+    /// timer and the task each try to answer, and only the first is heard (Codex step 3, 6).
+    private static func finishes(_ task: Task<Void, Never>, within limit: Duration) async -> Bool {
+        let gate = OneAnswer()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+            gate.continuation = continuation
+            Task { @MainActor in
+                await task.value
+                gate.answer(true)
+            }
+            Task { @MainActor in
+                try? await Task.sleep(for: limit)
+                gate.answer(false)
+            }
+        }
+    }
+
+    @MainActor
+    private final class OneAnswer {
+        var continuation: CheckedContinuation<Bool, Never>?
+
+        func answer(_ value: Bool) {
+            continuation?.resume(returning: value)
+            continuation = nil
+        }
+    }
+}
+
+/// Get help now on the Lock Screen, after a danger sign said to Siri on a locked phone (V6 B): a
+/// Time Sensitive notice whose tap (after Touch ID) opens Get help now, or Ask for a parent's help.
+/// Its words hold nothing from the question or the log. The page also opens by itself the next
+/// time Little Log comes to the front, within an hour (Codex step 3, 11).
+@MainActor
+enum HelpNotice {
+    nonisolated static let babyID = "help.getHelpNow"
+    nonisolated static let parentID = "help.parentHelp"
+    private static let pendingKey = "help.openPending"
+    private static let pendingParentKey = "help.openPendingParent"
+    private static var watching: NSObjectProtocol?
+
+    static func post(parent: Bool) {
+        openWhenActive(parent: parent)
+        let content = UNMutableNotificationContent()
+        content.title = "Get help now"
+        content.body = parent ? "Who to call, from the NHS. Open Little Log."
+            : "The NHS's list of when to call 999 or NHS 111 for a baby. Open it here."
+        content.interruptionLevel = .timeSensitive
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: parent ? parentID : babyID, content: content, trigger: nil)
+        UNUserNotificationCenter.current().add(request)
+    }
+
+    /// The page waits for the next time the app comes to the front.
+    static func openWhenActive(parent: Bool) {
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: pendingKey)
+        UserDefaults.standard.set(parent, forKey: pendingParentKey)
+        if UIApplication.shared.applicationState == .active { openIfPending() }
+    }
+
+    /// At launch: the page opens each time the app comes to the front while one waits.
+    static func watch() {
+        guard watching == nil else { return }
+        watching = NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil,
+                                                          queue: .main) { _ in
+            Task { @MainActor in HelpNotice.openIfPending() }
+        }
+    }
+
+    static func openIfPending(now: Date = Date()) {
+        let at = UserDefaults.standard.double(forKey: pendingKey)
+        guard at > 0 else { return }
+        clear()
+        guard now.timeIntervalSince1970 - at < 3600 else { return }
+        if UserDefaults.standard.bool(forKey: pendingParentKey) {
+            NotificationTaps.shared.showAsk()
+        } else {
+            HelpPresenter.show()
+        }
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: pendingKey)
+        UserDefaults.standard.removeObject(forKey: pendingParentKey)
     }
 }
 

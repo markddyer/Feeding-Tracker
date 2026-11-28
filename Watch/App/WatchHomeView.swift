@@ -221,17 +221,7 @@ struct WatchHomeView: View {
     /// Finish, then "Add to this feed" (step 2), or on an older phone each bottle's amount.
     private func finish(_ feed: WatchFeed) {
         let at = Date()
-        // Finish again after an Undo of Finish the phone hasn't answered: sent after it, so they
-        // arrive in order (outside review of step 3).
-        let tap: String
-        if let undo = link.saved.actions.last(where: {
-            if case .undoFinish(let id, _) = $0.action { return id == feed.id }
-            return false
-        }) {
-            tap = link.send(.refinish(feedID: feed.id), after: undo.id, now: at)
-        } else {
-            tap = link.send(.finish(feedID: feed.id), now: at)
-        }
+        let tap = link.sendFinish(feedID: feed.id, now: at)
         if link.shown?.understands(WatchCapability.feedExtras) == true {
             addTo = AddToFeed(feedID: feed.id, tap: tap, finishedAt: at)
         } else {

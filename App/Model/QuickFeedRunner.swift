@@ -22,20 +22,37 @@ enum QuickFeedRunner {
     }
 
     static func finish(now: Date = Date()) async -> String {
-        let model = AppModel.shared
-        guard let me = model.me, let baby = model.baby else { return GlanceText.notSetUp }
-        var result = model.store.change { $0.quickFinishFeed(babyID: baby.name, by: me, now: now) }
-        if result == .nothingRunning {
-            // The other parent may have started one this phone hasn't heard about yet.
-            await waitAtMost(seconds: 3) { await model.sync.fetchNow() }
-            result = model.store.change { $0.quickFinishFeed(babyID: baby.name, by: me, now: Date()) }
-        }
+        guard let me = AppModel.shared.me else { return GlanceText.notSetUp }
+        guard let result = await finishOnly(now: now) else { return GlanceText.notSetUp }
         if case .finished(let feed) = result, feed.event.loggedBy == me {
             // The details panel opens on Home next time, as after Finish in the app.
             UserDefaults.standard.set(feed.id, forKey: FeedControls.detailsKey)
         }
         await settle()
         return said(result, me: me, now: now)
+    }
+
+    /// Finishes the feed running now, as Finish in the app does, fetching first when this phone
+    /// hasn't heard of one. Nil before set-up. The caller sends it (`settle` or `settleSoon`).
+    static func finishOnly(now: Date = Date()) async -> QuickFeedResult? {
+        let model = AppModel.shared
+        guard let me = model.me, let baby = model.baby else { return nil }
+        var result = model.store.change { $0.quickFinishFeed(babyID: baby.name, by: me, now: now) }
+        if result == .nothingRunning {
+            // The other parent may have started one this phone hasn't heard about yet.
+            await waitAtMost(seconds: 3) { await model.sync.fetchNow() }
+            result = model.store.change { $0.quickFinishFeed(babyID: baby.name, by: me, now: Date()) }
+        }
+        return result
+    }
+
+    /// As `settle`, but returns once the alarms are set: the send carries on while Siri asks its
+    /// questions (`VoiceRunner`), and `settle` at the end waits for whatever is left.
+    static func settleSoon() async {
+        let model = AppModel.shared
+        await model.reconciler.run()
+        model.sync.scheduleUploads()
+        Task { @MainActor in await model.sync.sendNow() }
     }
 
     // MARK: Sleep, nappies and medicine (`CareIntents.swift`)

@@ -307,7 +307,7 @@ private struct MakingBubble: View {
 
 /// What a question got. An AI answer is checked against this phone's log each time it is shown
 /// (X8): a fact whose entry was deleted goes, and nothing that fails the checks is ever shown.
-private struct AnswerBubble: View {
+struct AnswerBubble: View {
     let question: KeptQuestion
     let onSendAgain: () -> Void
     private let model = AppModel.shared
@@ -382,11 +382,13 @@ private struct AnswerBubble: View {
 
     /// What is read aloud for a Siri question's reply: the screen's own words, short
     /// (`InsightQuestions.spoken`; step 4 D3 A, D8 A, D10 B).
-    static func spoken(_ question: KeptQuestion, model: AppModel) -> String {
+    /// `locked`: Siri reads it on a locked phone (doc 15, V3 B).
+    static func spoken(_ question: KeptQuestion, model: AppModel, locked: Bool = false) -> String {
         let zone = model.store.data.householdSettings.timeZone
         return InsightQuestions.spoken(question.kind, checked: checked(question, model: model),
                                        lastGiven: lastGivenLine(question, model: model, zone: zone),
-                                       helpTitle: NHSPassages.passage(InsightQuestions.parentHelpPassage)?.title)
+                                       helpTitle: NHSPassages.passage(InsightQuestions.parentHelpPassage)?.title,
+                                       locked: locked)
     }
 
     @ViewBuilder

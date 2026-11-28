@@ -175,6 +175,9 @@ targetTemplates:
       - path: Shared/GlanceText.swift
       - path: Shared/FeedShapes.swift
       - path: Shared/WindowSteps.swift
+      # Siri's lists and words, the same as the phone's (docs/planning/15-hands-free-siri.md).
+      - path: Shared/SiriChoices.swift
+      - path: Shared/SiriText.swift
       - path: App/Fonts/Fredoka.ttf
     dependencies:
       - package: FeedingCore
@@ -259,7 +262,7 @@ targets:
     templates: [FeedingApp]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Little Log Dev
+      displayName: Test Log
       appIcon: AppIcon-Dev
       widgets: FeedingDevWidgets
       watch: FeedingDevWatch
@@ -279,7 +282,7 @@ targets:
     templates: [FeedingWidgets]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Little Log Dev
+      displayName: Test Log
 
   FeedingWatch:
     templates: [FeedingWatchApp]
@@ -292,7 +295,7 @@ targets:
     templates: [FeedingWatchApp]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Little Log Dev
+      displayName: Test Log
       appIcon: AppIcon-Dev
       watchWidgets: FeedingDevWatchFaceWidgets
     settings:
@@ -309,7 +312,7 @@ targets:
     templates: [FeedingWatchWidgets]
     templateAttributes:
       bundleSuffix: .dev
-      displayName: Little Log Dev
+      displayName: Test Log
 
   # Tests of the app's Apple-only parts (CloudKit record mapping and the like), run in the
   # simulator: xcodebuild test -scheme FeedingDev -destination 'platform=iOS Simulator,name=iPhone 18 Pro'

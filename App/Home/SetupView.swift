@@ -78,7 +78,7 @@ struct SetupView: View {
             disclaimer
         } else if !AppConfig.syncEnabled {
             title("Not ready yet")
-            Text("This version of Little Log doesn't share feeds between phones yet. Use Little Log Dev for now.")
+            Text("This version of Little Log doesn't share feeds between phones yet. Use Test Log for now.")
                 .feedText(.body)
         } else if sync.accountAvailable == false {
             signIn(sync)

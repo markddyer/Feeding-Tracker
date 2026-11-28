@@ -185,6 +185,9 @@ public struct WatchState: Codable, Hashable, Sendable {
     public var recentFeeds: [WatchLastFeed]?
     /// Tonight's rota (step 3).
     public var tonight: WatchTonight?
+    /// The baby's name, for Siri's questions on the watch ("How much formula did Sam drink?",
+    /// `docs/planning/15-hands-free-siri.md`). Nil from an older phone: Siri says "the baby".
+    public var babyName: String?
 
     public init(version: Int = WatchState.currentVersion, madeAt: Date, setUp: Bool, lastFeedStart: Date? = nil,
                 previousFeedStart: Date? = nil, window: FeedWindowSettings = .init(), timeZoneID: String = "Europe/London",
@@ -530,6 +533,7 @@ extension HouseholdData {
         state.members = names.keys.sorted().map { WatchMember(id: $0, name: names[$0] ?? "Parent", colour: colours[$0] ?? "stone") }
         guard let babyID = currentBaby?.name else { return state }
         state.setUp = true
+        state.babyName = currentBaby.flatMap { PayloadCoder.decode(BabyPayload.self, from: $0.payload)?.name }
         let feeds = allEvents.filter { $0.isLiveFeed && $0.babyID == babyID }
         state.lastFeedStart = feeds.latestFeedStart(babyID: babyID, now: now)
         if let running = feedInProgress(babyID: babyID) {

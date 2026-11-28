@@ -156,13 +156,32 @@ public enum DangerSigns {
     /// The danger signs in a parent's words; empty when there are none. Checked before any AI.
     public static func check(_ text: String) -> [DangerSign] {
         let words = WordReader.words(text)
+        // Also read with each "isnt" as "is not", "cant" as "can not" and so on, so "she isn't
+        // breathing" meets "not breathing" (Codex review of doc 15, step 3, 1). Read both ways: the
+        // phrase lists also hold the short forms ("isnt wet").
+        let opened = expandingNegatives(words)
         var found: [DangerSign] = []
         for sign in DangerSign.allCases {
-            let hit = (phrases[sign] ?? []).contains { WordReader.contains(words, phrase: $0, fuzzy: true) }
-                || (sign == .temperature && mentionsATemperature(words))
+            let hit = (phrases[sign] ?? []).contains {
+                WordReader.contains(words, phrase: $0, fuzzy: true) || WordReader.contains(opened, phrase: $0, fuzzy: true)
+            } || (sign == .temperature && mentionsATemperature(words))
             if hit { found.append(sign) }
         }
         return found
+    }
+
+    /// The words with each short negative opened: "isnt" is "is not", "cant" "can not", "wont"
+    /// "will not".
+    static func expandingNegatives(_ words: [String]) -> [String] {
+        let special = ["cant": ["can", "not"], "wont": ["will", "not"], "shant": ["shall", "not"], "aint": ["is", "not"]]
+        return words.flatMap { word -> [String] in
+            if let opened = special[word] { return opened }
+            if word.count > 3, word.hasSuffix("nt"), ["isnt", "arent", "wasnt", "werent", "doesnt", "dont", "didnt", "hasnt",
+                                                      "havent", "hadnt", "couldnt", "wouldnt", "shouldnt", "mustnt"].contains(word) {
+                return [String(word.dropLast(2)), "not"]
+            }
+            return [word]
+        }
     }
 
     /// A reading from 35 to 43 with a decimal point, or next to "c", "deg", "degrees" or "temp":

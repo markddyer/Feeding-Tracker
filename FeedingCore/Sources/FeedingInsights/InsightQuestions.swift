@@ -185,6 +185,14 @@ public enum InsightQuestions {
     /// Read after the AI's sentences (step 4 D3 A, D10 B).
     public static let spokenNotice = "This is AI, not medical advice."
     public static let spokenCalls = "Call 999 and Call 111 are on the screen."
+    /// A danger sign said to Siri on a locked phone (V6 B): where the NHS's urgent list waits, by
+    /// its own title, and that it says when to call 999 or NHS 111. Never the list's headings alone:
+    /// without their "if:" they would read as an order, and the app never says how urgent
+    /// something is (Codex review of doc 15, step 3, 5). Get help now also waits on the Lock Screen.
+    public static let lockedHelp = "Get help now. The NHS page \"When to get urgent medical help for babies and children "
+        + "under 5\" is in your notifications, and opens when you next open Little Log. It says when to call 999 or NHS 111."
+    /// The AI's help flag on a question about how a parent feels, on a locked phone.
+    public static let lockedParentHelp = "The page, with who to call, is in your notifications, and opens when you next open Little Log."
 
     /// What Little Log reads aloud for the reply to a Siri question (step 4 D3 A, D8 A, D10 B): only
     /// what the screen shows, short, in the order the parents chose: the facts from the log (as
@@ -194,13 +202,16 @@ public enum InsightQuestions {
     ///   - checked: an answer as the screen shows it now (`accept` with `leaveOut`), for `.asked`.
     ///   - lastGiven: the screen's line for `.lastGiven` ("Vitamin D: last logged at 09:05 today.").
     ///   - helpTitle: the urgent page's heading for `.parentHelp`.
+    ///   - locked: Siri answers on a locked phone (`docs/planning/15-hands-free-siri.md`, V3, V5, V6):
+    ///     nothing is on the screen, so the NHS's urgent headings are read for a danger sign, and the
+    ///     NHS pages wait in Ask for the unlock.
     public static func spoken(_ kind: KeptQuestion.Kind, checked: CheckedAnswer? = nil, lastGiven: String? = nil,
-                              helpTitle: String? = nil) -> String {
+                              helpTitle: String? = nil, locked: Bool = false) -> String {
         switch kind {
         case .helpNow:
-            return "Get help now. " + spokenCalls
+            return locked ? lockedHelp : "Get help now. " + spokenCalls
         case .parentHelp:
-            return "\(helpTitle ?? "Get help now"). " + spokenCalls
+            return "\(helpTitle ?? "Get help now"). " + (locked ? lockedParentHelp : spokenCalls)
         case .lastGiven:
             return lastGiven ?? firstSentence(medicineReply)
         case .medicineReply:
@@ -208,7 +219,7 @@ public enum InsightQuestions {
         case .closed:
             return "AI insights is off, so Little Log can't answer that."
         case .couldNotAsk:
-            return "Couldn't reach the AI. Call 111 is on the screen."
+            return locked ? "Couldn't reach the AI. For advice, call NHS 111." : "Couldn't reach the AI. Call 111 is on the screen."
         case .stopped:
             return stoppedReply
         case .asked:
@@ -219,10 +230,11 @@ public enum InsightQuestions {
             parts += checked?.sentences ?? []
             parts.append(spokenNotice)
             let titles = (checked?.passages ?? []).map(\.passage.title)
+            let place = locked ? "in Ask when you unlock" : "on the screen"
             if titles.count == 1 {
-                parts.append("The NHS page \"\(titles[0])\" is on the screen.")
+                parts.append("The NHS page \"\(titles[0])\" is \(place).")
             } else if titles.count > 1 {
-                parts.append("The NHS pages \"" + titles.joined(separator: "\" and \"") + "\" are on the screen.")
+                parts.append("The NHS pages \"" + titles.joined(separator: "\" and \"") + "\" are \(place).")
             }
             if checked?.cannotAnswer ?? true { parts.append(cannotAnswerLine) }
             return parts.joined(separator: " ")

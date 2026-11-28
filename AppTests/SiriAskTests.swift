@@ -12,16 +12,71 @@ import Testing
 @MainActor
 @Suite("Ask from Siri, the sound mode and the watch card")
 struct SiriAskTests {
-    /// D13: the AI never runs with the app closed. The Siri action opens the app after an unlock;
-    /// copying the feed actions' background settings would break that.
-    @Test func theSiriActionNeedsAnUnlockAndOpensTheApp() {
-        #expect(AskLittleLogIntent.supportedModes == .foreground(.immediate))
-        #expect(!AskLittleLogIntent.supportedModes.contains(.background))
-        // This iPhone's own unlock, never a paired device's (Codex step 4 review, 8).
-        guard case .requiresLocalDeviceAuthentication = AskLittleLogIntent.authenticationPolicy else {
-            Issue.record("the Siri action must ask for this iPhone's own unlock")
-            return
-        }
+    /// Doc 15, V3 B and V7 A (which change D13 for this action): a locked phone answers in Siri
+    /// with the app closed; an unlocked one opens Ask, as before.
+    @Test func theSiriActionAnswersLockedAndOpensAskUnlocked() {
+        #expect(AskLittleLogIntent.supportedModes.contains(.background))
+        #expect(AskLittleLogIntent.supportedModes.contains(.foreground(.dynamic)))
+        #expect(AskLittleLogIntent.authenticationPolicy == .alwaysAllowed)
+    }
+
+    /// V5 A: a question Siri answers on a locked phone waits in its own file, and joins Ask's list
+    /// at the unlock; the main file, which a locked phone can't read, is never written over.
+    @Test func aLockedQuestionJoinsTheListAtTheUnlock() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("questions.json")
+        let now = Date()
+        let older = KeptQuestion(askedAt: now.addingTimeInterval(-600), text: "How many feeds yesterday?", kind: .closed)
+        QuestionLog(url: url, now: now, isUnlocked: { true }).add(older, now: now)
+
+        // Locked: the main file "can't be read" (as on a phone launched by Siri while locked).
+        var unlocked = false
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+        let log = QuestionLog(url: url, now: now, isUnlocked: { unlocked })
+        let locked = KeptQuestion(askedAt: now, text: "When was the last feed?", kind: .closed, viaSiri: true)
+        log.add(locked, now: now)
+        log.markRead(locked.id, at: now)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        // The main file still holds only the older question: nothing wrote over it.
+        let kept = try JSONDecoder().decode([KeptQuestion].self, from: Data(contentsOf: url))
+        #expect(kept.map(\.id) == [older.id])
+
+        unlocked = true
+        log.takeLocked(now: now)
+        #expect(Set(log.questions.map(\.id)) == [older.id, locked.id])
+        #expect(log.questions.first { $0.id == locked.id }?.readAt != nil, "read by Siri, never read again in Ask")
+        let saved = try JSONDecoder().decode([KeptQuestion].self, from: Data(contentsOf: url))
+        #expect(Set(saved.map(\.id)) == [older.id, locked.id])
+        let left = try FileManager.default.contentsOfDirectory(atPath: folder.appendingPathComponent("questions-locked").path)
+        #expect(left.isEmpty)
+    }
+
+    /// Codex step 3, 3 and 9: a locked phone that can't read a file changed in the last 10 minutes
+    /// knows the question before this one may be in it; a question taken out stays out at the unlock.
+    @Test func aLockedLogKnowsWhatItCantSee() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("questions.json")
+        let now = Date()
+        QuestionLog(url: url, now: now, isUnlocked: { true })
+            .add(KeptQuestion(askedAt: now, text: "She was sick", kind: .closed), now: now)
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: url.path)
+        var unlocked = false
+        let log = QuestionLog(url: url, now: now, isUnlocked: { unlocked })
+        #expect(log.mayHideRecent(now: now))
+        #expect(!log.mayHideRecent(now: now.addingTimeInterval(11 * 60)))
+
+        let locked = KeptQuestion(askedAt: now, text: "Green", kind: .closed, viaSiri: true)
+        log.add(locked, now: now)
+        log.remove(locked.id)
+        try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: url.path)
+        unlocked = true
+        log.takeLocked(now: now)
+        #expect(!log.questions.contains { $0.id == locked.id })
+        #expect(!log.mayHideRecent(now: now), "read at the unlock")
     }
 
     /// F16 and the journal's T13: a reading puts the video's mode back, so a journal video never

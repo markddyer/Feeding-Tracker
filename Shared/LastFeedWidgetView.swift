@@ -105,7 +105,8 @@ struct LastFeedWidgetView: View {
     private var buttons: some View {
         HStack(spacing: 6) {
             if glance?.runningSince != nil {
-                button("Finish feed", FinishFeedIntent())
+                // A button can't ask anything: the details panel opens in the app instead.
+                button("Finish feed", FinishFeedIntent(asksDetails: false))
             } else if entry.bottleOnly {
                 button("Formula", StartFeedIntent(milk: .formula), spoken: "Start a formula bottle")
                 button("Expressed", StartFeedIntent(milk: .expressed), spoken: "Start an expressed milk bottle")

@@ -26,6 +26,10 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
         // Start at launch, also when a push wakes the app in the background.
         AppModel.shared.sync.start()
         AppModel.shared.reconciler.runSoon()
+        // Siri hears the household's medicine names in "Log Vitamin D in Little Log".
+        FeedingShortcuts.updateAppShortcutParameters()
+        // Get help now opens by itself after a danger sign said to Siri on a locked phone (doc 15, V6).
+        MainActor.assumeIsolated { HelpNotice.watch() }
         // Photos move only while the app is open (journal plan: they may wait for it).
         if application.applicationState != .background { AppModel.shared.media.kick() }
         // The watch can wake the app in the background with a tap.

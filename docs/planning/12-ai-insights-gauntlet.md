@@ -403,6 +403,7 @@ Because the app code is the same for all four, the choice could have been made b
 
 - **Daily insights without asking (Parent A, 22 Nov 2026), as well as Ask:**
   - **D13. How it arrives:** a card at the top of Home, made automatically the first time the app opens each day. No notification. The AI never runs in the background, and nothing goes on the Lock Screen.
+    - **Changed 26 Nov 2026 for "Ask Little Log" alone** (`docs/planning/15-hands-free-siri.md`, Parent A's V3 B, V5 A, V6 B, V7 A): on a locked phone Siri reads Ask's answer with the app closed (the gate, both yeses and the danger check unchanged; only the "app open" check is lifted for that action), the question waits in Ask for the unlock, and a danger sign also leaves a "Get help now" notice on the Lock Screen. The cards still never run in the background, and an unlocked phone opens Ask as before.
   - **D14. What it covers:** each morning, last night and yesterday: feeds, sleep, nappies and anything new, with an NHS passage matched to the baby's age. The card for a night is made at the first opening after that night ends (the rota's morning). Until then, Home shows the previous card.
   - **D15. Weekly as well:** the daily card goes on Home, and the weekly "This week" card stays on Graphs.
   - **Both phones:** one shared card (R8, D10 of the engineering review): the first phone to make a night's card saves it, encrypted, for the household, and the other phone shows it. (Was: each phone makes its own card.)

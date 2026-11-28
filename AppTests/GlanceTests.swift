@@ -28,11 +28,10 @@ struct GlanceTests {
         // "03:00", or "3:00 AM", as the phone's language writes it.
         let three = GlanceText.clock(start, timeZoneID: "Europe/London")
         #expect(three.contains("3:00"))
-        #expect(said(.started(id: "f", at: start, bottle: nil)) == "Feed started at \(three). Add the sides and bottles in the app.")
-        #expect(said(.started(id: "f", at: start, bottle: .formula))
-                == "Formula bottle started at \(three). Add the amount in the app when it's finished.")
-        #expect(said(.started(id: "f", at: start, bottle: .expressed))
-                == "Expressed milk bottle started at \(three). Add the amount in the app when it's finished.")
+        // Siri asks the sides or the amount at Finish (docs/planning/15-hands-free-siri.md).
+        #expect(said(.started(id: "f", at: start, bottle: nil)) == "Feed started at \(three).")
+        #expect(said(.started(id: "f", at: start, bottle: .formula)) == "Formula bottle started at \(three).")
+        #expect(said(.started(id: "f", at: start, bottle: .expressed)) == "Expressed milk bottle started at \(three).")
         #expect(said(.alreadyRunning(feed(by: "a"))) == "Your feed is running, started at \(three).")
         #expect(said(.alreadyRunning(feed(by: "b"))) == "Sam's feed is running, started at \(three).")
         #expect(said(.finished(feed(by: "a", minutes: 25))) == "Feed finished, after 25 minutes.")

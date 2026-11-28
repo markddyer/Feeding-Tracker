@@ -131,14 +131,14 @@ struct SettingsView: View {
         // On the list itself, once: on the Journal section it was attached to each of its parts,
         // and one closed the screen as another opened it (found with the photo picker, 19 Nov 2026).
         .sheet(isPresented: $settingBirthDate) { BirthDateEditor(babyID: model.baby?.name ?? "") }
-        .alert("Turn off Little Log Dev's alarms?", isPresented: $confirmingAlertsOff) {
+        .alert("Turn off Test Log's alarms?", isPresented: $confirmingAlertsOff) {
             Button("Turn off", role: .destructive) {
                 alertsOff = true
                 model.reconciler.runSoon()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Little Log Dev won't ring or send any notice on this phone, test alarms included. Little Log, the real app, keeps alerting.")
+            Text("Test Log won't ring or send any notice on this phone, test alarms included. Little Log, the real app, keeps alerting.")
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
@@ -315,7 +315,7 @@ struct SettingsView: View {
             })
             NavigationLink("Move to Little Log") { MoveOutScreen() }
         } header: {
-            header("Little Log Dev · this phone")
+            header("Test Log · this phone")
         } footer: {
             Text("For testing beside Little Log, the real app. Turn the alarms and notices off only once Little Log shows your entries and has its alarms set.")
                 .foregroundStyle(Theme.textMuted)
@@ -323,11 +323,11 @@ struct SettingsView: View {
         .listRowBackground(Theme.surface)
         #else
         Section {
-            NavigationLink("Bring in from Little Log Dev") { MoveInScreen() }
+            NavigationLink("Bring in from Test Log") { MoveInScreen() }
         } header: {
-            header("From Little Log Dev")
+            header("From Test Log")
         } footer: {
-            Text("Once, after setting up: brings in what you logged in Little Log Dev, from the move file it makes on this phone.")
+            Text("Once, after setting up: brings in what you logged in Test Log, from the move file it makes on this phone.")
                 .foregroundStyle(Theme.textMuted)
         }
         .listRowBackground(Theme.surface)

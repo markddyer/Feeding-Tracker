@@ -44,9 +44,10 @@ enum GlanceText {
         case .started(_, let at, let bottle):
             let time = clock(at, timeZoneID: timeZoneID)
             switch bottle {
-            case .formula: return "Formula bottle started at \(time). Add the amount in the app when it's finished."
-            case .expressed: return "Expressed milk bottle started at \(time). Add the amount in the app when it's finished."
-            case nil: return "Feed started at \(time). Add the sides and bottles in the app."
+            // Siri asks the amount or the sides at "Finish the feed" (docs/planning/15-hands-free-siri.md).
+            case .formula: return "Formula bottle started at \(time)."
+            case .expressed: return "Expressed milk bottle started at \(time)."
+            case nil: return "Feed started at \(time)."
             }
         case .alreadyRunning(let feed):
             let who = feed.event.loggedBy == me ? "Your" : "\(names[feed.event.loggedBy] ?? "The other parent")'s"

@@ -179,13 +179,13 @@ final class AlarmSpikeStore {
             isQuickTest: quick
         )
         do {
-            try await scheduleAlarm(id: test.mainAlarmID, at: due, title: "Little Log Dev test alarm")
+            try await scheduleAlarm(id: test.mainAlarmID, at: due, title: "Test Log test alarm")
         } catch {
             test.errors.append("main alarm: \(error)")
         }
         if let followUpID = test.followUpAlarmID, let followUpDue = test.followUpDueAt {
             do {
-                try await scheduleAlarm(id: followUpID, at: followUpDue, title: "Little Log Dev test follow-up")
+                try await scheduleAlarm(id: followUpID, at: followUpDue, title: "Test Log test follow-up")
             } catch {
                 test.errors.append("follow-up alarm: \(error)")
             }
@@ -207,7 +207,7 @@ final class AlarmSpikeStore {
 
     private func scheduleNotification(id: String, at date: Date) async throws {
         let content = UNMutableNotificationContent()
-        content.title = "Little Log Dev test alert"
+        content.title = "Test Log test alert"
         content.body = "Practice alert, set for \(date.formatted(date: .omitted, time: .shortened))."
         content.sound = .default
         content.interruptionLevel = .timeSensitive

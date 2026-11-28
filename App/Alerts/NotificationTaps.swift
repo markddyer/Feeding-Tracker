@@ -48,6 +48,17 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate, @u
             await MainActor.run { NotificationTaps.shared.showFirst(first) }
         } else if identifier == JournalExporter.noticeID {
             await MainActor.run { NotificationTaps.shared.showExport() }
+        } else if identifier == HelpNotice.babyID {
+            // A danger sign said to Siri on a locked phone (doc 15, V6 B).
+            await MainActor.run {
+                HelpNotice.clear()
+                HelpPresenter.show()
+            }
+        } else if identifier == HelpNotice.parentID {
+            await MainActor.run {
+                HelpNotice.clear()
+                NotificationTaps.shared.showAsk()
+            }
         } else if NotificationTaps.opensHome(identifier) {
             await MainActor.run { NotificationTaps.shared.showHome() }
         }

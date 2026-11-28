@@ -13,8 +13,16 @@ final class WidgetRefresher {
     }
 
     private var shown: Shown?
+    /// The medicine names Siri last heard of (`docs/planning/15-hands-free-siri.md`).
+    private var medicines: [String]?
 
     func update(_ data: HouseholdData, now: Date = Date()) {
+        // "Log Vitamin D in Little Log": Siri's phrases follow the list, changed here or on the
+        // other phone (Codex review of doc 15, 9).
+        if medicines != data.medicines {
+            medicines = data.medicines
+            FeedingShortcuts.updateAppShortcutParameters()
+        }
         let glance = Shown(feed: data.glance(now: now), care: data.careGlance(now: now))
         guard shown != glance else { return }
         shown = glance

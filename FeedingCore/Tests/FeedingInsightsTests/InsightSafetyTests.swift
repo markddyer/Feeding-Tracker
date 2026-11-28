@@ -285,6 +285,19 @@ struct DangerSignTests {
         #expect(DangerSigns.check("no fever").contains(.temperature))
     }
 
+    /// "Isn't" reads as "is not", so a short negative meets the "not …" phrases (Codex review of
+    /// doc 15, step 3, 1).
+    @Test func shortNegativesOpenTheCard() {
+        for text in ["She isn't breathing", "he isn’t breathing", "Baby wasn't breathing for a bit",
+                     "She doesn't seem to be breathing"] {
+            #expect(DangerSigns.check(text).contains(.breathing), "\"\(text)\"")
+        }
+        #expect(DangerSigns.expandingNegatives(["she", "isnt", "breathing"]) == ["she", "is", "not", "breathing"])
+        #expect(DangerSigns.expandingNegatives(["cant", "wont", "dont"]) == ["can", "not", "will", "not", "do", "not"])
+        // The short forms in the lists still match as before.
+        #expect(DangerSigns.check("the nappy isn't wet").contains(.noWee))
+    }
+
     @Test func aTemperatureIsANumberNearItsWords() {
         #expect(DangerSigns.check("38.4").contains(.temperature))
         #expect(DangerSigns.check("38 c").contains(.temperature))

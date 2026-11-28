@@ -122,6 +122,20 @@ final class PhoneLink {
         return request.id
     }
 
+    /// Finish, or Finish again after an Undo of Finish the phone hasn't answered: sent after it, so
+    /// they arrive in order (outside review of step 3). The watch's Finish button and Siri's Finish
+    /// both send it this way (Codex review of doc 15, 3).
+    @discardableResult
+    func sendFinish(feedID: String, now: Date = Date()) -> String {
+        if let undo = saved.actions.last(where: {
+            if case .undoFinish(let id, _) = $0.action { return id == feedID }
+            return false
+        }) {
+            return send(.refinish(feedID: feedID), after: undo.id, now: now)
+        }
+        return send(.finish(feedID: feedID), now: now)
+    }
+
     /// The latest tap about this feed the phone hasn't answered yet. A feed extra names it
     /// (`after`), so the phone applies them in order: a side after its Finish, an amount after its
     /// bottle (step 2 of `11-watch-parity.md`).
@@ -255,8 +269,11 @@ final class PhoneLink {
 
     fileprivate func receive(_ state: WatchState) {
         var taken = false
+        let medicines = saved.phone?.medicines?.map(\.name)
         change { taken = $0.receive(state, now: Date()) }
         guard taken else { return }
+        // "Log Vitamin D in Little Log": Siri's phrases follow the household's list (doc 15).
+        if state.medicines?.map(\.name) != medicines { WatchShortcuts.updateAppShortcutParameters() }
         // A tap the phone held ("waiting") for one it hadn't handled goes again once it has, so it
         // isn't left until the next tap or a change of reach (outside review of step 1, P2). The
         // phone stops saying "waiting" once it tries the tap, so this can't repeat.

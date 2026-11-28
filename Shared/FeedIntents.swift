@@ -9,20 +9,6 @@ import Foundation
 // phone's alarms and goes to the other phone exactly as a tap in the app does. The app is woken in
 // the background for it.
 
-/// The bottle Siri or a shortcut names: "Start a formula feed".
-enum MilkChoice: String, AppEnum {
-    case formula
-    case expressed
-
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Bottle"
-    static let caseDisplayRepresentations: [MilkChoice: DisplayRepresentation] = [
-        .formula: DisplayRepresentation(title: "Formula", synonyms: ["formula milk"]),
-        .expressed: DisplayRepresentation(title: "Expressed milk", synonyms: ["expressed"]),
-    ]
-
-    var kind: MilkKind { self == .formula ? .formula : .expressed }
-}
-
 /// The bottle a button starts (the user's choice of 16 Nov 2026): chosen when the button is
 /// added, so a bottle-only parent can have one button per milk.
 enum ControlBottle: String, AppEnum {
@@ -97,19 +83,45 @@ struct StartFeedIntent: AppIntent, LiveActivityIntent {
     }
 }
 
-/// "Finish feed": finishes the feed running now, whoever started it.
+/// "Finish feed": finishes the feed running now, whoever started it. Said to Siri (or from the
+/// Action Button), Siri then asks what the feed is missing, one question at a time: the sides, or a
+/// bottle's amount, read back for a "yes" (`docs/planning/15-hands-free-siri.md`, V1 and V2). The
+/// Lock Screen widget's button can't ask, so it finishes with no questions.
 struct FinishFeedIntent: AppIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Finish feed"
-    static let description = IntentDescription("Finishes the feed running now. The app then asks for the sides and bottles.")
+    static let description = IntentDescription("Finishes the feed running now. Siri then asks for the sides or the amount.")
     static let supportedModes: IntentModes = .background
     static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
+
+    /// False for the Lock Screen widget's button.
+    @Parameter(title: "Ask for the details", default: true)
+    var asksDetails: Bool
+
+    @Parameter(title: "Sides")
+    var sides: SidesChoice?
+
+    @Parameter(title: "Bottle")
+    var milk: MilkChoice?
+
+    @Parameter(title: "Amount (ml)")
+    var ml: Int?
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Finish feed")
+    }
+
+    init() {}
+
+    init(asksDetails: Bool) {
+        self.asksDetails = asksDetails
+    }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
         #if FEEDING_WIDGETS
         let said = try QuickFeedError.refuse()
         #else
-        let said = await QuickFeedRunner.finish()
+        let said = asksDetails ? await VoiceRunner.finish(self) : await QuickFeedRunner.finish()
         #endif
         return .result(dialog: "\(said)")
     }

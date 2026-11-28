@@ -562,7 +562,7 @@ struct SpikeMenu: View {
             } header: {
                 Text("Tests")
             } footer: {
-                Text("Little Log Dev only. These screens never appear in the real app.")
+                Text("Test Log only. These screens never appear in the real app.")
             }
         }
         .navigationTitle("Tests")

@@ -299,6 +299,27 @@ struct SpokenReplyTests {
         }
     }
 
+    /// Siri on a locked phone (doc 15, V3, V5, V6): nothing is on the screen, so nothing says it is.
+    @Test func aLockedPhoneSaysWhereThingsWait() throws {
+        #expect(InsightQuestions.spoken(.helpNow, locked: true) == InsightQuestions.lockedHelp)
+        #expect(InsightQuestions.spoken(.parentHelp, helpTitle: "Urgent help", locked: true)
+                == "Urgent help. " + InsightQuestions.lockedParentHelp)
+        #expect(InsightQuestions.spoken(.couldNotAsk, locked: true) == "Couldn't reach the AI. For advice, call NHS 111.")
+        let checked = try #require(checked)
+        #expect(InsightQuestions.spoken(.asked, checked: checked, locked: true).hasPrefix("8 feeds logged yesterday."))
+        for kind in [KeptQuestion.Kind.helpNow, .parentHelp, .couldNotAsk, .asked, .closed, .medicineReply] {
+            #expect(!InsightQuestions.spoken(kind, checked: checked, helpTitle: "Urgent help", locked: true).contains("on the screen"))
+        }
+    }
+
+    /// The locked danger words name the NHS's urgent page by its own title and never give its
+    /// headings without their conditions (Codex review of doc 15, step 3, 5).
+    @Test func theLockedHelpNamesTheNHSPageAndGivesNoOrder() {
+        #expect(InsightQuestions.lockedHelp.contains("\"\(NHSPassages.urgent.page)\""))
+        #expect(!InsightQuestions.lockedHelp.contains("Immediate action required"))
+        #expect(InsightQuestions.lockedHelp.contains("It says when to call 999 or NHS 111."))
+    }
+
     /// Y1: the danger check that runs the moment a Siri question arrives is the route's own.
     @Test func theSiriCheckIsTheRoutesCheck() {
         let text = "She feels really hot and she's very sleepy"

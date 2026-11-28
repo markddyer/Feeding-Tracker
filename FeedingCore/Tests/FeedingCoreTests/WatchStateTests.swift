@@ -31,6 +31,15 @@ struct WatchStateTests {
         let state = state(HouseholdData())
         #expect(!state.setUp)
         #expect(state.glance == nil)
+        #expect(state.babyName == nil)
+    }
+
+    /// Siri on the watch asks "How much formula did Sam drink?" (doc 15).
+    @Test func theWatchKnowsTheBabysName() throws {
+        #expect(state(household()).babyName == "Baby")
+        // An older watch skips the new field; an older phone sends none.
+        let data = try WatchCoding.encode(state(household()))
+        #expect(WatchCoding.decode(WatchState.self, from: data)?.babyName == "Baby")
     }
 
     @Test func idleShowsTheLastFeedAndItsWindow() throws {

@@ -337,8 +337,10 @@ final class InsightEngine {
     /// A typed question, from Ask: the route first (danger signs, medicines, the gate), then the AI.
     /// What it got is kept on this phone (`QuestionLog`), never synced. Log lines name what
     /// happened, never words (Q12).
-    func ask(_ text: String, fromSiri: Bool = false, model: AppModel = .shared, log: QuestionLog = .shared,
-             isOpen: @escaping () -> Bool = { InsightEngine.appIsOpen }) async {
+    /// `spokenBySiri`: Siri reads the reply on a locked phone (doc 15, V3 B), so it is kept as read
+    /// from the start and Ask never reads it a second time (Codex review of doc 15, step 3, 10).
+    func ask(_ text: String, fromSiri: Bool = false, spokenBySiri: Bool = false, model: AppModel = .shared,
+             log: QuestionLog = .shared, isOpen: @escaping () -> Bool = { InsightEngine.appIsOpen }) async {
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // A Siri question never arrives here while another is with the AI or before set-up:
         // `SiriQuestions` holds it its turn, and answers "Set up Little Log first" (F9).
@@ -350,7 +352,7 @@ final class InsightEngine {
         let viaSiri: Bool? = fromSiri ? true : nil
         func keep(_ kind: KeptQuestion.Kind, answer: QuestionAnswer? = nil, offered: [String] = [], people: Bool = false) {
             log.add(KeptQuestion(askedAt: now, text: typed, kind: kind, answer: answer, offered: offered,
-                                 peopleLine: people, viaSiri: viaSiri))
+                                 peopleLine: people, viaSiri: viaSiri, readAt: spokenBySiri ? Date() : nil))
         }
         func route(_ participants: Set<MemberID>?) -> QuestionRoute {
             InsightQuestions.route(typed, data: model.store.data, babyID: babyID, me: model.me, participants: participants,

@@ -6,8 +6,9 @@ import Foundation
 // the settled Control Center buttons, 17 Nov 2026; `docs/planning/06-more-than-feeds.md`). Shared
 // by the app and the widget extension, like `FeedIntents.swift`: every action runs in the app's
 // own process, so a tap saves, syncs and refreshes the widgets as a tap in the app does. They work
-// on a locked phone, with no Touch ID, as Start feed does. Not offered to Siri or Shortcuts for
-// now (Q3: "Not Siri or the Action Button for these").
+// on a locked phone, with no Touch ID, as Start feed does. Fell asleep and Woke up are also Siri's
+// (`docs/planning/15-hands-free-siri.md`, V1, which reverses doc 06's Q3 for Siri); Siri's nappy and
+// medicine are `LogNappyIntent` and `LogMedicineIntent` (App/Model/VoiceIntents.swift), which ask.
 
 /// What a nappy button logs, chosen when the button is added.
 enum NappyChoice: String, AppEnum {
@@ -58,20 +59,19 @@ enum NappyChoice: String, AppEnum {
 struct FellAsleepIntent: AppIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Fell asleep"
     static let description = IntentDescription("Logs that the baby fell asleep now.")
-    static let isDiscoverable = false
     static let supportedModes: IntentModes = .background
     static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
     init() {}
 
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         #if FEEDING_WIDGETS
-        _ = try QuickCareError.refuse()
+        let said = try QuickCareError.refuse()
         #else
-        _ = await QuickFeedRunner.fellAsleep()
+        let said = await QuickFeedRunner.fellAsleep()
         #endif
-        return .result()
+        return .result(dialog: "\(said)")
     }
 }
 
@@ -79,20 +79,19 @@ struct FellAsleepIntent: AppIntent, LiveActivityIntent {
 struct WokeUpIntent: AppIntent, LiveActivityIntent {
     static let title: LocalizedStringResource = "Woke up"
     static let description = IntentDescription("Ends the sleep running now.")
-    static let isDiscoverable = false
     static let supportedModes: IntentModes = .background
     static let authenticationPolicy: IntentAuthenticationPolicy = .alwaysAllowed
     static var allowedExecutionTargets: IntentExecutionTargets { [.main] }
 
     init() {}
 
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         #if FEEDING_WIDGETS
-        _ = try QuickCareError.refuse()
+        let said = try QuickCareError.refuse()
         #else
-        _ = await QuickFeedRunner.wokeUp()
+        let said = await QuickFeedRunner.wokeUp()
         #endif
-        return .result()
+        return .result(dialog: "\(said)")
     }
 }
 

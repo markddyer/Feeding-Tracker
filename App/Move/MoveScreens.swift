@@ -39,7 +39,7 @@ struct MoveOutScreen: View {
                 Text("Moves everything to Little Log, the real app, on this phone: every entry and first, with their photos and videos, the baby's name and birth date, the medicines, the feed window and the night rota.")
                 step(1, "Make the move file here.")
                 step(2, "Save it to Files, on this iPhone.")
-                step(3, "Open Little Log. In Settings, tap Bring in from Little Log Dev, and choose the file.")
+                step(3, "Open Little Log. In Settings, tap Bring in from Test Log, and choose the file.")
                 Text("Your alarm choices stay on each phone: pick them again in Little Log.")
                     .feedText(.subheadline).foregroundStyle(Theme.textMuted)
             }
@@ -59,7 +59,7 @@ struct MoveOutScreen: View {
                                 .feedText(.subheadline).foregroundStyle(Theme.textMuted)
                         }
                         if made.leftOut > 0 {
-                            Text("\(MoveText.media(made.leftOut)) couldn't be fetched from iCloud, and stay in Little Log Dev. Try again on Wi-Fi to bring them too.")
+                            Text("\(MoveText.media(made.leftOut)) couldn't be fetched from iCloud, and stay in Test Log. Try again on Wi-Fi to bring them too.")
                                 .feedText(.subheadline).foregroundStyle(Theme.textMuted)
                         }
                     }
@@ -96,7 +96,7 @@ struct MoveOutScreen: View {
 
     private func make() {
         guard let me = model.me, let baby = model.baby else {
-            problem = "Set up Little Log Dev first."
+            problem = "Set up Test Log first."
             return
         }
         problem = nil
@@ -161,7 +161,7 @@ struct MoveInScreen: View {
     var body: some View {
         List {
             Section {
-                Text("Brings in the move file made in Little Log Dev on this phone: every entry and first, with their photos and videos, and the household's settings. Entries already here are left as they are.")
+                Text("Brings in the move file made in Test Log on this phone: every entry and first, with their photos and videos, and the household's settings. Entries already here are left as they are.")
             }
             .listRowBackground(Theme.surface)
 
@@ -188,8 +188,8 @@ struct MoveInScreen: View {
                         }
                         // Feeding Dev stays loud until Feeding can ring on this phone (Codex review).
                         Text(alertsReady
-                             ? "Check Home and History, and that Home shows the next alert. Only then, in Little Log Dev's Settings, turn its alarms and notices off."
-                             : "Little Log can't ring on this phone yet: allow its alarms and notifications in the iPhone's Settings. Keep Little Log Dev's alarms on until then.")
+                             ? "Check Home and History, and that Home shows the next alert. Only then, in Test Log's Settings, turn its alarms and notices off."
+                             : "Little Log can't ring on this phone yet: allow its alarms and notifications in the iPhone's Settings. Keep Test Log's alarms on until then.")
                             .feedText(.subheadline).foregroundStyle(Theme.textMuted)
                     }
                 } else if let chosen {
@@ -213,7 +213,7 @@ struct MoveInScreen: View {
         }
         .foregroundStyle(Theme.text)
         .background(Theme.background.ignoresSafeArea())
-        .navigationTitle("Bring in from Little Log Dev")
+        .navigationTitle("Bring in from Test Log")
         .navigationBarTitleDisplayMode(.inline)
         .modifier(FormOnScreen())
         .task(id: brought) {
@@ -232,7 +232,7 @@ struct MoveInScreen: View {
         Section {
             ForEach(MoveText.counts(move.counts), id: \.self) { Text($0) }
             if !move.media.isEmpty { Text(MoveText.media(move.media.count)) }
-            Text("Entries by \(move.names[move.madeBy] ?? "you") in Little Log Dev become yours.")
+            Text("Entries by \(move.names[move.madeBy] ?? "you") in Test Log become yours.")
                 .feedText(.subheadline).foregroundStyle(Theme.textMuted)
             if let devOther, let other {
                 Text("Entries by \(move.names[devOther] ?? "the other parent") become \(names[other].map { "\($0)'s" } ?? "the other parent's").")
@@ -259,8 +259,8 @@ struct MoveInScreen: View {
                 chosen = (file, reader)
             } catch {
                 problem = (error as? MoveFile.Problem) == .newerVersion
-                    ? "This file is from a newer Little Log Dev. Update Little Log, then try again."
-                    : "This isn't a move file from Little Log Dev, or it isn't on this iPhone yet. Choose the file whose name starts \"Little Log move\", saved On My iPhone."
+                    ? "This file is from a newer Test Log. Update Little Log, then try again."
+                    : "This isn't a move file from Test Log, or it isn't on this iPhone yet. Choose the file whose name starts \"Little Log move\", saved On My iPhone."
             }
             working = nil
         }
@@ -314,7 +314,7 @@ extension MoveText {
         case .unclearParents:
             "This file names more than two parents, so it can't tell whose entries are whose."
         case .unreadableEntries:
-            "Some entries in this file are from a newer Little Log Dev. Update Little Log, then try again."
+            "Some entries in this file are from a newer Test Log. Update Little Log, then try again."
         }
     }
 }
